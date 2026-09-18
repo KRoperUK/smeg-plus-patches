@@ -79,14 +79,42 @@ uv pip install --python .venv/bin/python PySide6 pytest zensical ruff
 The test suite needs **no firmware at all** — it generates a synthetic package, so the
 whole patch and repack path is covered in CI.
 
+### On Windows
+
+The tooling is plain Python and runs on Windows 11 (x86_64) as it does on macOS. Three
+things differ, and only the first is a daily annoyance:
+
+- **the venv path** — `.venv\Scripts\python.exe` where these pages say `.venv/bin/python`,
+  and `py -3` where they say `python3`;
+- **`rsync`** — not present on Windows. The cheat sheet below overlays each tool's output
+  onto a copy of the package with `rsync -a overlay/ PKG_mod/`; pass `--copy-package` to
+  `patch_smeg.py` instead, which does the same job, or use `robocopy`;
+- **the shell scripts** — `tools/check_no_firmware.sh` and `tools/apply_files.sh` are POSIX
+  `sh`, which Git for Windows supplies as Git Bash. `.gitattributes` pins `.sh` to LF so
+  `core.autocrlf=true` cannot give them CRLF endings and break the hook.
+
 ## One extra binary
 
 Audio conversion (mp3, ogg, flac, m4a, …) shells out to **ffmpeg**. WAV input that is
 already in the target format works without it:
 
 ```sh
-brew install ffmpeg        # macOS
+brew install ffmpeg                  # macOS
 ```
+
+```powershell
+winget install -e --id Gyan.FFmpeg   # Windows
+```
+
+## The analysis toolchain
+
+Reading and writing PowerPC — a cross-`clang`, `lld`, `llvm-mc`, Ghidra, and `rz-diff` for
+comparing two firmware versions — is a separate, per-machine install. Nothing on this page
+needs any of it, and neither do the tests. It is what the patch addresses were originally
+derived with, and what you need if you want a patch's bytes to come from assembled or
+compiled source rather than from memory.
+
+See [The reverse-engineering toolchain](TOOLCHAIN.md).
 
 ## One command per package: the manifest build
 

@@ -56,11 +56,13 @@ card matches what you are trying to do.
     ---
 
     The PowerPC image inside `f_BigQuick.bin`: the patch reference, the AUX
-    auto-switch chain gate by gate, and how it was verified by emulation.
+    auto-switch chain gate by gate, how it was verified by emulation, and the
+    cross-platform toolchain for reading and writing PowerPC.
 
     [:lucide-arrow-right: Patch reference](PATCHES.md) ·
     [The AUX chain](AUX_CHAIN.md) ·
-    [Emulation](EMULATION.md)
+    [Emulation](EMULATION.md) ·
+    [Toolchain](TOOLCHAIN.md)
 
 -   :lucide-music:{ .lg .middle } __The media partition__
 

@@ -75,6 +75,10 @@ entry carries the original bytes it expects. When you move a patch for a differe
 verify the address against the symbol map for that build first, and say in the PR which
 images you checked.
 
+The `bytes` field does not have to be written from memory: [the toolchain
+page](docs/TOOLCHAIN.md) covers assembling a single instruction with `llvm-mc`, or compiling
+and linking a whole routine at the patch address with `clang` and `lld`.
+
 ## 3. Gotchas worth knowing
 
 Things that have each cost time here at least once, in roughly the order you meet them.
@@ -154,6 +158,25 @@ they have caused confusion twice. After any copy:
 ```sh
 find /Volumes/SMEG -name '._*' -delete; find /Volumes/SMEG -name '.DS_Store' -delete
 ```
+
+### Working from Windows
+
+The repository is also worked on from **Windows 11 (x86_64)**. The tooling is plain Python,
+so it runs there unchanged; the differences are all in the shell around it.
+
+- **Paths.** `.venv\Scripts\python.exe` rather than `.venv/bin/python`, and `py -3` rather
+  than `python3`.
+- **`sh`.** `tools/check_no_firmware.sh` and `tools/apply_files.sh` are POSIX shell scripts,
+  and the former is a pre-commit hook entry — Git for Windows supplies `sh` as **Git Bash**.
+  `.gitattributes` pins `.sh` to LF because Git for Windows defaults to
+  `core.autocrlf=true`, and a CRLF shebang fails with "bad interpreter". Do not remove it.
+- **`rsync`.** Not present. `patch_smeg.py --copy-package` does the same job as the
+  `rsync -a overlay/ PKG_mod/` step in the docs, or use `robocopy`.
+- **FAT32.** The AppleDouble cleanup above is a macOS quirk with no Windows equivalent.
+
+The two `pre-push` hooks in `.pre-commit-config.yaml` are written as
+`sh -c 'PY=.venv/bin/python; …'`, so they assume a Unix venv layout as well as a POSIX `sh`
+and do not run on Windows. The checks themselves still work — run them by hand.
 
 ### Releases
 

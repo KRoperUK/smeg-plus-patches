@@ -77,6 +77,58 @@ first.
 Homebrew's `python3` is 3.14, where `ensurepip` is broken and PySide6 has no wheels):
 `uv venv --seed --python 3.13 .venv && uv pip install --python .venv/bin/python PySide6 pytest zensical ruff`.
 
+## Platforms: macOS and Windows
+
+Developed on an Apple-silicon Mac and also worked on from an **x86_64 Windows 11** machine.
+Both have to keep working. Nothing here needs WSL, but the POSIX shell scripts (`tools/*.sh`)
+do need a `sh` — on Windows that means **Git Bash**. `tools/check_no_firmware.sh` is a
+`pre-commit` hook entry, and a CRLF shebang makes it fail with "bad interpreter".
+`.gitattributes` pins text files to LF so Git for Windows' default `core.autocrlf=true`
+cannot reintroduce that. **Do not remove it.**
+
+| | macOS | Windows 11 (x86_64) |
+|---|---|---|
+| interpreter | `python3` | `py -3` |
+| python in the venv | `.venv/bin/python` | `.venv\Scripts\python.exe` |
+| venv creation | `uv venv --seed --python 3.13 .venv` | the same command |
+| ffmpeg | `brew install ffmpeg` | `winget install -e --id Gyan.FFmpeg` |
+| copy an overlay onto a package | `rsync -a overlay/ PKG_mod/` | `patch_smeg.py --copy-package`, or `robocopy` |
+| headless Qt | `QT_QPA_PLATFORM=offscreen` | `$env:QT_QPA_PLATFORM="offscreen"` |
+
+Pin **Python 3.13** on both. The reason above is macOS-specific — Homebrew's `python3` is
+3.14, where `ensurepip` is broken — but pinning the same version on Windows keeps the two
+machines identical, and `uv` will fetch 3.13 for you.
+
+**Known Windows gap:** the two `pre-push` entries in `.pre-commit-config.yaml` hard-code
+`sh -c 'PY=.venv/bin/python; …'`. That assumes a POSIX `sh` *and* a Unix venv layout, so on
+Windows they do not run — Git Bash supplies the first, not the second.
+
+## The reverse-engineering toolchain
+
+The analysis half of the project needs more than `uv`. Per-platform setup is in
+[docs/TOOLCHAIN.md](docs/TOOLCHAIN.md); what matters when writing code here is:
+
+- **`clang` can target PowerPC**, so a patch's `bytes` can come from source instead of from
+  memory — `clang --target=powerpc-unknown-none-eabi -mbig-endian -O2 -ffreestanding -c`
+  works, because the e300 is plain big-endian PowerPC.
+  **On macOS the `clang` on `PATH` is Apple's and has no PowerPC backend**; use
+  `$(brew --prefix llvm)/bin/clang`. On Windows the LLVM installer's `clang` is fine.
+- **`ld.lld -m elf32ppc -Ttext=<addr>`** places that code at a patch address, and needs an
+  explicit **`--image-base=0`** or it rejects any address below its `0x10000000` default.
+  `llvm-objcopy -O binary --only-section=.text` then emits the injectable bytes.
+- **`llvm-mc --triple=powerpc --show-encoding`** assembles one instruction and prints its
+  encoding — the cheap way to write a small `bytes` field.
+- **`rizin`'s `rz-diff`** compares two firmware versions, which is how a version shift is
+  re-derived. Its PPC *assembler* is not self-contained (it needs `RZ_PPC_AS`); assemble
+  with LLVM instead.
+- **Ghidra** is the decompiler. Import `tools/mkelf.py`'s ELF with language
+  **`PowerPC:BE:32:default`** — there is no `e300` language ID, and the core has no vendor
+  extensions. `capstone` and `unicorn` come from the `dev` extra.
+
+The toolchain produces **bytes**. Injecting a routine *larger* than the site it replaces is
+**not solved** — there is no usable code cave in `.text`, so it needs a trampoline, and
+`patches/*.json` cannot express one yet. Do not claim otherwise.
+
 ## Testing without firmware
 
 `tests/helpers.py` builds a **synthetic package from scratch** — header + zlib container,
@@ -96,6 +148,7 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 | `tools/elfsyms.py` | The package's `*.out` updater binaries are unstripped PowerPC ELFs. Before reverse-engineering anything in the flash chain, check whether it already has a name. |
 | `tools/ppcemu.py` | Executes one function at a time on an emulated PowerPC core (Unicorn). Reachability is proof; stub return values are assumptions. Prefer it over reasoning about a branch by eye — it has already overturned one conclusion. |
 | `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. Need `capstone`. Untested — see #38. |
+| the toolchain | Per-machine, not bundled: `clang`/`ld.lld`/`llvm-mc`/`rizin`/Ghidra. On macOS only `lld` lands on `PATH`, and Apple's `clang` cannot target PowerPC. See [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md). |
 | `docs/` | Published with Zensical to <https://smeg.kroper.uk/>. A broken anchor fails the build; run `zensical build` before pushing docs. |
 
 ## Firmware knowledge that is easy to get wrong
@@ -144,3 +197,4 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 - [docs/FLASH_CHAIN.md](docs/FLASH_CHAIN.md) — the boot and update chain
 - [docs/PATCHES.md](docs/PATCHES.md) — exact addresses and bytes
 - [docs/AUX_CHAIN.md](docs/AUX_CHAIN.md) — the AUX auto-switch gate by gate, and which claims are executed rather than read
+- [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md) — the cross-platform analysis toolchain: compiling, linking and diffing PowerPC

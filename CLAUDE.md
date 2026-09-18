@@ -41,6 +41,16 @@ on every commit, so a commit that breaks any of them cannot be made locally.
 
 GUI tests skip without PySide6 and run headless via `QT_QPA_PLATFORM=offscreen`.
 
+### Platforms
+
+Developed on Apple silicon and also worked on from **Windows 11 (x86_64)**. Where the
+commands above say `.venv/bin/python`, Windows means `.venv\Scripts\python.exe`; where they
+say `python3`, Windows means `py -3`. `.gitattributes` pins text files to LF so Git for
+Windows' `core.autocrlf=true` cannot give `tools/*.sh` CRLF endings and break the
+`no-firmware` hook. The two `pre-push` hook entries are `sh -c 'PY=.venv/bin/python; …'`, so
+they assume a POSIX `sh` *and* a Unix venv layout — Git Bash supplies the first, not the
+second.
+
 ## Architecture
 
 ### What a package is
@@ -104,6 +114,26 @@ this ordering — prefer it over running the tools by hand.
 | `splash.py` | the `Data_base/graphics/logo/*.pkg` marque bundles (**not** the boot splash) |
 | `unpack.py`, `mkelf.py`, `ppcdis.py`, `xref.py`, `callers.py` | the analysis tools every patch address was derived with; need `capstone`; untested |
 | `check_commit_msg.py`, `check_no_firmware.sh` | the two enforcement hooks |
+
+### Reverse-engineering toolchain
+
+`capstone` and `unicorn` come from the `dev` extra; the rest is external and per-machine —
+see [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md). None of it is needed to run the tools or the
+tests.
+
+`clang --target=powerpc-unknown-none-eabi -mbig-endian -O2 -ffreestanding -c` compiles C to
+e300 code; `ld.lld -m elf32ppc --image-base=0 -Ttext=0x…` links it at a patch address
+(without `--image-base=0`, lld refuses any address below its `0x10000000` default);
+`llvm-objcopy -O binary --only-section=.text` emits the bytes a `patches/*.json` entry
+wants. **On macOS the `clang` on `PATH` is Apple's and has no PowerPC backend** — use
+`$(brew --prefix llvm)/bin/clang`; the Windows LLVM installer's `clang` is fine.
+`llvm-mc --triple=powerpc --show-encoding` assembles a single instruction. `rizin`'s
+`rz-diff` diffs two firmware versions, which is how a version shift is re-derived; its PPC
+*assembler* is not self-contained. Ghidra is the decompiler — import `tools/mkelf.py`'s ELF
+with language `PowerPC:BE:32:default` (there is no `e300` language ID).
+
+A compiled routine *larger* than the site it replaces is unsolved: no usable code cave in
+`.text`, so it needs a trampoline that `patches/*.json` cannot express yet.
 
 ### Tests
 
