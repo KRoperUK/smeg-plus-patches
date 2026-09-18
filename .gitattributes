@@ -1,0 +1,15 @@
+# Line endings.
+#
+# The repository is developed on macOS but is also worked on from Windows 11, where Git
+# defaults to core.autocrlf=true. That would check text files out with CRLF, and the POSIX
+# shell scripts here are run directly by name — tools/check_no_firmware.sh is a pre-commit
+# hook entry — so a CRLF shebang makes the hook fail with "bad interpreter".
+#
+# Normalise on commit and check out LF everywhere, whatever the local setting is.
+* text=auto eol=lf
+
+# Run by sh, so never CRLF.
+*.sh text eol=lf
+
+# Not firmware, but the same trap: the patches and manifests are byte-compared.
+*.json text eol=lf

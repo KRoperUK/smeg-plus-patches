@@ -30,6 +30,7 @@ nav = [
     { "Patch reference" = "PATCHES.md" },
     { "The AUX chain" = "AUX_CHAIN.md" },
     { "Emulation" = "EMULATION.md" },
+    { "Toolchain" = "TOOLCHAIN.md" },
     { "Analysis (archive)" = "ANALYSIS.md" },
   ] },
   { "The media partition" = [
