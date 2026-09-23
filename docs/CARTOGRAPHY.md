@@ -319,6 +319,27 @@ Two candidate readings remain, and both need the loader:
 Settling it means decompiling `Load_city_center_by_parc_cache` and its reader, which is the
 same step every other family needs. **The PoC above deliberately did not depend on it.**
 
+### What the next step actually is
+
+The reader is no longer a guess — the runtime ELF names it, and the names say what `SCC` is:
+
+```
+Load_city_centers_where_file_parc(TYPE_GEO_COORD, …, TYPE_DRAW_LEVEL, …, TYPE_RESULT*)
+Create_buff_output_ptr_scc(TYPE_GEO_COORD, TYPE_GEO_COORD, …)      a *coordinate range*
+Get_city_centers_by_point(TYPE_GEO_COORD, …, TYPE_CITY_CENTER*, …)
+Search_elem_in_buf_city_centers(char*, u32, u32, TYPE_CITY_CENTER*, …)
+```
+
+Two things follow. `SCC` is a **spatial block** — `TYPE_INF_MAP_SCC_BLOCK` and
+`TYPE_INF_PARC_SCC_BLOCK` are its map-level and parcel-level forms — so the `.DST` is a store
+of those blocks, not one flat table. And the reader is driven by a **`TYPE_GEO_COORD`
+bounding pair**, which is why `%03dSCC.DST` is spatially ordered: the file is written in the
+order a coordinate sweep visits it.
+
+So the field that means position is inside **`TYPE_CITY_CENTER`**, and reading it means
+disassembling `Search_elem_in_buf_city_centers`, which is small and takes the struct directly.
+That is the concrete next move — not more scaling guesses.
+
 ## Caveats
 
 - **Nothing here has been executed or tested.** Everything above is read from symbol tables
