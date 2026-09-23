@@ -603,6 +603,47 @@ reflect/xorout from a handful of (message, checksum) pairs. Three payloads and s
 countries supply the samples. Worth noting the likely wrinkle: the updater `Untar`s the
 payloads, so the bytes the vendor checksummed may not be the bytes in the package.
 
+### The recovery is built, and it says the checksum is not a CRC
+
+`tools/crc_recover.py` does the recovery, and — this is the part that makes its answer worth
+anything — it is **checked against published parameterisations**. Given synthetic samples it
+recovers all eight of `CRC-16/MODBUS`, `CCITT-FALSE`, `XMODEM`, `ARC`, `USB`, `DNP`, `KERMIT`
+and `X25` from scratch, without being told the polynomial. A recovery tool that fails quietly
+reports "not a CRC", so testing it against knowns is the difference between a finding and a
+false negative.
+
+Run over the package's **36 real samples** across 13 lengths:
+
+```
+36 samples, 13 distinct lengths, 8 lengths with >=2
+no parameterisation reproduces the samples
+```
+
+**No polynomial, either input reflection, and any init/xorout reproduces them.** That is a much
+stronger statement than "not the variants we tried": it rules out the entire standard-form CRC
+class, over the file bytes as shipped. Five other message definitions were tried and all
+failed — the whole file, the file with the first line stripped, with the first 8 bytes
+stripped, with the first 10 bytes stripped, and with trailing CRLF stripped. Simple checksums
+were ruled out earlier too: `sum8`, `xor8`, word-wise sums and XORs.
+
+So the most likely explanation stands, and is now the *only* one left: **the vendor checksums
+bytes that are not the file contents as shipped.** The updater `Untar`s the payloads, and
+`DESCRI.DAT` describes the *installed* layout under `\DATA\`, so the checksummed byte range is
+probably produced during packaging rather than shipped verbatim.
+
+**Two caveats the tool documents rather than hides.** It needs at least two samples of the
+*same length*, because `init` and `xorout` cancel in the differential only then — with one
+length they are not separately identifiable at all. And even with several lengths the pair is
+recovered up to an equivalence: `CRC-16/MODBUS` comes back as `init=0x7ffc, xorout=0xc001`,
+which is exactly equivalent to its published `0xffff`/`0x0000` at every length, which is why
+the tool checks published values before calling a result non-standard. The polynomial, input
+reflection and output reflection *are* unique.
+
+**A performance note worth keeping.** The first implementation took **three minutes** over a
+test run, because it ran a whole CRC per candidate `init`. `init` enters the CRC linearly, so
+the register after *n* zero bytes is linear in it; precomputing the images of the basis vectors
+gets `Z_n(init)` for any init with a few XORs and takes the suite to **2.2 seconds**.
+
 **And there is a third layer above both.** The package ships
 `UHD6E2P01200REU_MEDIA_CONTENT.md5`, headed `MD5 Created with MD5_ISO Creator Ver. 2.10`,
 listing **MD5s for every file including the `.inf` sidecars** — `CCT.DAT`, `CCT.DAT.inf`,
