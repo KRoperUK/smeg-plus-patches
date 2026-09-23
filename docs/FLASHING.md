@@ -284,3 +284,6 @@ With the `aux-autoswitch` patch set:
 
 Keep an untouched copy of the original package. Re-flash it the same way; the original
 application content differs from the patched one, so it will be rewritten.
+
+If something has already gone wrong, see [Recovery](RECOVERY.md) — including what is *not*
+documented, which is worth reading before you need it.
