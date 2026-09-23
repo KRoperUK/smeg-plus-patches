@@ -175,7 +175,13 @@ with the tooling and propagate through the cascade (the tool does this automatic
       "ctrl": "NAV_ctrl.bin",
       "base": "0x01000000",
       "patches": [
-        { "addr": "0x02247858", "expect": "9421ffa0", "bytes": "386000014e800020", "why": "..." }
+        {
+          "addr": "0x02247858",
+          "expect": "9421ffa0",
+          "bytes": "386000014e800020",
+          "why": "...",
+          "disasm": "li r3, 1 ; blr"
+        }
       ]
     }
   }
@@ -184,6 +190,49 @@ with the tooling and propagate through the cascade (the tool does this automatic
 
 `expect` is checked before writing, so a mismatched firmware build fails loudly instead of
 being corrupted.
+
+### `disasm` — pin the instructions, not just the bytes
+
+`disasm` is optional and asserts what the patched site must decode to. Without it the tool
+still disassembles every patched site and prints it, and still asserts the bytes decode to
+whole, valid PowerPC instructions — so a `bytes` string that is corrupt or truncated is
+caught. `disasm` goes further and pins the exact intent, which matters because the hex is
+unreadable at a glance and `why` is prose a machine cannot check:
+
+```
+    NAV            0x02247858  9421ffa0 -> 386000014e800020
+                     li r3, 1 ; blr
+```
+
+Anything that does not match stops the run.
+
+Disassembly needs [`capstone`](https://www.capstone-engine.org/), which is in the `dev`
+extra. **The check is skipped, not faked, when it is absent** — this tool declares no
+dependencies and has to keep running on a machine with nothing but the standard library, so
+it returns nothing rather than passing silently.
+
+## The run verifies what it wrote
+
+`patch_smeg.py` does not trust its own output. After writing, it **re-reads every file from
+disk** and closes the loop:
+
+- re-inflates the packed `f_BigQuick.bin` and confirms each patched site holds the new bytes,
+- recomputes the CRC32 of each file and checks the `.inf` sidecars declare it,
+- checks the module `ctrl` records those CRCs, and that `ctrl.bin` records the module's,
+
+then prints the whole chain:
+
+```
+    crc chain      verified end to end
+      f_BigQuick.bin      0x7ce25274
+      f_BigQuick.bin.inf  0x0fd24c96
+      smeg.inf            0xcce0fb84
+      NAV_ctrl.bin        0xd3a50ee5
+    ctrl.bin       name=verified (1)
+```
+
+The earlier checks all run in memory, so a write that did not land — or landed twice — was
+invisible to them. That is the gap this closes.
 
 ## Patch sets in this repository
 
