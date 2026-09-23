@@ -31,40 +31,14 @@ usage:
 import argparse
 import collections
 import json
+import os
 import sys
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 
-def load_symbols(path):
-    """`<hex addr> <type> <name>`, tolerating header and section lines.
-
-    Same parsing as ppcdis/xref/callers, deliberately: a symbol map that one tool accepts and
-    another does not would be a trap.
-    """
-    syms = {}
-    with open(path, "r", errors="replace") as fh:
-        for line in fh:
-            p = line.split()
-            if len(p) >= 3:
-                try:
-                    syms.setdefault(int(p[0], 16), p[2])
-                except ValueError:
-                    continue
-    return syms
-
-
-def extents(syms, image_len, base):
-    """name -> (start, size), where size is up to the next symbol in address order.
-
-    Symbol maps do not carry sizes, so the next address is the only available estimate. It
-    over-states the last symbol in a run, which is why nothing here depends on an exact size.
-    """
-    out = {}
-    addrs = sorted(syms)
-    for i, addr in enumerate(addrs):
-        nxt = addrs[i + 1] if i + 1 < len(addrs) else image_len + base
-        out[syms[addr]] = (addr, max(0, nxt - addr))
-    return out
+from symbols import extents, load_symbols, name_at  # noqa: E402
 
 
 def slice_at(image, base, addr, size):
@@ -137,11 +111,7 @@ def diff(img_a, syms_a, base_a, img_b, syms_b, base_b, patch_addr=None):
 
 def locate_patch(ext_a, ext_b, img_a, img_b, base_a, base_b, addr, shift):
     """Whether a site in A survives into B, and where. The practical question."""
-    owner = None
-    for name, (start, size) in ext_a.items():
-        if start <= addr < start + size:
-            if owner is None or start > ext_a[owner][0]:
-                owner = name
+    owner = name_at(ext_a, addr)
     want = slice_at(img_a, base_a, addr, 16)
     res = {
         "addr": addr,
