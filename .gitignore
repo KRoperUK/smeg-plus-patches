@@ -39,3 +39,5 @@ site/
 
 # local agent / tool state (not project content)
 .commandcode/
+.claude/
+.kiro/
