@@ -80,6 +80,7 @@ def test_binary_suffixes_are_skipped(tmp_path):
 
 def test_the_repository_itself_is_clean():
     """The guard is only worth having if this tree passes it."""
+    listed = ""
     try:
         listed = subprocess.run(
             ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
