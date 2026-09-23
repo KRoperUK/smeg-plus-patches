@@ -132,19 +132,38 @@ def copy_tree(src, dst):
 
 
 def verify_copy(src, dst):
-    """Re-read both sides and compare checksums. Returns the files that differ."""
+    """Re-read both sides and compare. Returns the files that differ or do not belong.
+
+    Both directions matter. Missing or short files are the mid-copy removal. *Extra* files on
+    the stick are the other failure, and the one that does not announce itself: copying into a
+    directory that already held a package merges the two, and the result passes every
+    checksum its own manifests declare while describing a package that never existed. That is
+    how a stick ends up flashing something nobody built.
+    """
     bad = []
+    expected = set()
     for dirpath, dirnames, filenames in os.walk(src):
         dirnames[:] = [d for d in dirnames if not is_junk(d)]
         for n in filenames:
             if is_junk(n):
                 continue
             s = os.path.join(dirpath, n)
-            d = os.path.join(dst, os.path.relpath(s, src))
+            rel = os.path.relpath(s, src)
+            expected.add(rel)
+            d = os.path.join(dst, rel)
             if not os.path.isfile(d):
-                bad.append((os.path.relpath(s, src), "not on the stick"))
+                bad.append((rel, "not on the stick"))
             elif crc32(s) != crc32(d):
-                bad.append((os.path.relpath(s, src), "checksum differs - copy is truncated?"))
+                bad.append((rel, "checksum differs - copy is truncated?"))
+
+    for dirpath, dirnames, filenames in os.walk(dst):
+        dirnames[:] = [d for d in dirnames if not is_junk(d)]
+        for n in filenames:
+            if is_junk(n):
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, n), dst)
+            if rel not in expected:
+                bad.append((rel, "on the stick but not in the package - a stale file"))
     return bad
 
 
@@ -162,34 +181,49 @@ def probe_target(target):
         return info
 
     def diskutil(*a):
-        return subprocess.run(["diskutil", *a], capture_output=True, text=True, timeout=15).stdout
+        try:
+            return subprocess.run(
+                ["diskutil", *a], capture_output=True, text=True, timeout=60
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    # The mount table first. It is instant, needs no helper, and answers the filesystem
+    # question on its own — which matters, because `diskutil info` was measured timing out
+    # at 15 seconds against a real stick that had spun down, and a probe that gives up
+    # silently does nothing on exactly the hardware this check exists for.
+    try:
+        with open("/proc/mounts") as fh:
+            table = fh.read()
+    except OSError:
+        table = subprocess.run(["mount"], capture_output=True, text=True, timeout=20).stdout
+    for line in table.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[2] == target:
+            fs = parts[4].split(",")[0] if len(parts) >= 5 else parts[3]
+            info["filesystem"] = {"msdos": "MS-DOS FAT32", "vfat": "MS-DOS FAT32"}.get(fs, fs)
+            break
 
     try:
         dev = (
-            subprocess.run(["df", "-P", target], capture_output=True, text=True, timeout=15)
+            subprocess.run(["df", "-P", target], capture_output=True, text=True, timeout=30)
             .stdout.splitlines()[-1]
             .split()[0]
         )
     except (OSError, subprocess.SubprocessError, IndexError) as e:
-        info["note"] = "could not locate the device for %s: %s" % (target, e)
+        if not info["filesystem"]:
+            info["note"] = "could not locate the device for %s: %s" % (target, e)
         return info
 
-    try:
-        for line in diskutil("info", dev).splitlines():
-            if "File System Personality:" in line:
-                info["filesystem"] = line.split(":", 1)[1].strip()
-    except (OSError, subprocess.SubprocessError) as e:
-        info["note"] = "could not probe the target: %s" % e
-        return info
+    for line in diskutil("info", dev).splitlines():
+        if "File System Personality:" in line:
+            info["filesystem"] = line.split(":", 1)[1].strip()
 
     # The scheme belongs to the whole disk, not the slice: /dev/disk4s1 -> /dev/disk4. The
     # marker strings are what `diskutil list` prints, and are the only reliable signal —
     # the volume's own "Content" field describes APFS containers and the like, not the map.
     whole = re.sub(r"s\d+$", "", dev)
-    try:
-        listing = diskutil("list", whole)
-    except (OSError, subprocess.SubprocessError):
-        listing = ""
+    listing = diskutil("list", whole)
     if "FDisk_partition_scheme" in listing:
         info["scheme"] = "MBR"
     elif "GUID_partition_scheme" in listing:
@@ -271,6 +305,21 @@ def main(argv=None):
         print("dry run: nothing copied")
         return 0
 
+    # Refuse to merge into a package that is already there. Copying into an existing
+    # directory silently combines two packages, and the result still passes its own
+    # checksums, so nothing downstream notices. This is not hypothetical: it happened on the
+    # first real stick this was run against.
+    top = os.path.join(dst, os.path.basename(src.rstrip(os.sep)))
+    if os.path.isdir(top) and os.listdir(top):
+        msg = (
+            "%s already exists and is not empty.\n"
+            "  Copying into it would merge two packages into one that matches neither.\n"
+            "  Remove it first, or point --target at an empty stick." % top
+        )
+        if not args.force:
+            raise SystemExit(msg)
+        print("  warning  %s" % msg.replace("\n", "\n           "))
+
     # 4. copy, then re-read every byte from the stick
     top, names = copy_tree(src, dst)
     print("  copied   %d file(s) to %s" % (len(names), top))
@@ -284,8 +333,10 @@ def main(argv=None):
             "  This is what a stick pulled mid-copy looks like. Re-run to copy again."
         )
 
-    # 5. junk is a failure, not a warning: the updater does not expect it
-    junk = count_junk(dst)
+    # 5. junk is a failure, not a warning: the updater does not expect it. Scoped to the
+    # package that was just copied - a stick legitimately holds other things, and counting
+    # litter elsewhere would fail the copy for a reason that has nothing to do with it.
+    junk = count_junk(top)
     if junk:
         for j in junk[:10]:
             print("  junk     %s" % os.path.relpath(j, dst))
