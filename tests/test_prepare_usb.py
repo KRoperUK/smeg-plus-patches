@@ -349,3 +349,17 @@ def test_a_package_with_no_application_module_is_a_problem(tmp_path):
     (nav / "smeg.inf").write_bytes(b"x")
     problems = prepare_usb.check_layout(str(p))
     assert any("no application module" in x for x in problems)
+
+
+def test_a_module_with_an_empty_appbin_is_a_layout_problem(tmp_path):
+    """A half-built module, which is not the same as a module that never had the image.
+
+    Loosening the check to "at least one application module ships the image" removed the
+    false positive on BSP/HARMONY/RENESAS/USERGUIDE, but on its own it also accepts a NAV
+    whose f_BigQuick.bin is missing - the file the patch step needs. Both rules are needed.
+    """
+    p = tmp_path / "SMEG_PLUS_UPG"
+    make_package(str(p))
+    (p / "AUDIO_BT" / "AppBin").mkdir(parents=True)
+    problems = prepare_usb.check_layout(str(p))
+    assert any("has an AppBin/ but no" in x for x in problems)
