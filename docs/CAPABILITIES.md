@@ -95,15 +95,81 @@ DATA/                 2.9 GB — the cartography
 UPG/                   updater plugin: builtinsRNEG.out, db_dwnl_ppc.out
 ```
 
-So the manifest layer is **text**, with per-part sizes and CRCs, and the payload is one large
-binary per part — `001.BIN` alone is ~355 MB.
+So the manifest layer is **text**, with per-part sizes and CRCs — and the payload is not one
+opaque blob either. **Every `*.BIN` is a gzipped tar**, the same idiom as `system.bin`
+itself. `001.BIN` is Italy, and it unpacks to **790 members / 512 MB**:
 
-**What that leaves.** One blocker, not three: the format of that payload blob. It is
-undocumented and large. What is *not* a blocker is availability (one final release can be
-obtained) or inspectability (the files are right there). Whether a 355 MB proprietary blob is
-tractable is a different question from whether it is reachable — and note that the
-[user POI route](#speed-cameras-danger-zones-the-one-navigation-win) gets at something you
-would actually want without touching it.
+```
+001.DEG                32 MB      geometry
+001_DET.DRS           232 MB      the bulk of it
+001POI.DAT             44 MB
+001002.DEG / .DPL / .DRL          per-tile geometry sets
+001DSP.POI  001_DA.POI  001_DE.POI …      POIs, including per-language sets
+001*.DST               SAF SAU SCC SEM SHR SSH SSP STR STU   road/street attributes
+001*.LET  (118)  .CAT (116)  .IND (116)  .S_C (115)  .TOP (115)
+001DPA.LZW  001SIG.LZW            LZW-compressed members
+```
+
+Also per part: `001_PHONEMES.BIN` (a 122 MB tar of TTS phonemes) and `001_ZTL.BIN`
+(restricted-traffic zones). `CD_VER.LA.INF` is plain text — `CID:001 / VERSION:120 /
+CD_NAME:ITALY` — so the parts are per-country and self-describing.
+
+**What that leaves.** The blockers are now two *research* problems, not availability
+problems:
+
+1. **The tile formats.** Roughly 15 distinct extensions with undocumented binary layouts, and
+   the unit's own engine decides what it needs from each.
+2. **The engine.** Rendering, label placement and routing live in the NAV image's map engine
+   (`MMA_MapManager`, `V3D_Engine`) and are proprietary as well. Files have to satisfy it, not
+   just parse.
+
+So *writing your own cartography from OpenStreetMap* is a reverse-engineering project of a
+size this repository has never taken on — the container is no longer the obstacle, but the
+contents and the consumer both are. What remains cheap is the
+[user POI route](#speed-cameras-danger-zones-the-one-navigation-win), which needs none of
+this, and note that the retrofit piggyback these units are paired with already displays
+OpenStreetMap-derived navigation today.
+
+#### What the tiles actually look like
+
+Sampling one small member of each extension from the Italian part splits them into three
+groups, which is what makes the size of the job legible:
+
+| group | extensions | shape |
+|---|---|---|
+| **text-bearing** | `POI`, `DAT` | readable names, NUL-terminated, with binary fields alongside |
+| **`RS` container** | `TOP`, `S_C`, `LZW` | magic `52 53` + a type byte + lengths, then compressed payload |
+| **binary tables** | `DEG`, `DST`, `CAT`, `IND`, `COD`, `DPL`, `LET` | fixed-width records, delta-encoded integers |
+
+The most tractable thing in the whole cartography is the **POI family**:
+
+- **`001POI.DAT`** (44 MB) is mostly *plain text* — `VIA LUIGI COLOMBO`,
+  `INTESA SANPAOLO`, `VIA BATTAGLIA SAN MARTINO, 38`, `TIGROS` — with a NUL-terminated name
+  followed by a handful of binary bytes that are plausibly packed coordinates. That is a
+  record table, not an opaque blob.
+- **`001_<LANG>.POI`** (~5 KB each) holds the POI **category names per language** — Danish
+  gives `SKOLE`, `HOSPITAL`, `LUFTHAVN`, `TANKSTATION` — and it is **back-reference
+  compressed**: strings appear as tails like `JERE UDDANNELSE` (from *VIDERE UDDANNELSE*) and
+  `DEHAVN` (from *LYSTBÅDEHAVN*).
+- **`001DSP.POI`** (7 MB) is the binary *spatial index* over them — no strings at all.
+
+`.DAT` files carry **named** sections — `001_GRUPPO_BCR.DAT` opens with `SEG_TO_BCR.IND` and
+`BCR_OFFSET.IND` — so the self-description reaches into the tiles, not just the manifest.
+
+That balances the picture: **POIs are tractable** (readable names, a record structure, and a
+native import route already in the firmware), while the geometry and routing — `DEG`, `DST`
+and the 232 MB `DET.DRS` — remain the hard core, because that is what the engine's routing has
+to agree with.
+
+!!! success "The engine ships unstripped — the subsystem is now mapped"
+
+    The packages contain **`db_dwnl_ppc.out`** (map package) and **`db_dwnl_gl.out`** (the
+    firmware's `NAV/DB_DWNL/`), the cartography module for each build, and neither is
+    stripped: 1,205 and 1,278 functions, with the data model and API in the symbol names. That
+    turns "can we build our own maps" from an unknown into a bounded engineering problem —
+    every filename template, the tile model, the LZW layer and the loaders are all named.
+
+    It is a project, not a patch, but it is now legible. See **[Cartography](CARTOGRAPHY.md)**.
 
 The on-unit copy is still behind the updater, so this does **not** make the *live* map data
 readable — it makes the shipped cartography readable.

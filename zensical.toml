@@ -38,6 +38,7 @@ nav = [
     { "Ring tones" = "RINGTONES.md" },
     { "Customising" = "CUSTOMISING.md" },
     { "Cheatcodes & spy" = "CHEATCODES.md" },
+    { "Cartography" = "CARTOGRAPHY.md" },
   ] },
   { "Tooling & workflow" = [
     { "Running the tools" = "RUNNING.md" },
