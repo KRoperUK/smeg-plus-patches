@@ -246,6 +246,149 @@ recover the record struct, and take the parcel origin from the parcel table. Tha
 shape of work as every other family — which is exactly why the page calls it a project and not
 a puzzle.
 
+## PoC: OpenStreetMap in, name-pool out
+
+The string-pool layer is fully understood and has now been driven end to end.
+
+**The format.** `NAMECITY.DAT` and `%03d_NV.dat` are **plain NUL-separated strings** — no
+header, no footer, no compression. Verified by round-trip: reading `005_NV.DAT` and writing it
+back reproduces the file **byte for byte** (29,912 fields, 29,834 of them non-empty).
+
+That the *empty* fields matter is worth recording, because it cost a cycle: the first attempt
+filtered them out and the round-trip failed. The 78 empty fields are part of the format.
+
+**The convention.** `NAMECITY.DAT` holds `NAME\TOWN`, and some entries carry a postcode
+district:
+
+```
+ABBEY HEY\MANCHESTER
+MANCHESTER AIRPORT\MANCHESTER
+BL2 6 RADCLIFFE\MANCHESTER
+```
+
+Of the 1,863,417 strings in the UK table, **398 end in `\MANCHESTER`**, and 341 of those carry
+a postcode district.
+
+**The PoC, measured.** Overpass returns **2,443 ways** in a central-Manchester bounding box,
+yielding **644 distinct street names**. Emitted in the unit's own format
+(`<STREET>\MANCHESTER`) they produce a 16,832-byte pool that re-reads identically through the
+same reader. So **OpenStreetMap → the unit's on-disk name format works**, for this layer, and
+the round-trip against the real vendor file is the evidence that the format was understood
+rather than guessed.
+
+!!! warning "ODbL — a licence question, not a technical one"
+
+    OpenStreetMap data is **ODbL**. Cartography built from it would be a *derivative
+    database*, which carries **attribution and share-alike** obligations. That is a different
+    kind of constraint from everything else on this page, and it applies to anything
+    distributed. Worth deciding deliberately rather than discovering later.
+
+**What the PoC does not do.** The name pool is the easy layer and carries **no geometry** — it
+puts nothing on a screen. The coordinates are the hard part and they are not cracked.
+
+## The coordinate problem, stated precisely
+
+`%03dSCC.DST` is a settlement table and is the best-behaved binary in the set:
+
+- records are a **fixed 92 bytes** (19,875 of them, the dominant gap);
+- a record is `[name][name][10 bytes]`, the name appearing twice inside an 82-byte area;
+- **every** 10-byte tail begins with `0x15`, and byte 3 is always `0x01`.
+
+```
+ST AGNES (Cornwall)      15 f4 f7 01 04 03 1d 01 96 03
+ST IVES                  15 59 1b 01 20 02 05 00 0d 04
+DOVER                    15 e7 4e 01 21 02 62 00 55 05
+LOWESTOFT                15 b7 bd 01 22 00 ed 01 e1 05
+MANCHESTER               15 b4 b5 01 22 00 ea 01 f1 02
+NORWICH                  15 fb cb 01 22 03 84 03 1e 06
+CARLISLE                 15 ff fb 01 3d 01 82 02 0a 02
+```
+
+Byte 4 tracks latitude loosely — `0x04` at Land's End, `0x22` across the Manchester/Lowestoft
+band, `0x3d` at Carlisle — but it is **not** monotonic in latitude (`ST IVES` at 50.21 gives
+`0x20` while `ST AGNES` at 50.31 gives `0x04`), so it is not a scaled coordinate. Nor do any
+offset, width or endianness of the remaining bytes reproduce 50–55 N / −6 to +2 E under
+1e-3…1e-7 scaling.
+
+Two candidate readings remain, and both need the loader:
+
+1. a **grid or parcel cell id** in byte 4, with a sub-cell offset beside it — plausible because
+   the table is spatially ordered, starting at the south-west extreme;
+2. a **reference into another file** (an offset or record id) whose table holds the geometry.
+
+Settling it means decompiling `Load_city_center_by_parc_cache` and its reader, which is the
+same step every other family needs. **The PoC above deliberately did not depend on it.**
+
+### What the next step actually is
+
+The reader is no longer a guess — the runtime ELF names it, and the names say what `SCC` is:
+
+```
+Load_city_centers_where_file_parc(TYPE_GEO_COORD, …, TYPE_DRAW_LEVEL, …, TYPE_RESULT*)
+Create_buff_output_ptr_scc(TYPE_GEO_COORD, TYPE_GEO_COORD, …)      a *coordinate range*
+Get_city_centers_by_point(TYPE_GEO_COORD, …, TYPE_CITY_CENTER*, …)
+Search_elem_in_buf_city_centers(char*, u32, u32, TYPE_CITY_CENTER*, …)
+```
+
+Two things follow. `SCC` is a **spatial block** — `TYPE_INF_MAP_SCC_BLOCK` and
+`TYPE_INF_PARC_SCC_BLOCK` are its map-level and parcel-level forms — so the `.DST` is a store
+of those blocks, not one flat table. And the reader is driven by a **`TYPE_GEO_COORD`
+bounding pair**, which is why `%03dSCC.DST` is spatially ordered: the file is written in the
+order a coordinate sweep visits it.
+
+So the field that means position is inside **`TYPE_CITY_CENTER`**, and reading it means
+disassembling `Search_elem_in_buf_city_centers`, which is small and takes the struct directly.
+That is the concrete next move — not more scaling guesses.
+
+## What a map update actually has to get past
+
+Cracking the formats is only the first requirement. A map package also has to be *accepted*,
+and the strings show what accepts it.
+
+**`CCT.DAT` is a licence token, and it is VIN-locked.** The application image opens
+`/bd0/CCT.DAT`, decrypts it, and reads an activation key, a code, and the vehicle's VIN:
+
+```
+/bd0/CCT.DAT
+Opening %s file....
+Decrypted CCT table present into file %s:
+Activation Key=%s
+n Code=%s
+GetUncryptedVIN : GetKeyInt uncrypted VIN faile…
+(C_BCM_UPGRADE)  TestGetMapCode : %s
+```
+
+with `/Licence`, `/CCT.DAT.inf` and `C_MEDIA_MANAGER` alongside. The file itself is 456 bytes
+at ~6.0 bits/byte of entropy — encoded, not a plain certificate.
+
+**There are region gates too.** The updater carries `CheckEuropeContinent`,
+`ReadContinentFromGruppoRoot`, `CONTINENT_ID`, and a `Crimea_Manager` with
+`CheckIf_RUSSIA__UKRAINE_Key` — so the package declares a continent (`MEDIA_MAP.INI` says
+`CONTINENT_ID:1 … EUROPE`) and the updater validates it. The map updater also carries
+`Untar__7C_UNTGZPCcT1ii`, which confirms independently that the `*.BIN` files really are
+tarballs.
+
+**And the delivery path is not the firmware one.** Cartography has its own updater
+(`C_SDHC_UPGRADE`), a separate system from `C_UPGRADE`. The map package is laid out for it —
+`DATA/MAPPE/NNN/`, `DESCRI.DAT`, `CD_VER.*.INF`, `GRUPPO_4_*` — but which mechanism presents it
+to the unit has not been established here.
+
+!!! warning "The decisive open question"
+
+    **Does `CCT.DAT` cover the map data, or only authorise the region?** If it only authorises,
+    the data underneath could in principle be replaced. If it binds the data — by hash or
+    signature — then a self-built map **cannot be delivered at all**, and no amount of format
+    work changes that.
+
+    Nothing here answers that, and it is the first thing to settle: it decides whether the rest
+    of this page is a route or a dead end. It is also why the name-pool PoC was built to stand
+    on its own.
+
+    There is a licensing dimension to this as well as a technical one. `CCT.DAT` is how HERE's
+    cartography is licensed per vehicle, and OpenStreetMap brings its own ODbL obligations. Both
+    are decisions for whoever ships a map, and they are different in kind from everything else
+    in this repository.
+
 ## Caveats
 
 - **Nothing here has been executed or tested.** Everything above is read from symbol tables
