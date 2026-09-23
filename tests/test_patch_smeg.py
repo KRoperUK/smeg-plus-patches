@@ -224,3 +224,40 @@ def test_zensical_nav_matches_docs():
     assert pages, "no pages found in zensical.toml nav"
     for page in pages:
         assert os.path.exists(os.path.join(ROOT, "docs", page)), "missing doc: %s" % page
+
+
+def test_stock_mode_writes_no_patches_but_reseals(pkg, tmp_path):
+    """#21: a baseline to restore from, and a canary for the sealing path itself.
+
+    If a re-sealed stock package were refused by the unit, the fault would be in the
+    packaging rather than in any patch - which is the point of being able to build one.
+    """
+    src, spec, info = pkg
+    out = tmp_path / "out"
+    r = run(
+        os.path.join(TOOLS, "patch_smeg.py"),
+        "--src",
+        str(src),
+        "--out",
+        str(out),
+        "--patches",
+        str(spec),
+        "--stock",
+    )
+    assert r.returncode == 0, r.stderr
+    assert "stock: no patches applied" in r.stdout
+    assert "verified end to end" in r.stdout
+
+    # the image must be untouched...
+    bq = Path(out) / info["variant"] / "AppBin" / "f_BigQuick.bin"
+    d = zlib.decompressobj()
+    img = d.decompress(bq.read_bytes()[0x801:]) + d.flush()
+    assert img == info["image"]
+
+    # ...and the cascade must still be consistent
+    v = run(
+        os.path.join(TOOLS, "verify_package.py"),
+        "--package",
+        str(out),
+    )
+    assert "consistent" in v.stdout or v.returncode == 0
