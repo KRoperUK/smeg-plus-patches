@@ -113,12 +113,16 @@ def audit(root):
                     % (declared, os.path.basename(sibling), as_signed(actual)),
                 )
 
-    # 2. each module's smeg.inf and its own manifest
+    # 2. each *application* module's smeg.inf and its own manifest.
+    #
+    # Not every module is an application module. BSP, HARMONY, RENESAS and USERGUIDE carry
+    # their own content and never had an AppBin/f_BigQuick.bin - requiring one of every module
+    # reported four failures against a perfectly good vendor package, which is worse than not
+    # auditing at all. A module counts as an application module only if it ships the image.
     for mod in modules(root):
         mod_dir = os.path.join(root, mod)
         image = os.path.join(mod_dir, MODULE_IMAGE)
         if not os.path.isfile(image):
-            bad("module", mod, "no %s" % MODULE_IMAGE)
             continue
         image_crc = crc32_file(image)
 
@@ -183,6 +187,9 @@ def summary(root):
     return {
         "package": root,
         "modules": mods,
+        "application_modules": [
+            m for m in mods if os.path.isfile(os.path.join(root, m, MODULE_IMAGE))
+        ],
         "root_manifest": os.path.isfile(os.path.join(root, "ctrl.bin")),
         "contract": os.path.isfile(os.path.join(root, "contract.dat")),
     }
@@ -214,6 +221,9 @@ def main(argv=None):
     if not info["modules"]:
         print("no module directories - nothing to audit")
         return 1
+    if not info["application_modules"]:
+        print("no application module (one shipping %s) - nothing to audit" % MODULE_IMAGE)
+        return 1
 
     for p in problems:
         print("  FAIL  %-10s %s" % (p["kind"], p["where"]))
@@ -223,7 +233,13 @@ def main(argv=None):
         print("\n%d problem(s) - do not flash this package" % len(problems))
         return 1
 
-    print("checksum cascade consistent across %d module(s)" % len(info["modules"]))
+    print(
+        "checksum cascade consistent: %d application module(s) verified, %d other module(s) present"
+        % (
+            len(info["application_modules"]),
+            len(info["modules"]) - len(info["application_modules"]),
+        )
+    )
     return 0
 
 
