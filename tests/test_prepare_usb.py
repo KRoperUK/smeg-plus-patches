@@ -321,3 +321,31 @@ def test_the_target_is_printed_before_anything_is_written(pkg, tmp_path):
     lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
     assert lines[0].startswith("package :")
     assert lines[1].startswith("target  :")
+
+
+def test_modules_without_an_app_image_are_not_layout_problems(tmp_path):
+    """The same wrong assumption the audit had, in the other tool.
+
+    BSP, HARMONY, RENESAS and USERGUIDE are modules and never had an
+    AppBin/f_BigQuick.bin. Requiring it of every module refused a real vendor package, so the
+    requirement is that at least one application module exists, not that all of them are.
+    """
+    p = tmp_path / "SMEG_PLUS_UPG"
+    make_package(str(p))
+    bsp = p / "BSP"
+    bsp.mkdir()
+    (bsp / "vxWorks.bin").write_bytes(b"its own content")
+    assert prepare_usb.check_layout(str(p)) == []
+
+
+def test_a_package_with_no_application_module_is_a_problem(tmp_path):
+    p = tmp_path / "SMEG_PLUS_UPG"
+    p.mkdir()
+    (p / "ctrl.bin").write_bytes(b"x")
+    (p / "contract.dat").write_bytes(b"x")
+    (p / "NAV_ctrl.bin").write_bytes(b"x")
+    nav = p / "NAV"
+    nav.mkdir()
+    (nav / "smeg.inf").write_bytes(b"x")
+    problems = prepare_usb.check_layout(str(p))
+    assert any("no application module" in x for x in problems)

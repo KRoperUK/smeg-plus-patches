@@ -86,10 +86,16 @@ def check_layout(root):
         else []
     )
     if not modules:
-        problems.append("no module directory (expected one containing AppBin/f_BigQuick.bin)")
-    for m in modules:
-        if not os.path.isfile(os.path.join(root, m, MODULE_IMAGE)):
-            problems.append("%s has no %s" % (m, MODULE_IMAGE))
+        problems.append("no module directory at all")
+    # Not every module is an application module: BSP, HARMONY, RENESAS and USERGUIDE carry
+    # their own content and never had an AppBin/f_BigQuick.bin. Requiring one of every module
+    # rejected a real vendor package that was perfectly good, so what is required is that at
+    # least one application module is present, not that all of them are.
+    app_modules = [m for m in modules if os.path.isfile(os.path.join(root, m, MODULE_IMAGE))]
+    if modules and not app_modules:
+        problems.append(
+            "no application module (none of %s ships %s)" % (", ".join(modules), MODULE_IMAGE)
+        )
 
     if (
         not [n for n in os.listdir(root) if n.endswith("_ctrl.bin")]

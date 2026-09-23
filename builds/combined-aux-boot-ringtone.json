@@ -1,0 +1,34 @@
+{
+  "_comment": "Everything from aux-only, aux-boot and alien-piano-riff in ONE package. The updater looks for exactly one SMEG_PLUS_UPG at the stick root, so three side-by-side packages would not all be found - combining is the only way to have all three at once. NOT a tested combination on hardware.",
+  "_sources": ["builds/aux-only.json", "builds/aux-boot.json", "builds/alien-piano-riff.json"],
+  "_pairs": {
+    "aux-autoswitch": "supersedes aux-always-available, which patches only IsAUXSRCAvailable; this also removes the GetMediaDevice bail-out",
+    "aux-boot-default": "C_MGR_SRC::StartUp restores AUX (position 7) on every boot, ignoring Last_Source",
+    "spy-dump-userdata-partition": "from alien-piano-riff; a different address, no overlap with the AUX sites"
+  },
+  "_beacon": "gui_ver 32.01 is the visible did-it-apply signal, and ring1 renamed to Piano_riff",
+  "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
+  "package": "/Users/kieran/Downloads/SMEG_PLUS_UPG",
+  "out": "/Users/kieran/Downloads/stick_combined/SMEG_PLUS_UPG",
+  "module": "NAV",
+  "app": {
+    "patches": [
+      "aux-autoswitch",
+      "aux-boot-default",
+      "spy-dump-userdata-partition"
+    ]
+  },
+  "media": {
+    "tones": {
+      "ring_tones/ring1RT.wav": {
+        "source": "/Users/kieran/Downloads/piano-riff.mp3",
+        "gain_db": 7.4
+      }
+    },
+    "names": {
+      "ring1": "Piano_riff"
+    },
+    "gui_ver": "32.01"
+  },
+  "seal": true
+}

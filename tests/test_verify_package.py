@@ -152,3 +152,19 @@ def test_a_package_with_no_modules_is_not_reported_as_consistent(tmp_path):
     r = run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p))
     assert r.returncode == 1
     assert "nothing to audit" in r.stdout
+
+
+def test_non_application_modules_are_not_failures(tmp_path):
+    """BSP, HARMONY, RENESAS and USERGUIDE are modules and never had an AppBin/f_BigQuick.bin.
+
+    Requiring the image of every module reported four failures against a real vendor package
+    that was perfectly good. That is worse than not auditing at all: it teaches someone to
+    distrust a correct package, or to "fix" it.
+    """
+    p = tmp_path / "SMEG_PLUS_UPG"
+    p.mkdir()
+    helpers.build_package(str(p), variant="NAV")
+    bsp = p / "BSP"
+    bsp.mkdir()
+    (bsp / "vxWorks.bin").write_bytes(b"not an application module")
+    assert verify_package.audit(str(p)) == []
