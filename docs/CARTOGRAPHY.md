@@ -340,6 +340,55 @@ So the field that means position is inside **`TYPE_CITY_CENTER`**, and reading i
 disassembling `Search_elem_in_buf_city_centers`, which is small and takes the struct directly.
 That is the concrete next move — not more scaling guesses.
 
+## What a map update actually has to get past
+
+Cracking the formats is only the first requirement. A map package also has to be *accepted*,
+and the strings show what accepts it.
+
+**`CCT.DAT` is a licence token, and it is VIN-locked.** The application image opens
+`/bd0/CCT.DAT`, decrypts it, and reads an activation key, a code, and the vehicle's VIN:
+
+```
+/bd0/CCT.DAT
+Opening %s file....
+Decrypted CCT table present into file %s:
+Activation Key=%s
+n Code=%s
+GetUncryptedVIN : GetKeyInt uncrypted VIN faile…
+(C_BCM_UPGRADE)  TestGetMapCode : %s
+```
+
+with `/Licence`, `/CCT.DAT.inf` and `C_MEDIA_MANAGER` alongside. The file itself is 456 bytes
+at ~6.0 bits/byte of entropy — encoded, not a plain certificate.
+
+**There are region gates too.** The updater carries `CheckEuropeContinent`,
+`ReadContinentFromGruppoRoot`, `CONTINENT_ID`, and a `Crimea_Manager` with
+`CheckIf_RUSSIA__UKRAINE_Key` — so the package declares a continent (`MEDIA_MAP.INI` says
+`CONTINENT_ID:1 … EUROPE`) and the updater validates it. The map updater also carries
+`Untar__7C_UNTGZPCcT1ii`, which confirms independently that the `*.BIN` files really are
+tarballs.
+
+**And the delivery path is not the firmware one.** Cartography has its own updater
+(`C_SDHC_UPGRADE`), a separate system from `C_UPGRADE`. The map package is laid out for it —
+`DATA/MAPPE/NNN/`, `DESCRI.DAT`, `CD_VER.*.INF`, `GRUPPO_4_*` — but which mechanism presents it
+to the unit has not been established here.
+
+!!! warning "The decisive open question"
+
+    **Does `CCT.DAT` cover the map data, or only authorise the region?** If it only authorises,
+    the data underneath could in principle be replaced. If it binds the data — by hash or
+    signature — then a self-built map **cannot be delivered at all**, and no amount of format
+    work changes that.
+
+    Nothing here answers that, and it is the first thing to settle: it decides whether the rest
+    of this page is a route or a dead end. It is also why the name-pool PoC was built to stand
+    on its own.
+
+    There is a licensing dimension to this as well as a technical one. `CCT.DAT` is how HERE's
+    cartography is licensed per vehicle, and OpenStreetMap brings its own ODbL obligations. Both
+    are decisions for whoever ships a map, and they are different in kind from everything else
+    in this repository.
+
 ## Caveats
 
 - **Nothing here has been executed or tested.** Everything above is read from symbol tables
