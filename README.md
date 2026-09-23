@@ -129,6 +129,7 @@ SMEG+ update on the car (engine running). See [`docs/FLASHING.md`](docs/FLASHING
 | `tools/fingerprint.py` | identify which build an application image is, or refuse |
 | `tools/prepare_usb.py` | copy a package to a stick, verify the copy, check the layout |
 | `tools/verify_package.py` | audit a package's checksum cascade before flashing |
+| `tools/symdiff.py` | diff two releases by symbol, and locate a patch in another |
 | `tools/apply_files.sh` | overlay patched files onto a package copy |
 
 ```sh
