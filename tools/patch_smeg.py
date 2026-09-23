@@ -141,6 +141,37 @@ def check_firmware(img, token, label):
     )
 
 
+def check_build(img, name, spec):
+    """Refuse to patch a variant when the image is a *different* build in the patch set.
+
+    This deliberately fires only when the image matches some other build, and stays quiet when
+    it matches none. Those two cases look similar and are not: "matches none" is already
+    answered by ``check_firmware`` (wrong version) and by the per-patch ``expect`` check inside
+    ``apply_patches`` (wrong bytes), and both say so precisely. Adding a third message for it
+    would pre-empt the more specific one.
+
+    What is genuinely new here is the wrong-*build* case, where the expect check fails at some
+    address and reports a byte mismatch rather than the fact that the package is simply a
+    different build. It also covers what the expect bytes cannot: ``AUDIO_BT`` and
+    ``AUDIO_BT_256`` declare identical addresses and identical bytes, so no amount of
+    spot-checking separates them.
+
+    Imported inside the function because ``fingerprint`` imports this module for the container
+    format, and the cycle at module scope would break both.
+    """
+    import fingerprint
+
+    builds = fingerprint.identify(img, fingerprint.variants_from_spec(spec, "<inline>"))
+    if name in builds or not builds:
+        return
+    raise SystemExit(
+        "%s: this image is not the %s build - refusing to patch.\n"
+        "  It matches: %s. Addresses are per build, so patching it with these addresses\n"
+        "  would write to the wrong locations. Run tools/fingerprint.py for a verdict."
+        % (name, name, ", ".join(builds))
+    )
+
+
 def apply_patches(img, base, patches, label):
     for p in patches:
         addr = int(str(p["addr"]), 16)
@@ -224,6 +255,7 @@ def main():
         start, img = inflate(old_bq)
         img = bytearray(img)
         check_firmware(img, v.get("firmware"), name)
+        check_build(img, name, spec)
         apply_patches(img, base, v["patches"], name)
 
         new_bq = old_bq[:start] + zlib.compress(bytes(img), args.level)
