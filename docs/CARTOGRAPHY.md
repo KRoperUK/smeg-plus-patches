@@ -319,26 +319,69 @@ Two candidate readings remain, and both need the loader:
 Settling it means decompiling `Load_city_center_by_parc_cache` and its reader, which is the
 same step every other family needs. **The PoC above deliberately did not depend on it.**
 
-### What the next step actually is
+### The coordinates, from the loader outward
 
-The reader is no longer a guess — the runtime ELF names it, and the names say what `SCC` is:
+The runtime module names the reader, so the coordinate path was followed with Ghidra rather
+than guessed at. Three layers came out.
 
+**`Search_elem_in_buf_city_centers` gives the in-memory record.** It is a sorted insert, and
+its struct offsets are visible:
+
+```c
+strcmp(rec, name)             // +0x00  the name, inline and NUL-terminated
+rec[0x98] == code             // +0x98  an id
+param_2 < rec[0xa4]           // +0xa4  a 4-byte SORT KEY, binary-searched
+memcpy(dst, src, 0x52)        // 0x52 = 82 bytes — the SCC.DST name area, exactly
 ```
-Load_city_centers_where_file_parc(TYPE_GEO_COORD, …, TYPE_DRAW_LEVEL, …, TYPE_RESULT*)
-Create_buff_output_ptr_scc(TYPE_GEO_COORD, TYPE_GEO_COORD, …)      a *coordinate range*
-Get_city_centers_by_point(TYPE_GEO_COORD, …, TYPE_CITY_CENTER*, …)
-Search_elem_in_buf_city_centers(char*, u32, u32, TYPE_CITY_CENTER*, …)
+
+so **`TYPE_CITY_CENTER` is 176 bytes (`0xb0`)** in memory, and its first 82 bytes are the
+same name area the on-disk records carry.
+
+**The records are built from a 60-byte source (`0x3c`), and the coordinates are plain
+integers in it.** `Load_city_centers_where_file_parc` walks that buffer and reads:
+
+```c
+iVar12 = Fly_dist(here.x, here.y, rec[0x30], rec[0x34]);   // note: +0x30 and +0x34
+iVar12 = iVar12 / 10;
+Search_elem_in_buf_city_centers(rec, iVar12, rec[0x2c]);   // key = distance, id = +0x2c
 ```
 
-Two things follow. `SCC` is a **spatial block** — `TYPE_INF_MAP_SCC_BLOCK` and
-`TYPE_INF_PARC_SCC_BLOCK` are its map-level and parcel-level forms — so the `.DST` is a store
-of those blocks, not one flat table. And the reader is driven by a **`TYPE_GEO_COORD`
-bounding pair**, which is why `%03dSCC.DST` is spatially ordered: the file is written in the
-order a coordinate sweep visits it.
+so at this layer the coordinates are two consecutive **32-bit integers** at `+0x30` and
+`+0x34`, and the search key is a **distance divided by ten**.
 
-So the field that means position is inside **`TYPE_CITY_CENTER`**, and reading it means
-disassembling `Search_elem_in_buf_city_centers`, which is small and takes the struct directly.
-That is the concrete next move — not more scaling guesses.
+**And `Fly_dist` says what they are.** It is not a great-circle calculation at all:
+
+```c
+d = (y2 - y1)^2 + (x2 - x1)^2;          // int -> float, via the 2^52 trick
+sqrt(d);
+return d * SCALE + ROUND;               // clamped at SENTINEL
+```
+
+with the constants read straight out of the module:
+
+| address | value | meaning |
+|---|---|---|
+| `0x1237fc` | `4.50360e+15` | `2^52`, the int→double conversion constant |
+| **`0x123800`** | **`10.0`** | **the scale applied to the squared distance** |
+| `0x123804` | `2.0e+09` | the sentinel — `Fly_dist` returns it when the distance is too large |
+| `0x123808` | `0.5` | the rounding offset |
+
+So distances are **Euclidean in the coordinate's own integer units, scaled by ten** — which is
+why the caller divides by ten to get the key back. There is no projection and no latitude
+correction in the distance function, so the coordinate space is a **planar grid**, and the
+meters-per-unit factor lives in whatever produced the grid, not here.
+
+**What that leaves, precisely.** The in-memory layouts and the distance maths are now known —
+that is the part that looked like an arbitrary scaling puzzle and is not one. What is *not*
+yet decoded is the **on-disk packing of the SCC payload**: the ten bytes that follow each name
+area in `%03dSCC.DST`. They do not read as two plain 32-bit integers (for `ST AGNES` the tail
+is `15 f4 f7 01 04 03 1d 01 96 03`), so there is a compression step between the file and the
+60-byte buffer that this path starts from. Reading `Create_buff_output_ptr_scc_by_parc` is the
+next step, and it is a small function with a known signature.
+
+Record the shape of this correctly: **it is no longer "the coordinates are an unknown
+encoding"** — the coordinate type is a planar integer grid and the distance function is
+arithmetic. It is "one packing layer is unread".
 
 ## What a map update actually has to get past
 
