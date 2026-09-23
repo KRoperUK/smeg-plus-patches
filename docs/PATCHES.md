@@ -409,6 +409,22 @@ in data, which is unsafe to execute). So rather than a trampoline this patch is 
 it overwrites the last of the two calibration-copy blocks — the `*regen*` one — in place. That
 48-byte block is more than the nine instructions the replacement needs.
 
+!!! note "Why a trampoline is still out of reach, and what would change that"
+
+    The cave search was redone from scratch and the conclusion holds: **every** run of 32
+    bytes or more of nops/zeros in the image lies in `.rodata` — `CMMStrBufEncodedUTF8`'s
+    table, `sqlite3_version`, `utf8proc_sequences` and friends — so it is live data, not
+    padding. Text ends at `0x02def4c0`.
+
+    A trampoline would therefore have to live **past the end of the image**, and that is
+    mechanically expressible rather than impossible: the container header carries the
+    **inflated size at offset `0x04`** (`0x02604450` on this NAV image, verified) and **no**
+    compressed size, because the zlib stream is self-delimiting. The image can be grown and
+    that field updated.
+
+    What is **unverified** is whether the loader maps the appended region **executable**.
+    Until a hardware test settles that, a trampoline is theoretical — do not rely on one.
+
 | build | address | original (`*regen*` copy) | patched |
 |---|---|---|---|
 | `NAV` | `0x01273a1c` | `GetCalibrationDataDir ; AddName "*regen*" ; Xcopy` (12 instr) | `GetUserDataDir(r29) ; Xcopy(r29,r31) ; nop×3` |
@@ -463,3 +479,81 @@ shipped definition end-to-end through `patch_smeg.py`.
       it from each build's own image before adding those variants.
     - This reads `/USER_DATA` but does not write it, so it cannot damage the user partition —
       unlike a `USER_DATA` *payload* build.
+
+### `spy-dump-userdata-partition` — the whole partition, not just the settings tree
+
+`spy-dump-userdata` captures `/USER_DATA/user_data`. Its **siblings** are not captured, and
+they are separate directories on the same storage device:
+
+```
+/user_data          <- what spy-dump-userdata gets: settings, nav destinations, presets
+/address_book       /internet_user   /welcome_screen
+/picture_cache      /catalog         /TurboBoot
+```
+
+That is measured, not inferred. The path-fragment table at `0x02f08418` shows each
+`C_FS_STORAGE_CTRL_PATH::Get*Dir` is only `SetDevice(<device>) + SetPartition(n) +
+AddName("<fragment>")` — so device + partition with **no** name is that device's root.
+`GetUserDataDir` is `USER_DATA`, partition 4, `/user_data`; `GetAddressBookDir` is the *same*
+device and partition with `/address_book`.
+
+So this patch rebuilds the source entity as the root — fresh constructor,
+`C_FS_STORAGE_DEVICE_USER_DATA::Instance()`, `SetDevice`, `SetPartition(4)`, deliberately no
+`AddName` — and copies that, so one `Xcopy` takes every sibling.
+
+```asm
+mr    r3, r29            # source entity
+mtctr r23                # r23 = C_FS_STORAGE_ENTITY::C1 (0x01068d24), already loaded
+bctrl                    # fresh entity: no names, so it is the device root
+lis   r9, 0x0106
+addi  r9, r9, 0x702c     # -> USER_DATA::Instance() (0x0106702c)
+mtctr r9
+bctrl
+mr    r4, r3
+mr    r3, r29
+lis   r9, 0x0107
+addi  r9, r9, -0x773c    # -> SetDevice (0x010688c4)
+mtctr r9
+bctrl
+lis   r9, 0x0107
+addi  r9, r9, -0x76d4    # -> SetPartition (0x0106892c)
+mtctr r9
+li    r4, 4
+mr    r3, r29
+bctrl
+mr    r3, r29
+mr    r4, r31
+mtctr r26                # r26 still holds Xcopy (0x010554f4)
+bctrl
+nop ×7                   # pads the reclaimed 120 bytes
+```
+
+| build | address | replace | patched |
+|---|---|---|---|
+| `NAV` | `0x012739dc` | 120 bytes — the calibration `*.log` block **and** the `*regen*` block, ending just before the `SYSTOOL_PlayBeep_Spy` setup at `0x01273a54` | the routine above |
+
+**It supersedes `spy-dump-userdata`.** Both write `0x01273a1c`, so applying both fails the
+`expect` check — pick one.
+
+!!! warning "Not flashed"
+
+    Static verification only. Its call sequence was executed under `tools/ppcemu.py`, with
+    every callee stubbed so the sequence itself is the evidence:
+
+    | | call sequence through the copy blocks |
+    |---|---|
+    | stock | `… GetApplicationDir, Xcopy, GetCalibrationDataDir, Xcopy, GetCalibrationDataDir, Xcopy` |
+    | patched | `… GetApplicationDir, Xcopy, USER_DATA::Instance, SetDevice, SetPartition, Xcopy` |
+
+    Both calibration blocks are gone and replaced by exactly the intended four calls. That
+    proves the control flow and the targets; it does not prove what `Xcopy` does with a
+    device root on real hardware.
+
+!!! note "Trade-offs"
+
+    - It consumes **two** blocks, so the dump loses the calibration `*.log` files as well as
+      `*regen*`.
+    - **NAV only**, for the same reason as `spy-dump-userdata`: the address is per build.
+    - `CallBackCopy` only runs when `SPYSTORE` is invoked, so a fault here costs a dump, not
+      a boot.
+    - It reads `/USER_DATA` and does not write it, so it cannot damage the user partition.

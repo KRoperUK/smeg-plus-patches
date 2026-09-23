@@ -1,0 +1,25 @@
+{
+  "_comment": "Replace the stock 'Alien' ringtone with a custom tone and rename it 'Piano_riff'. The slot is ring1: the application image carries the stock name table at 0x03063198 (ring1RT.wav -> Alien, ring2RT.wav -> Blue_lemon, ring3RT.wav -> Blue_tangerine, ring4RT.wav -> Green_apple, ring5RT.wav -> Green_lemon), so 'Alien' is what ring1 is called on the unit. Two media-partition edits and no code patch, so nothing can be bricked: media.tones converts the source audio into ring_tones/ring1RT.wav in the unit's own format (16-bit mono 44.1 kHz - ring/status tones only; wait tones are 16-bit stereo 8 kHz and are not touched here), and media.names sets the displayed name to 'Piano_riff' - underscored to match the stock convention (Word_word: Blue_lemon, Blue_tangerine, Green_apple, Red_strawberry; 'Alien' only looks different because it is a single word). seal:true is REQUIRED, not optional: the media partition IS covered by contract.dat, so an unsealed package is refused on the unit with string 2099. LOCAL build manifest - the absolute paths below are for one checkout, so edit them before reusing. CANARIES, because a media-partition build otherwise has nothing to prove it applied: (1) GUI_VER is bumped 32.00 -> 32.01, which the System Info screen shows as 'Display version'. It is read from Data_base/smeg.inf INSIDE system.bin, it is the one visible field the updater does not gate on, and it is therefore the RELIABLE signal that this package is the one that got written; (2) the replacement ringtone is audible when a call rings - a plain file swap in /SYSTEM/ring_tones, also reliable; (3) the renamed entry 'Piano_riff' is a change to the SEED up_common.sqlite inside system.bin, so it is a canary for the seed path rather than for the flash. The project has established that settings edited in system.bin can fail to reach the live unit because the application reads /USER_DATA instead, so read it as an experiment: if the new name appears, seed edits DO land (which would reopen the supervisor.Last_Source question); if the tone changes but the name does not, the seed path is the reason and the build itself is still good. No USER_DATA payload, so the car's paired phones, navigation destinations and presets are untouched, and `out` therefore does not have to be named SMEG_PLUS_UPG (that rule only binds the USER_DATA payload path, which is hard-coded to /bd0/SMEG_PLUS_UPG/NAV/USER_DATA). ONE application patch is carried: spy-dump-userdata-partition, so the on-unit SPYSTORE collect also copies the whole USER_DATA partition to the stick (settings, nav destinations, presets, address book, bookmarks, welcome screen, pictures, media catalogue). That makes this build no longer media-only - it is the only thing here that changes the application image. It is cave-free (it repurposes two adjacent copy blocks in C_BCM_SPY::CallBackCopy), so it has no ctor/dtor or control-flow hazard, and its call sequence was verified by executing the patched function under tools/ppcemu.py: the two calibration copies are replaced by C_FS_STORAGE_DEVICE_USER_DATA::Instance -> SetDevice -> SetPartition -> Xcopy. It has NOT been flashed. Trade-off: the spy dump loses the calibration *.log AND *regen* files.",
+  "_source": "The audio to convert. Source: the YouTube video 2c_uKUWivJ8, 'iPhone Piano Riff Alarm/Ringtone (Apple Sound) - Sound Effect for Editing' by Sound Library, 3.16 s, fetched with `uvx yt-dlp -x --audio-format mp3` to this path. It arrives 48 kHz stereo; ringtones.py convert resamples to the unit's 16-bit mono 44.1 kHz. gain_db matters: the stock tones sit at about -1 dBFS, so an unconverted music track sounds noticeably quiet next to them.",
+  "package": "/Users/kieran/Downloads/SMEG_PLUS_UPG",
+  "out": "/Users/kieran/Downloads/stick_ringtone/SMEG_PLUS_UPG",
+  "module": "NAV",
+  "app": {
+    "patches": [
+      "spy-dump-userdata-partition"
+    ]
+  },
+  "media": {
+    "tones": {
+      "ring_tones/ring1RT.wav": {
+        "source": "/Users/kieran/Downloads/piano-riff.mp3",
+        "gain_db": 7.4
+      }
+    },
+    "names": {
+      "ring1": "Piano_riff"
+    },
+    "gui_ver": "32.01"
+  },
+  "seal": true
+}

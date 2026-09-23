@@ -24,8 +24,10 @@ The `SIZE` fields are the uncompressed *contents* size, not the tar or gzip size
 
 They are read by `UpgPlugin.out` (not `upgrade.out`) for the media space check.
 
-Only **replacing** existing files is supported — adding one would need a new
-`system_ctrl.bin` record, and the record count/semantics are not fully understood.
+Only **replacing** existing files is supported. Adding one would need a new
+`system_ctrl.bin` record; that record format is now fully mapped (see
+docs/MEDIA_PARTITION.md) and so is mechanically expressible, but whether the updater
+accepts a record count it has never seen is untested — so this tool still refuses.
 
 usage:
     # see what is in the partition

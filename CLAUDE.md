@@ -66,7 +66,10 @@ independent formats:
 * **the media partition** — `<module>/system.bin`: a gzip'd tar extracted to a read-only
   `/SYSTEM/` on the unit. Holds ring tones, the seed settings database, logo bundles.
   Only *replacing* existing files is supported; adding one would need a new
-  `system_ctrl.bin` record and that format is not fully understood.
+  `system_ctrl.bin` record. That format is now fully mapped (header, 264-byte records with a
+  `CheckType` byte and a CRC32, plus a trailing file CRC), so adding one is mechanically
+  expressible — but no updater has ever been handed a record count it did not write itself,
+  so the tools still refuse.
 
 ### The checksum cascade
 
@@ -132,8 +135,11 @@ wants. **On macOS the `clang` on `PATH` is Apple's and has no PowerPC backend** 
 *assembler* is not self-contained. Ghidra is the decompiler — import `tools/mkelf.py`'s ELF
 with language `PowerPC:BE:32:default` (there is no `e300` language ID).
 
-A compiled routine *larger* than the site it replaces is unsolved: no usable code cave in
-`.text`, so it needs a trampoline that `patches/*.json` cannot express yet.
+A compiled routine *larger* than the site it replaces is not solved, but the blocker is
+characterised: no usable code cave in `.text` (all large zero-runs are `.rodata` — live
+data), so a trampoline would have to live past the end of the image. That is expressible —
+the container header holds the inflated size at offset `0x04` and no compressed size, so the
+image can be grown — but whether the appended region is mapped executable is untested.
 
 ### Tests
 

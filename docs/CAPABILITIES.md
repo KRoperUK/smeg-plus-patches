@@ -64,12 +64,49 @@ an external box.
 
 ### Maps, beyond the last official release
 
-- The map database is proprietary PSA/Magneti Marelli format.
-- PSA stopped shipping SMEG+ maps years ago, so there is no feed to convert *from*.
-- It sits on **internal storage** behind the updater, so unlike the head unit's own
-  partitions we cannot even inspect it without opening the unit.
+!!! warning "An earlier version of this section was wrong"
 
-Three independent blockers. Park it.
+    It said PSA had stopped shipping SMEG+ maps "years ago, so there is no feed to convert
+    *from*", and that because the data sits on internal storage "we cannot even inspect it
+    without opening the unit". **A 2023 package disproves both.** The correction matters,
+    because it was the reason this was parked.
+
+**The last release is Q1 2023, and it exists.** The package identifies itself in plain text:
+
+```
+MAP.inf          VER:Q1_23_120.0   SUBVER:1.1.31
+DVD_VER.NAV      CONTINENT_ID:1  CONTINENT_NAME:EUROPE  PROVIDER:HERE
+DVD_VER.NAV.INF  VERSION:120  RELEASE:0
+MEDIA_MAP.INI    VOLUMELABEL:UHD6E2P01200REU  PRODUCT:Unique_DB6
+```
+
+Note the provider: **HERE**, not Magneti Marelli. So the cartography is a commercial dataset
+delivered in a PSA wrapper, not a bespoke in-house format.
+
+**And it is inspectable offline**, because the package carries the cartography itself rather
+than only an installer:
+
+```
+MAPPE/001..005,012/   per-part descriptors
+MAPPE/DESCRI.DAT      plain-text manifest:
+                        CID,001,\DATA\MAPPE\001\001.BIN,size,372028557
+                        CD_VER,001,\DATA\MAPPE\001\CD_VER.LA.INF,CRC,15a…
+DATA/                 2.9 GB — the cartography
+UPG/                   updater plugin: builtinsRNEG.out, db_dwnl_ppc.out
+```
+
+So the manifest layer is **text**, with per-part sizes and CRCs, and the payload is one large
+binary per part — `001.BIN` alone is ~355 MB.
+
+**What that leaves.** One blocker, not three: the format of that payload blob. It is
+undocumented and large. What is *not* a blocker is availability (one final release can be
+obtained) or inspectability (the files are right there). Whether a 355 MB proprietary blob is
+tractable is a different question from whether it is reachable — and note that the
+[user POI route](#speed-cameras-danger-zones-the-one-navigation-win) gets at something you
+would actually want without touching it.
+
+The on-unit copy is still behind the updater, so this does **not** make the *live* map data
+readable — it makes the shipped cartography readable.
 
 Third-party map updates for some other PSA units do circulate; that is a different platform
 and is not evidence that this one is reachable.
@@ -145,9 +182,26 @@ Three things follow:
 - The upgrade code deliberately **sets the store read/write** to change it, so this is a
   supported modification, not a hack.
 
-**What is still unknown:** the POI record layout itself, and whether the import is driven by
-a file on USB or only by the upgrade path. Those are the questions to answer before building
-anything, and both are answerable offline from the firmware.
+**What is still unknown:** the POI *record* layout — the bytes inside a POI file. The
+surrounding structure is now mapped from the application image:
+
+- **On the USB stick**, parts are numbered: `%s/DATA/MAPPE/%03d/%s`, with `CD_VER.NAV.inf`
+  per part — the parts run `001`–`039` and they are the *cartography* numbering, so a POI
+  import ships alongside them rather than replacing them.
+- **On the unit**, the user store is `%s/Mappe/POI_USER/%03d/%s`, entries may be LZW
+  compressed (`…/%s.LZW`), a staging area `…/POI_USER/TEMP_%03d/` is used during an import,
+  and `CURR_VERS_POI.DAT` plus `/TEMP_POI_VER.POI` carry the version markers.
+- **The import is a plugin**, not a hard-coded path: `t_upg_plugin_type` has
+  `UPG_PLUGIN_TYPE_MODULE_POI_USER` and `UPG_PLUGIN_TYPE_LIST_POI_USER`, driven through
+  `C_BCM_UPGRADE::AddListOfZARorPOIofCIDofProduct` / `AddListOfZARorPOIofProduct` and the
+  `UpgPlugin.out` binary. That answers the second half: it *is* driven by the upgrade path,
+  over a plugin interface, not by a bare file appearing on the stick.
+- **`ZAR` categories are a database join, not a hard-coded list.** The image contains
+  `… IN (SELECT "Group" FROM ZARAssociation WHERE IHMSubCategory = %d)`, and
+  `nav_poi.sqlite` ships `ZARAssociation` with 15 rows — so which POI subcategories count as
+  danger zones is editable data. See [Running the tools](RUNNING.md).
+
+So the remaining offline question is the record layout alone.
 
 **Why this is the better lead than the maps:** a current speed-camera dataset exists publicly
 in a way map data does not, the container is a standard compression format, and the unit
