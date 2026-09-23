@@ -383,6 +383,38 @@ Record the shape of this correctly: **it is no longer "the coordinates are an un
 encoding"** — the coordinate type is a planar integer grid and the distance function is
 arithmetic. It is "one packing layer is unread".
 
+### The packing layer is bit-packed
+
+Following the loader one more step answers *why* the ten bytes would not read as integers:
+**the fields are not byte-aligned.** `Load_facs_where_parc_with_imp_by_parc` unpacks them with
+masks and shifts rather than loads:
+
+```c
+uStack_194 = uStack_194 & 0xffffff00 | (uint)(*(ushort *)(rec + 0x57) >> 8);
+uStack_190 = (rec[0x5b] & 0x80) | (rec[0x5b] & 0x7f) | (uint)*(ushort *)(rec + 0x57) << 0x18;
+uStack_27c = uStack_190 >> 0x18 | (uStack_194 & 0xff) << 8;
+uStack_278 = uStack_190 >> 8 & 0xffff;
+```
+
+Three things follow, and they are the useful part:
+
+- **Values are assembled from piece of one byte plus part of a 16-bit at another offset.** So a
+  field can straddle a byte boundary, and no byte-aligned read of the file will ever line up —
+  which is exactly the symptom the data showed.
+- **There is a 7-bit field** — `rec[0x5b] & 0x7f`, compared against a filter at
+  `*(uint *)(this + 0x68)` — with the **top bit of the same byte belonging to a different
+  value**. Two fields share one byte.
+- **A 24-bit value is reconstructed** from `rec[0x5b]` and the high half of the `u16` at
+  `rec[0x57]`, split into a low byte and a 16-bit remainder.
+
+So the payload is a packed bitstream with sub-byte fields, not an array of integers. Recovering
+the full field map means walking each extraction site — they are uniform in shape, which makes
+it mechanical — rather than inferring a layout from the bytes, which is what failed before.
+
+This is worth stating as the general lesson for the remaining families too: **`%03d.DST`,
+`LZW%s.TOP` and the rest should be expected to be bit-packed.** The three files that *did* read
+as plain data — the name pools — are the exception that made them the right place to start.
+
 ## What a map update actually has to get past
 
 Cracking the formats is only the first requirement. A map package also has to be *accepted*,
