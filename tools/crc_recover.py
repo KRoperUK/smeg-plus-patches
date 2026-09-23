@@ -273,6 +273,7 @@ def main(argv=None):
     ap.add_argument("--root", default=".", help="base for the paths in --samples")
     ap.add_argument("--width", type=int, default=16)
     args = ap.parse_args(argv)
+    samples = []
 
     if args.package:
         samples = samples_from_package(args.package)
