@@ -287,3 +287,15 @@ application content differs from the patched one, so it will be rewritten.
 
 If something has already gone wrong, see [Recovery](RECOVERY.md) — including what is *not*
 documented, which is worth reading before you need it.
+
+To produce that baseline with a single command, rather than a manual rebuild:
+
+```sh
+python3 tools/patch_smeg.py --src ORIGINAL_PKG --out out/SMEG_PLUS_UPG \
+    --patches patches/aux-autoswitch.json --stock
+```
+
+`--stock` applies **no patches** but does everything else — re-packs, re-seals the cascade and
+verifies it end to end. Apart from re-compression the result is the package you started from,
+which makes it both a restore artifact and a **canary for the packaging path**: if a re-sealed
+stock package is refused by the unit, the fault is in the sealing rather than in any patch.
