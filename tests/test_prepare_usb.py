@@ -189,12 +189,13 @@ def test_junk_on_the_stick_fails_rather_than_warning(pkg, tmp_path):
     """`._*` is a failure, not a warning - the updater does not expect it.
 
     The issue is explicit about this, and a warning would be ignored in practice, so the
-    exit code has to be non-zero.
+    exit code has to be non-zero. Scoped to the copied package: the litter has to be inside it.
     """
     target = tmp_path / "stick"
     target.mkdir()
-    with open(os.path.join(str(target), "._SMEG_PLUS_UPG"), "wb") as fh:
-        fh.write(b"litter")
+    landed = target / "SMEG_PLUS_UPG"
+    landed.mkdir()
+    (landed / "._control_guard").write_bytes(b"litter")
     r = run(
         os.path.join(TOOLS, "prepare_usb.py"),
         "--package",
@@ -205,6 +206,69 @@ def test_junk_on_the_stick_fails_rather_than_warning(pkg, tmp_path):
     )
     assert r.returncode != 0
     assert "AppleDouble" in (r.stdout + r.stderr)
+
+
+def test_junk_outside_the_package_is_ignored(pkg, tmp_path):
+    """A stick legitimately holds other things.
+
+    Counting litter elsewhere would fail the copy for a reason that has nothing to do with
+    the package - which is what happened on the first real stick this was run against, where
+    an unrelated older copy carried 988 `._*` files.
+    """
+    target = tmp_path / "stick"
+    target.mkdir()
+    (target / "._SMEG_PLUS_UPG_somethingelse").write_bytes(b"not our package")
+    (target / ".DS_Store").write_bytes(b"nor this")
+    r = run(
+        os.path.join(TOOLS, "prepare_usb.py"),
+        "--package",
+        str(pkg),
+        "--target",
+        str(target),
+        "--force",
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_it_refuses_to_write_into_an_existing_package(pkg, tmp_path):
+    """Copying into a directory that already holds a package merges the two.
+
+    The result still passes every checksum its own manifests declare, so nothing downstream
+    notices - which is how a stick ends up flashing something nobody built. Found on the
+    first real stick, so this is not hypothetical.
+    """
+    target = tmp_path / "stick"
+    target.mkdir()
+    landed = target / "SMEG_PLUS_UPG"
+    landed.mkdir()
+    (landed / "leftover.bin").write_bytes(b"from the previous package")
+    r = run(
+        os.path.join(TOOLS, "prepare_usb.py"),
+        "--package",
+        str(pkg),
+        "--target",
+        str(target),
+        # --force past the filesystem check a temp directory on APFS trips; the merge
+        # refusal is what this test is about and it is checked after that one
+        "--force",
+    )
+    assert r.returncode != 0
+    assert "already exists and is not empty" in (r.stdout + r.stderr)
+
+
+def test_verify_copy_reports_a_stale_file_the_source_does_not_have(tmp_path):
+    """The other direction: extra files on the stick, not just missing ones."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.bin").write_bytes(b"x")
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    top, _ = prepare_usb.copy_tree(str(src), str(dst))
+    assert prepare_usb.verify_copy(str(src), top) == []
+    with open(os.path.join(top, "stale.bin"), "wb") as fh:
+        fh.write(b"left over from the last copy")
+    bad = prepare_usb.verify_copy(str(src), top)
+    assert bad and bad[0][0] == "stale.bin" and "stale file" in bad[0][1]
 
 
 def test_a_bad_layout_is_refused_before_anything_is_copied(tmp_path):

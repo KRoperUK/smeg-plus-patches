@@ -137,6 +137,12 @@ left to judgement.
 
 It only ever writes inside `--target`, and refuses to copy a package into itself.
 
+**It also refuses to write into a package that is already there.** Copying into a directory
+that already holds one silently merges the two, and the result still passes every checksum
+its own manifests declare — so nothing downstream notices, and the stick ends up flashing
+something nobody built. This is not hypothetical: it happened on the first real stick this
+was run against. Remove the old copy first, or point `--target` at a clean one.
+
 `--force` continues past a filesystem complaint — a non-FAT32 or non-MBR target is refused by
 default, with the Disk Utility steps below. The probing is macOS-only and deliberately
 conservative: when it cannot tell, it says so rather than guessing, because refusing a
