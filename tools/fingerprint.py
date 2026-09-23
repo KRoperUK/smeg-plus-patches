@@ -44,7 +44,7 @@ from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from patch_smeg import DEFAULT_BASE, firmware_hints, inflate  # noqa: E402
+from appimage import DEFAULT_BASE, firmware_hints, inflate  # noqa: E402
 
 PATCH_DIR = os.path.normpath(os.path.join(HERE, os.pardir, "patches"))
 

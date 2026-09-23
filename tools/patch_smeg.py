@@ -43,8 +43,11 @@ import sys
 import zlib
 from pathlib import Path
 
-DEFAULT_BASE = 0x01000000
-HEADER_SIZE = 0x801
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+from appimage import DEFAULT_BASE, inflate  # noqa: E402
+from fingerprint import identify, variants_from_spec  # noqa: E402
 
 
 def crc32(b):
@@ -53,19 +56,6 @@ def crc32(b):
 
 def s32(v):
     return struct.unpack(">i", struct.pack(">I", v))[0]
-
-
-def inflate(raw):
-    for start in (HEADER_SIZE, HEADER_SIZE - 1, 0x800):
-        try:
-            d = zlib.decompressobj()
-            out = d.decompress(raw[start:])
-            out += d.flush()
-        except zlib.error:
-            continue
-        if len(out) > 0x100000:
-            return start, out
-    raise SystemExit("could not inflate application image")
 
 
 def rewrite_inf(blob, new_crc):
@@ -155,13 +145,8 @@ def check_build(img, name, spec):
     different build. It also covers what the expect bytes cannot: ``AUDIO_BT`` and
     ``AUDIO_BT_256`` declare identical addresses and identical bytes, so no amount of
     spot-checking separates them.
-
-    Imported inside the function because ``fingerprint`` imports this module for the container
-    format, and the cycle at module scope would break both.
     """
-    import fingerprint
-
-    builds = fingerprint.identify(img, fingerprint.variants_from_spec(spec, "<inline>"))
+    builds = identify(img, variants_from_spec(spec, "<inline>"))
     if name in builds or not builds:
         return
     raise SystemExit(
