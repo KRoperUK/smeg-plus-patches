@@ -119,6 +119,30 @@ not help; it does the same thing. The entry has to be written or corrected direc
 
 ## Before you go to the car
 
+**Audit the package first.** It is the cheapest check available and catches the failure that
+is most expensive to find in the car — a record that disagrees with the file it describes,
+which the unit treats as a bad flash:
+
+```sh
+python3 tools/verify_package.py --package out/SMEG_PLUS_UPG
+```
+
+It checks every `*.inf` sidecar against the file beside it, `smeg.inf` against the module
+image, each `<MODULE>_ctrl.bin` against its module's files, and `ctrl.bin` against each module
+manifest. Exit is non-zero if anything disagrees; `--json` is there for scripting.
+
+It deliberately does **not** parse the manifest layout. The exact record stride has not been
+verified against a vendor package here — `patch_media` declines to trust a record count it has
+not seen for the same reason — so instead it looks for each CRC as a *value* in the manifest.
+That is layout-free, and still catches a manifest that does not describe what shipped.
+
+### Keeping a rollback package
+
+Keep an untouched copy of the original package before you flash anything, and audit it too —
+**a rollback you have not checked is not a rollback**. Re-flash it the same way as any other
+package; the original application content differs from the patched one, so it is rewritten.
+Copying it to the stick with `tools/prepare_usb.py` verifies the copy on the way.
+
 Confirm the patched image is present and the checksums agree, e.g. for a NAV unit:
 
 ```sh
