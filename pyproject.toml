@@ -32,6 +32,7 @@ smeg-crc-recover = "tools.crc_recover:main"
 smeg-fingerprint = "tools.fingerprint:main"
 smeg-prepare-usb = "tools.prepare_usb:main"
 smeg-verify-package = "tools.verify_package:main"
+smeg-symdiff = "tools.symdiff:main"
 
 [tool.bandit]
 # Run from the pre-push hook. The tools read and write files the user points them at and

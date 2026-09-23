@@ -58,6 +58,32 @@ at any offset, so there are real changes there as well.
     changed, so a 5.42 port needs that address re-derived from a 5.42 symbol table rather than
     shifted. Addresses must be re-derived per firmware version, not copied.
 
+### `tools/symdiff.py` — find out which of that is mechanical
+
+Working the shift out by hand is what produced the table above. The tool does it, and separates
+the two cases that matter — moved-and-unchanged, where the address follows from the
+displacement alone, from moved-and-changed, where it does not:
+
+```sh
+python3 tools/symdiff.py --a old.bin old_symbols.txt --b new.bin new_symbols.txt
+python3 tools/symdiff.py --a old.bin old_symbols.txt --b new.bin new_symbols.txt \
+    --patch-addr 0x02247858
+```
+
+```
+  shift        +152  (agreed by 3 of 3 moved symbols)
+    identical  1184   a patch here moves by the shift alone
+    changed    61     address carries over, bytes need re-deriving
+```
+
+It reads a symbol map in the same `<addr> <type> <name>` form `ppcdis`/`xref` do, because a
+map one tool accepts and another rejects would be a trap.
+
+**A derived address is a candidate, not a patch.** The tool prints that itself, and it is the
+rule from `AGENTS.md`: an address without the `expect` bytes to back it is not safe to apply,
+and `patch_smeg.py` refuses one that does not match anyway. Use this to know *where to look*,
+then re-derive the `expect` bytes from the target image.
+
 ## Which build is this? `tools/fingerprint.py`
 
 The version check above covers *which firmware*. The *build* — `AUDIO_BT`, `AUDIO_BT_256`,
