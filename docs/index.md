@@ -74,7 +74,8 @@ card matches what you are trying to do.
     [:lucide-arrow-right: Media partition](MEDIA_PARTITION.md) ·
     [Ring tones](RINGTONES.md) ·
     [Customising](CUSTOMISING.md) ·
-    [Cheatcodes & spy](CHEATCODES.md)
+    [Cheatcodes & spy](CHEATCODES.md) ·
+    [Cartography](CARTOGRAPHY.md)
 
 -   :lucide-terminal:{ .lg .middle } __Build & flash__
 

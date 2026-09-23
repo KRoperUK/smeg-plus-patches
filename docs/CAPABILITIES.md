@@ -161,6 +161,16 @@ native import route already in the firmware), while the geometry and routing —
 and the 232 MB `DET.DRS` — remain the hard core, because that is what the engine's routing has
 to agree with.
 
+!!! success "The engine ships unstripped — the subsystem is now mapped"
+
+    The packages contain **`db_dwnl_ppc.out`** (map package) and **`db_dwnl_gl.out`** (the
+    firmware's `NAV/DB_DWNL/`), the cartography module for each build, and neither is
+    stripped: 1,205 and 1,278 functions, with the data model and API in the symbol names. That
+    turns "can we build our own maps" from an unknown into a bounded engineering problem —
+    every filename template, the tile model, the LZW layer and the loaders are all named.
+
+    It is a project, not a patch, but it is now legible. See **[Cartography](CARTOGRAPHY.md)**.
+
 The on-unit copy is still behind the updater, so this does **not** make the *live* map data
 readable — it makes the shipped cartography readable.
 
