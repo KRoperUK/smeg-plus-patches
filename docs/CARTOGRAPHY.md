@@ -205,6 +205,47 @@ readers — rather than a 372 MB blob. And the cheap routes still stand: the
 [user POI store](CAPABILITIES.md#speed-cameras-danger-zones-the-one-navigation-win) needs none
 of this, and `Is_speed_trap_DB` shows the engine already treats speed traps as a category.
 
+## Worked example: the POI record, partly cracked
+
+`001POI.DAT` is the most tractable file in the set, so it is the place to start. Parsing it as
+`[address][name][binary][ff ff ff]` works cleanly from byte zero:
+
+```
+"VIA LUIGI COLOMBO"              "CARABINIERI, LAVENA PONTE TRESA"
+   7d ca 00 d0 01 4d 00 17 30 ba 00 00 00 00 01 12 3c f8 00 30 23 55 10 20   ff ff ff
+
+"VIA ROMA"                       "INTESA SANPAOLO"
+   c1 bb 00 d0 01 4e 00 1b d5 a7 00 00 00 00 01 34 ae c4 00 30 23 44 60 56   ff ff ff
+
+"VIA GUGLIELMO MARCONI"          "BANCA POPOLARE DI SONDRIO"
+   cb aa 00 d0 01 4e 00 12 b7 69 00 00 00 00 01 18 2e 9c 00 30 13 99 13 73   ff ff ff
+
+"VIA GUGLIELMO MARCONI, 2"       "BANCA POPOLARE DI SONDRIO"
+   cb aa 00 d0 01 4f 00 12 b7 69 00 00 00 00 01 18 5e 94 00                 ff ff ff
+```
+
+Confirmed by reading the bytes:
+
+- the record is `[address][name][binary]` and ends with a literal **`ff ff ff`**;
+- the binary block is **variable length** — 22 bytes in one of the records above, 27 in its
+  neighbour — so the tail carries an optional field group;
+- `00 d0` at `+2` and `00 00 00 00 01` at `+10` are **constant across every record sampled**;
+- the block is **address-linked**: the two `VIA GUGLIELMO MARCONI` records share `cb aa` at
+  `+0` and `b7 69` at `+8`, and differ only where the house number differs.
+
+**The coordinates are not yet decoded**, and the reason is a hypothesis worth stating: the
+first field is small and varies with position but matches **no absolute encoding**. Testing
+`Lavena Ponte Tresa` (≈45.96 N, 8.86 E) against the block for its Carabinieri record found
+nothing under lat/lon scaled by 1e-5, 1e-6 or 1e-7, nor the `+90`/`+180` variants, at any
+offset or field width. That is what a **parcel-relative delta** looks like — and it fits the
+rest of the design: the engine is organised *by parcel* (`Set_parcel_list`, `EXPORT_ID_PARC`),
+and `TYPE_DATI_DEG_XY` names geometry data with X/Y.
+
+So finishing this one file means: decompile `Load_poi_by_parc_cache` and the POI reader to
+recover the record struct, and take the parcel origin from the parcel table. That is the same
+shape of work as every other family — which is exactly why the page calls it a project and not
+a puzzle.
+
 ## Caveats
 
 - **Nothing here has been executed or tested.** Everything above is read from symbol tables
