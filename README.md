@@ -125,6 +125,7 @@ SMEG+ update on the car (engine running). See [`docs/FLASHING.md`](docs/FLASHING
 | `tools/ppcemu.py` | run a single firmware function on an emulated PowerPC core |
 | `tools/elfsyms.py` | read the symbol tables the package ships in `upgrade.out` and friends |
 | `tools/cartography.py` | read the map metadata: name pools, `.inf` sidecars, `SCC` records, `CCT.DAT` |
+| `tools/crc_recover.py` | recover CRC parameters from `(message, checksum)` samples |
 | `tools/fingerprint.py` | identify which build an application image is, or refuse |
 | `tools/apply_files.sh` | overlay patched files onto a package copy |
 

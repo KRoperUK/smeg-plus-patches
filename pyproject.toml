@@ -28,6 +28,7 @@ smeg-studio = "tools.patch_studio:main"
 smeg-emu = "tools.ppcemu:main"
 smeg-syms = "tools.elfsyms:main"
 smeg-cartography = "tools.cartography:main"
+smeg-crc-recover = "tools.crc_recover:main"
 smeg-fingerprint = "tools.fingerprint:main"
 
 [tool.bandit]
