@@ -246,6 +246,79 @@ recover the record struct, and take the parcel origin from the parcel table. Tha
 shape of work as every other family — which is exactly why the page calls it a project and not
 a puzzle.
 
+## PoC: OpenStreetMap in, name-pool out
+
+The string-pool layer is fully understood and has now been driven end to end.
+
+**The format.** `NAMECITY.DAT` and `%03d_NV.dat` are **plain NUL-separated strings** — no
+header, no footer, no compression. Verified by round-trip: reading `005_NV.DAT` and writing it
+back reproduces the file **byte for byte** (29,912 fields, 29,834 of them non-empty).
+
+That the *empty* fields matter is worth recording, because it cost a cycle: the first attempt
+filtered them out and the round-trip failed. The 78 empty fields are part of the format.
+
+**The convention.** `NAMECITY.DAT` holds `NAME\TOWN`, and some entries carry a postcode
+district:
+
+```
+ABBEY HEY\MANCHESTER
+MANCHESTER AIRPORT\MANCHESTER
+BL2 6 RADCLIFFE\MANCHESTER
+```
+
+Of the 1,863,417 strings in the UK table, **398 end in `\MANCHESTER`**, and 341 of those carry
+a postcode district.
+
+**The PoC, measured.** Overpass returns **2,443 ways** in a central-Manchester bounding box,
+yielding **644 distinct street names**. Emitted in the unit's own format
+(`<STREET>\MANCHESTER`) they produce a 16,832-byte pool that re-reads identically through the
+same reader. So **OpenStreetMap → the unit's on-disk name format works**, for this layer, and
+the round-trip against the real vendor file is the evidence that the format was understood
+rather than guessed.
+
+!!! warning "ODbL — a licence question, not a technical one"
+
+    OpenStreetMap data is **ODbL**. Cartography built from it would be a *derivative
+    database*, which carries **attribution and share-alike** obligations. That is a different
+    kind of constraint from everything else on this page, and it applies to anything
+    distributed. Worth deciding deliberately rather than discovering later.
+
+**What the PoC does not do.** The name pool is the easy layer and carries **no geometry** — it
+puts nothing on a screen. The coordinates are the hard part and they are not cracked.
+
+## The coordinate problem, stated precisely
+
+`%03dSCC.DST` is a settlement table and is the best-behaved binary in the set:
+
+- records are a **fixed 92 bytes** (19,875 of them, the dominant gap);
+- a record is `[name][name][10 bytes]`, the name appearing twice inside an 82-byte area;
+- **every** 10-byte tail begins with `0x15`, and byte 3 is always `0x01`.
+
+```
+ST AGNES (Cornwall)      15 f4 f7 01 04 03 1d 01 96 03
+ST IVES                  15 59 1b 01 20 02 05 00 0d 04
+DOVER                    15 e7 4e 01 21 02 62 00 55 05
+LOWESTOFT                15 b7 bd 01 22 00 ed 01 e1 05
+MANCHESTER               15 b4 b5 01 22 00 ea 01 f1 02
+NORWICH                  15 fb cb 01 22 03 84 03 1e 06
+CARLISLE                 15 ff fb 01 3d 01 82 02 0a 02
+```
+
+Byte 4 tracks latitude loosely — `0x04` at Land's End, `0x22` across the Manchester/Lowestoft
+band, `0x3d` at Carlisle — but it is **not** monotonic in latitude (`ST IVES` at 50.21 gives
+`0x20` while `ST AGNES` at 50.31 gives `0x04`), so it is not a scaled coordinate. Nor do any
+offset, width or endianness of the remaining bytes reproduce 50–55 N / −6 to +2 E under
+1e-3…1e-7 scaling.
+
+Two candidate readings remain, and both need the loader:
+
+1. a **grid or parcel cell id** in byte 4, with a sub-cell offset beside it — plausible because
+   the table is spatially ordered, starting at the south-west extreme;
+2. a **reference into another file** (an offset or record id) whose table holds the geometry.
+
+Settling it means decompiling `Load_city_center_by_parc_cache` and its reader, which is the
+same step every other family needs. **The PoC above deliberately did not depend on it.**
+
 ## Caveats
 
 - **Nothing here has been executed or tested.** Everything above is read from symbol tables
