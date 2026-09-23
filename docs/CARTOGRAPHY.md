@@ -379,10 +379,11 @@ to the unit has not been established here.
     `DESCRI.DAT`**, which is the manifest over the country's payloads. So it **does bind the
     map data**, rather than merely authorising a region.
 
-    That is not the dead end it sounds like. The value is **32 bits, not a signature**, and the
-    cipher enclosing it is a byte subtraction whose key vector **ships in the application
-    image**. So the token is re-sealable in principle, and what remains is identifying one
-    checksum — the same shape as `contract.dat`, not the shape of a signed token.
+    That is not the dead end it sounds like, and it is weaker than it sounds. The check turns
+    out to be an **eight-byte string comparison** against each country's `.inf` sidecar, and the
+    cipher enclosing the table is a byte subtraction whose key vector **ships in the
+    application image**. So the token is reproducible — what remains is a different and
+    narrower question, the algorithm behind the `.inf` checksum field itself.
 
     There is still a licensing dimension, and it is not the same question. `CCT.DAT` is how
     HERE's cartography is licensed per vehicle, and OpenStreetMap brings its own ODbL
@@ -449,18 +450,47 @@ the manifest carrying each payload's size and CRC, so the chain commits to the m
 the key it is enclosed by is a plain subtraction table sitting in the firmware. That is the
 same shape as `contract.dat`, not the shape of a signed token.
 
-**The one gap: the algorithm.** The value is not `crc32`, `adler32`, or a truncated
-`md5`/`sha1`/`sha256` of the shipped `DESCRI.DAT` (nor of its `.inf`), and it is not `crc32`
-of the country's payload `.BIN` in either its gzipped or inflated form — every combination
-tried, on two countries, missed. So *which* bytes are summarised, and by what, is not
-established. Given the firmware uses `crc32` everywhere else, a CRC over bytes that differ
-from the shipped file (the updater `Untar`s the payloads, so the on-unit layout is not the
-package layout) is the most likely explanation.
+**And it is a copy, not a commitment — the check is a string comparison.** Ghidra on
+`C_MEDIA_MANAGER::CheckCCTFileRow` (`0x0169f9f0`) gives the verifier, and it is much simpler
+than the 32-bit value suggested:
 
-That gap matters, and its size is worth stating plainly: **identifying the checksum is what
-decides whether a self-built map can be delivered.** The container is re-sealable — the cipher
-is a subtraction and its key is in the image — so the remaining work is reproducing one
-32-bit value, not breaking a signature.
+```c
+cVar1 = row[0xd];                                    // CheckType: 1 or 2
+GetFullPath(this, path, "/bd0/SMEG_PLUS_UPG/DATA/", row + 0x1a);   // the stick's package
+if (stat(path, &st) == 0 && (st.st_mode & 0xf000) == 0x8000) {     // must be a regular file
+    if (cVar1 == 1) {
+        strcat(path, ".inf");
+        f = fopen(path, "rb");
+        fread(buf, 8, 1, f);                          // first 8 bytes of the sidecar
+        cmp(buf, row + 0xe);                          // compare with the record's value field
+    }
+    if (cVar1 == 2) {                                 // otherwise: size, parsed from the field
+        if (st.st_size == atoi(row + 0xe)) return 0;
+    }
+}
+```
+
+So for `CheckType = 1` — which is what all six records here are — the check is: read the
+**first 8 bytes of `<path>.inf`** and compare them with the record's value field.
+
+**Verified against every record**: the value equals the first 8 bytes of each country's
+`MAPPE/<cid>/DESCRI.DAT.inf`, all six matching. And the path is resolved against
+`/bd0/SMEG_PLUS_UPG/DATA/` — the **update stick**, not the unit's installed copy.
+
+**What that means for deliverability.** `CCT.DAT` does not independently summarise the map
+data. It **copies the `.inf` sidecar's own checksum field** and cross-checks it by
+eight-byte string comparison. So:
+
+- the gate is **mechanically reproducible** — put the right 8 characters in each record and
+  re-encrypt with `ChipherCCT_Vect`, which ships in the firmware;
+- the real integrity work is not in `CCT.DAT` at all, but in producing correct **`.inf`
+  sidecar checksums**, which is the same unknown the updater's CRC cascade depends on.
+
+**The one field still unidentified** is that `.inf` value itself. It is not `crc32` of its
+own file (for `MAPPE/001/DESCRI.DAT`, the sidecar says `4c75a293` while `crc32` is
+`6cb1bd24`), nor of the `.inf`, nor `adler32`/`md5`/`sha1`/`sha256` truncations — and it is
+not `crc32` of the country payload gzipped or inflated either. Identifying *that* is the
+remaining task, and it is worth naming precisely because it is now the only one.
 
 **It is also a licence.** `CCT.DAT` is how HERE's cartography is licensed per vehicle, and
 OpenStreetMap carries ODbL attribution and share-alike. Both are decisions for whoever ships a
