@@ -117,6 +117,31 @@ not help; it does the same thing. The entry has to be written or corrected direc
     payload is **skipped without a word**, which looks exactly like the setting having had no
     effect. `tools/preflight.py` fails on this, and `build_package.py` says so at build time.
 
+### Let the tool do the copy
+
+```sh
+python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB
+python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB --dry-run
+```
+
+It checks the layout, the target and the free space **before copying anything**, says which
+target it is about to write to first, then copies and **re-reads every file back off the stick
+and compares checksums**.
+
+That last step is the one that matters. Copying by hand has already gone wrong twice here — a
+stick was pulled mid-copy, and `ditto` left AppleDouble `._*` files beside the package. A
+silently truncated copy produces an update failure in the car that looks like a firmware
+fault, which is an expensive way to find out. `._*` and `.DS_Store` count as a **failure, not
+a warning**: the updater does not expect them, so the exit code is non-zero and nothing is
+left to judgement.
+
+It only ever writes inside `--target`, and refuses to copy a package into itself.
+
+`--force` continues past a filesystem complaint — a non-FAT32 or non-MBR target is refused by
+default, with the Disk Utility steps below. The probing is macOS-only and deliberately
+conservative: when it cannot tell, it says so rather than guessing, because refusing a
+perfectly good stick is worse than not checking.
+
 ## Before you go to the car
 
 Confirm the patched image is present and the checksums agree, e.g. for a NAV unit:
