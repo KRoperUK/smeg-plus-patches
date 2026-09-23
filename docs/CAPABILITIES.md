@@ -95,15 +95,40 @@ DATA/                 2.9 GB — the cartography
 UPG/                   updater plugin: builtinsRNEG.out, db_dwnl_ppc.out
 ```
 
-So the manifest layer is **text**, with per-part sizes and CRCs, and the payload is one large
-binary per part — `001.BIN` alone is ~355 MB.
+So the manifest layer is **text**, with per-part sizes and CRCs — and the payload is not one
+opaque blob either. **Every `*.BIN` is a gzipped tar**, the same idiom as `system.bin`
+itself. `001.BIN` is Italy, and it unpacks to **790 members / 512 MB**:
 
-**What that leaves.** One blocker, not three: the format of that payload blob. It is
-undocumented and large. What is *not* a blocker is availability (one final release can be
-obtained) or inspectability (the files are right there). Whether a 355 MB proprietary blob is
-tractable is a different question from whether it is reachable — and note that the
-[user POI route](#speed-cameras-danger-zones-the-one-navigation-win) gets at something you
-would actually want without touching it.
+```
+001.DEG                32 MB      geometry
+001_DET.DRS           232 MB      the bulk of it
+001POI.DAT             44 MB
+001002.DEG / .DPL / .DRL          per-tile geometry sets
+001DSP.POI  001_DA.POI  001_DE.POI …      POIs, including per-language sets
+001*.DST               SAF SAU SCC SEM SHR SSH SSP STR STU   road/street attributes
+001*.LET  (118)  .CAT (116)  .IND (116)  .S_C (115)  .TOP (115)
+001DPA.LZW  001SIG.LZW            LZW-compressed members
+```
+
+Also per part: `001_PHONEMES.BIN` (a 122 MB tar of TTS phonemes) and `001_ZTL.BIN`
+(restricted-traffic zones). `CD_VER.LA.INF` is plain text — `CID:001 / VERSION:120 /
+CD_NAME:ITALY` — so the parts are per-country and self-describing.
+
+**What that leaves.** The blockers are now two *research* problems, not availability
+problems:
+
+1. **The tile formats.** Roughly 15 distinct extensions with undocumented binary layouts, and
+   the unit's own engine decides what it needs from each.
+2. **The engine.** Rendering, label placement and routing live in the NAV image's map engine
+   (`MMA_MapManager`, `V3D_Engine`) and are proprietary as well. Files have to satisfy it, not
+   just parse.
+
+So *writing your own cartography from OpenStreetMap* is a reverse-engineering project of a
+size this repository has never taken on — the container is no longer the obstacle, but the
+contents and the consumer both are. What remains cheap is the
+[user POI route](#speed-cameras-danger-zones-the-one-navigation-win), which needs none of
+this, and note that the retrofit piggyback these units are paired with already displays
+OpenStreetMap-derived navigation today.
 
 The on-unit copy is still behind the updater, so this does **not** make the *live* map data
 readable — it makes the shipped cartography readable.
