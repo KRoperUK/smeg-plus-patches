@@ -389,6 +389,46 @@ to the unit has not been established here.
     are decisions for whoever ships a map, and they are different in kind from everything else
     in this repository.
 
+### What `CCT.DAT` is made of
+
+Partial progress, recorded so the next attempt starts further in.
+
+**It is a fixed-block file.** `Test_Read_CCT_table` (`0x0169f330`) reads it **76 bytes at a
+time** — `li r5, 0x4c` on the read and `cmpwi r3, 0x4c` on the return — and 456 = **6 × 76**.
+The six records are visible directly:
+
+```
+rec 0: 30 34 32 | 0b 0b 01 0d 05 0f 0b 0f 06 0c | 0a | 37 64 46 3f … | 04 | 26 24 26 21 …
+rec 1: 34 31 41 | 05 0c 0e 04 06 04 07 0b 08 03 0d | 35 38 73 3f …
+```
+
+Each record opens with **three printable bytes** — `042`, `341`, `427`, `624` in four of the
+six — then a run of values in `0x00`–`0x0F`, then bytes in `0x20`–`0x6B`. So the file
+interleaves a small-valued key stream with a data stream, and `0x0A` occurs inside the
+small-valued runs, which is why the file *looks* line-structured to `cat`.
+
+**The key table is in the application image**, not the file: `Test_Read_CCT_table` loads
+`0x035E4CD8` (`lis r11, 0x35e ; addi r17, r11, 0x4cd8`) and indexes it with `lbzx`. That
+region is initialised data — readable with `tools/ppcdis.py` or by slicing the inflated image —
+and it holds small values in the same `0x00`–`0x0F` range, starting `00 04 01 0b 0b 01 0d 05
+0f 0b 0f 06 0c`, which is *the same sequence* as the first record's key run. That overlap is
+not a coincidence and is probably the thread to pull.
+
+**Where it stops.** The inner loop computes `out[i] = (key[idx] − src[i]) & 0xFF` where `idx`
+comes from a divide-by-7 idiom (`0x92492493`). Simulating that arithmetic gives `idx = 0` for
+every iteration, which would mean a one-byte key — and applying it yields no readable text, so
+**the register tracking is wrong somewhere and the plaintext is not yet recovered.**
+Reproducing it means reading `Test_Read_CCT_table` in Ghidra rather than by eye, which is the
+same tool this page already names for the tile loaders.
+
+**What can be said without the plaintext.** Six 76-byte records is 456 bytes: that is a
+licence-shaped payload — a code, an activation key, a region — and there is **no evidence
+anywhere of a digest taken over the cartography**. The strings name `TestGetMapCode` and
+`TestWriteMapCode` and a VIN lookup, not a map hash. So the balance of evidence is that
+`CCT.DAT` **authorises rather than binds** — but that is an inference from size and naming,
+**not** a demonstration, and it should not be relied on until the plaintext or the comparison
+is read. Say so plainly if it comes up.
+
 ## Caveats
 
 - **Nothing here has been executed or tested.** Everything above is read from symbol tables
