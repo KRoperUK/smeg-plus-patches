@@ -43,8 +43,11 @@ import sys
 import zlib
 from pathlib import Path
 
-DEFAULT_BASE = 0x01000000
-HEADER_SIZE = 0x801
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+from appimage import DEFAULT_BASE, inflate  # noqa: E402
+from fingerprint import identify, variants_from_spec  # noqa: E402
 
 
 def crc32(b):
@@ -53,19 +56,6 @@ def crc32(b):
 
 def s32(v):
     return struct.unpack(">i", struct.pack(">I", v))[0]
-
-
-def inflate(raw):
-    for start in (HEADER_SIZE, HEADER_SIZE - 1, 0x800):
-        try:
-            d = zlib.decompressobj()
-            out = d.decompress(raw[start:])
-            out += d.flush()
-        except zlib.error:
-            continue
-        if len(out) > 0x100000:
-            return start, out
-    raise SystemExit("could not inflate application image")
 
 
 def rewrite_inf(blob, new_crc):
@@ -138,6 +128,32 @@ def check_firmware(img, token, label):
         "  reliable substitute: short instruction sequences recur across versions.\n"
         "  Build tokens found in this image: %s"
         % (label, token, ", ".join(hints) if hints else "none")
+    )
+
+
+def check_build(img, name, spec):
+    """Refuse to patch a variant when the image is a *different* build in the patch set.
+
+    This deliberately fires only when the image matches some other build, and stays quiet when
+    it matches none. Those two cases look similar and are not: "matches none" is already
+    answered by ``check_firmware`` (wrong version) and by the per-patch ``expect`` check inside
+    ``apply_patches`` (wrong bytes), and both say so precisely. Adding a third message for it
+    would pre-empt the more specific one.
+
+    What is genuinely new here is the wrong-*build* case, where the expect check fails at some
+    address and reports a byte mismatch rather than the fact that the package is simply a
+    different build. It also covers what the expect bytes cannot: ``AUDIO_BT`` and
+    ``AUDIO_BT_256`` declare identical addresses and identical bytes, so no amount of
+    spot-checking separates them.
+    """
+    builds = identify(img, variants_from_spec(spec, "<inline>"))
+    if name in builds or not builds:
+        return
+    raise SystemExit(
+        "%s: this image is not the %s build - refusing to patch.\n"
+        "  It matches: %s. Addresses are per build, so patching it with these addresses\n"
+        "  would write to the wrong locations. Run tools/fingerprint.py for a verdict."
+        % (name, name, ", ".join(builds))
     )
 
 
@@ -224,6 +240,7 @@ def main():
         start, img = inflate(old_bq)
         img = bytearray(img)
         check_firmware(img, v.get("firmware"), name)
+        check_build(img, name, spec)
         apply_patches(img, base, v["patches"], name)
 
         new_bq = old_bq[:start] + zlib.compress(bytes(img), args.level)

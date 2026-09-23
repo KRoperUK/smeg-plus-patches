@@ -29,6 +29,7 @@ smeg-emu = "tools.ppcemu:main"
 smeg-syms = "tools.elfsyms:main"
 smeg-cartography = "tools.cartography:main"
 smeg-crc-recover = "tools.crc_recover:main"
+smeg-fingerprint = "tools.fingerprint:main"
 
 [tool.bandit]
 # Run from the pre-push hook. The tools read and write files the user points them at and

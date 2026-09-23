@@ -58,6 +58,58 @@ at any offset, so there are real changes there as well.
     changed, so a 5.42 port needs that address re-derived from a 5.42 symbol table rather than
     shifted. Addresses must be re-derived per firmware version, not copied.
 
+## Which build is this? `tools/fingerprint.py`
+
+The version check above covers *which firmware*. The *build* — `AUDIO_BT`, `AUDIO_BT_256`,
+`NAV` — used to be picked by hand, and that choice is easy to get wrong: **`AUDIO_BT` and
+`AUDIO_BT_256` declare identical patch addresses and identical `expect` bytes**, so nothing in
+the patch data separates them.
+
+`tools/fingerprint.py` reads the image and answers from the bytes:
+
+```sh
+python3 tools/fingerprint.py --image app_nav.bin
+```
+
+```
+    image          39863376 bytes, already inflated
+    build tokens   5.43.A.R2
+    aux-autoswitch/AUDIO_BT     0/2 probes   firmware=5.43.A.R2
+    aux-autoswitch/AUDIO_BT_256 0/2 probes   firmware=5.43.A.R2
+    aux-autoswitch/NAV          2/2 probes   firmware=5.43.A.R2  <- match
+    ...
+    verdict: NAV
+```
+
+It exits non-zero when it cannot name a single build. Three outcomes, and only one is success:
+
+| verdict | meaning |
+|---|---|
+| a build name | exactly one build's probes all match — exit `0` |
+| `AMBIGUOUS` | several builds match, so the probes cannot choose between them — exit `1` |
+| `UNKNOWN` | nothing matches; the build tokens actually present are printed — exit `1` |
+
+**It refuses rather than guesses, and that is the design.** On the firmware in this repository
+the `AUDIO_BT` and `AUDIO_BT_256` variants are genuinely indistinguishable from the recorded
+addresses, so a tool that picked one would be worse than the manual step it replaced — it would
+make the same mistake, silently. Verified by hand against the `5.43.A.R2` NAV image, where it
+identifies `NAV` and rejects every `AUDIO_BT` variant.
+
+`patch_smeg.py` calls the same identification before patching. It stays quiet when an image
+matches nothing, because the firmware-token check and the per-patch `expect` check already
+report that precisely — a third message would pre-empt the more specific one. What it adds is
+the wrong-*build* case, which otherwise surfaces as a confusing byte mismatch:
+
+```
+NAV: this image is not the NAV build - refusing to patch.
+  It matches: AUDIO_BT. Addresses are per build, so patching it with these addresses
+  would write to the wrong locations. Run tools/fingerprint.py for a verdict.
+```
+
+The probes are the recorded `expect` bytes themselves, so a build only fingerprints as well as
+the patch data for it is accurate. A build with no patch set here cannot be identified at all —
+that is issue [#16](https://github.com/KRoperUK/smeg-plus-patches/issues/16).
+
 ## 1. `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable()` — force available
 
 Replaces the function prologue with `li r3,1 ; blr`, so AUX is reported available

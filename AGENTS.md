@@ -148,7 +148,8 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 
 | area | notes |
 |---|---|
-| `tools/patch_smeg.py` | Checks `expect` bytes before writing, then rebuilds the whole CRC cascade. Prefer adding a `patches/*.json` entry over new code. |
+| `tools/patch_smeg.py` | Checks `expect` bytes before writing, then rebuilds the whole CRC cascade. Prefer adding a `patches/*.json` entry over new code. Refuses a build the image is not — see `tools/fingerprint.py`. |
+| `tools/fingerprint.py` | Identifies which build an image is from the recorded `expect` bytes, and exits non-zero when it is ambiguous or unknown. It **reports ambiguity rather than choosing**: `AUDIO_BT` and `AUDIO_BT_256` declare the same addresses and the same bytes, so they cannot be told apart. |
 | `tools/ringtones.py` | Needs ffmpeg for non-WAV input, but degrades gracefully. Slot formats matter: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones 16-bit **stereo 8 kHz**. |
 | `tools/patch_studio.py` | Qt GUI. Set `QT_QPA_PLATFORM=offscreen` to test it headlessly. |
 | `tools/elfsyms.py` | The package's `*.out` updater binaries are unstripped PowerPC ELFs. Before reverse-engineering anything in the flash chain, check whether it already has a name. |
@@ -165,6 +166,11 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
   patch by symbol, not by pattern.
 - Addresses are **per build**. `AUDIO_BT` and `AUDIO_BT_256` usually match each other;
   the NAV build is offset. Never copy an address between builds without checking.
+  `tools/fingerprint.py` identifies the build from the recorded `expect` bytes, and
+  `patch_smeg.py` calls it — but it **cannot separate `AUDIO_BT` from `AUDIO_BT_256`**,
+  because those two variants declare the same addresses *and* the same bytes. It reports
+  that as ambiguous and exits non-zero rather than picking one; do not paper over it by
+  having it guess.
 - Addresses are also **per firmware version**. The NAV image from `SMEG_5.42.B.R4` is the
   5.43 one displaced by 152 bytes, so every address in `patches/*.json` is wrong on it —
   and the AUX handler differs by more than the shift. Every variant declares the version it
