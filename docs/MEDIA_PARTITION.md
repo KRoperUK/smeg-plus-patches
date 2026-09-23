@@ -6,9 +6,11 @@ The head unit keeps its user-facing data partition in `AUDIO_BT/system.bin` /
 The partition can be **rebuilt**, and `tools/patch_media.py` does it: extract the tar,
 replace a file, re-tar, re-gzip, then repair `system_ctrl.bin` (per-file CRCs),
 `system.bin.inf` (`CRC32` + the `SIZE` fields), the module manifest and the root manifest.
-Replacing a ring tone is the worked example — see [Ring tones](RINGTONES.md). Only
-**replacement** is supported: *adding* a file would need a new `system_ctrl.bin` record,
-and the record semantics are only partly understood.
+Replacing a ring tone is the worked example — see [Ring tones](RINGTONES.md). The tools
+support **replacement only**. Adding a file needs a new `system_ctrl.bin` record; that
+record format is now fully mapped (see below), so it is mechanically expressible, but
+whether the updater accepts a record count it has never seen is untested — which is why the
+tools still refuse.
 
 ## How the partition is described
 
@@ -66,16 +68,54 @@ the tar, swaps a file, re-tars and re-gzips, then updates `system_ctrl.bin` (the
 CRCs), `system.bin.inf` (`CRC32` + the `SIZE` fields), the module manifest and the root
 manifest. See [Running the tools](RUNNING.md).
 
-### `system_ctrl.bin`
-
-Fixed **264-byte** records, preceded by a 0x30-byte header:
+### `system_ctrl.bin` — fully mapped
 
 ```
-[path][zero padding][CheckType = 2 (1 byte)][CRC32 of the file (4 bytes, big-endian)]
+0x00   header, 48 bytes
+0x30   records, 264 bytes each, x <count>
+end    CRC32 of everything before it (4 bytes, big-endian)
 ```
 
-The CRC sits at `path_offset + 260`. Verified against the real partition: the record for
-`/SYSTEM/Data_base/media.inf` carries `0x7df5e611`, which is the CRC32 of that file.
+The header:
+
+| offset | field |
+|---|---|
+| `0x00` | date string — `19/09/2017` in the shipped packages |
+| `0x0C` | version string — `2.1.0.0` |
+| `0x2C` | **record count**, `u32` big-endian |
+
+Each record is **264 bytes**:
+
+```
+[path][zero padding][CheckType @ +259 (1 byte)][CRC32 @ +260 (u32, big-endian)]
+```
+
+- **path** is absolute and NUL-terminated: `/SYSTEM/<partition-relative path>`. The longest
+  in the shipped NAV partition is 89 bytes, well inside the 259 available.
+- **CheckType** is `2` in 815 of the 845 records and `3` in the remaining 30.
+- **CRC32** for a type-2 record is the CRC32 of that file's **contents**.
+
+**Verified end to end** against `NAV/system_ctrl.bin`:
+
+- the count at `0x2C` is **845**, exactly the number of files in the tar;
+- all 845 record paths resolve to a tar member, and **no** tar file lacks a record;
+- every type-2 record's CRC equals `crc32(tar member contents)` — 815/815;
+- the trailing `u32` equals `crc32` of all preceding bytes (`0xd05fd5e8` for the shipped file).
+
+**Open — the 30 `CheckType = 3` records.** Their field at `+260` is **not** a content CRC: it
+matches neither the raw contents nor a gunzipped copy. They are the four
+`Data_base/TMP/lib/license/*` documents plus `Application/CCOD/libcheatcode_AFTT.out`.
+Tested and rejected against one of them (`LGPL_EXCEPTION.txt`, field `0xffff80f9`): CRC32 of
+the raw member bytes as stored in the tar, of the tar header, and of the path, plus
+adler32. Several of the values are small or negative when read signed, which suggests a
+different meaning rather than a checksum — treat type 3 as "field meaning unknown".
+
+**What this unlocks.** Adding a file to the partition is now mechanically expressible:
+append a 264-byte type-2 record, increment the count, recompute the trailing CRC32, add the
+file to the tar, move the `SIZE` fields by its size, and rebuild the module and root
+manifests. What is **not** established is whether the updater *accepts* a count it has not
+seen before — it has only ever been handed a packager's own 845. That needs a hardware test,
+so the tools still refuse to add files.
 
 ## Top-level layout
 

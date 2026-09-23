@@ -126,8 +126,14 @@ The analysis half of the project needs more than `uv`. Per-platform setup is in
   extensions. `capstone` and `unicorn` come from the `dev` extra.
 
 The toolchain produces **bytes**. Injecting a routine *larger* than the site it replaces is
-**not solved** — there is no usable code cave in `.text`, so it needs a trampoline, and
-`patches/*.json` cannot express one yet. Do not claim otherwise.
+still **not solved**, but the blocker is now characterised rather than vague: there is no
+usable code cave in `.text` — every large run of zeros in the image is `.rodata` (sqlite3 and
+utf8proc tables), so it is live data and unsafe to execute. A trampoline would therefore have
+to live *past the end of the image*, which is mechanically expressible: the container header
+carries the **inflated size at offset `0x04`** (`0x02604450` on the NAV image, verified) and
+no compressed size, because the zlib stream is self-delimiting. So the image can be grown and
+that field updated. What remains unverified is whether the loader maps the appended region
+**executable**. Do not claim a trampoline works until that is settled on hardware.
 
 ## Testing without firmware
 

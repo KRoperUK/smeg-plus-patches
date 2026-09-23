@@ -176,7 +176,10 @@ Two things are deliberately *not* claimed:
 - **Nothing here has been flashed.** The toolchain produces the bytes a patch wants; whether
   a given patch works on a car is a separate question, answered in
   [Hardware verification](VERIFICATION.md).
-- **A routine larger than its patch site is unsolved.** There is no usable code cave in
-  `.text`, so anything that does not fit has to branch out and back, and nothing in
-  `patches/*.json` expresses a trampoline yet. Fitting the edit into the four words already
-  there is still the way that works.
+- **A routine larger than its patch site is not solved, but the blocker is characterised.**
+  There is no usable code cave in `.text` — every large zero-run is `.rodata` (sqlite3 and
+  utf8proc tables), so live data. A trampoline would have to live past the end of the image,
+  and that is expressible: the container header holds the inflated size at offset `0x04` and
+  no compressed size (the zlib stream is self-delimiting), so the image can be grown. Whether
+  the loader maps the appended region **executable** is untested — so fitting the edit into
+  the words already there remains the way that works.

@@ -145,9 +145,26 @@ Three things follow:
 - The upgrade code deliberately **sets the store read/write** to change it, so this is a
   supported modification, not a hack.
 
-**What is still unknown:** the POI record layout itself, and whether the import is driven by
-a file on USB or only by the upgrade path. Those are the questions to answer before building
-anything, and both are answerable offline from the firmware.
+**What is still unknown:** the POI *record* layout — the bytes inside a POI file. The
+surrounding structure is now mapped from the application image:
+
+- **On the USB stick**, parts are numbered: `%s/DATA/MAPPE/%03d/%s`, with `CD_VER.NAV.inf`
+  per part — the parts run `001`–`039` and they are the *cartography* numbering, so a POI
+  import ships alongside them rather than replacing them.
+- **On the unit**, the user store is `%s/Mappe/POI_USER/%03d/%s`, entries may be LZW
+  compressed (`…/%s.LZW`), a staging area `…/POI_USER/TEMP_%03d/` is used during an import,
+  and `CURR_VERS_POI.DAT` plus `/TEMP_POI_VER.POI` carry the version markers.
+- **The import is a plugin**, not a hard-coded path: `t_upg_plugin_type` has
+  `UPG_PLUGIN_TYPE_MODULE_POI_USER` and `UPG_PLUGIN_TYPE_LIST_POI_USER`, driven through
+  `C_BCM_UPGRADE::AddListOfZARorPOIofCIDofProduct` / `AddListOfZARorPOIofProduct` and the
+  `UpgPlugin.out` binary. That answers the second half: it *is* driven by the upgrade path,
+  over a plugin interface, not by a bare file appearing on the stick.
+- **`ZAR` categories are a database join, not a hard-coded list.** The image contains
+  `… IN (SELECT "Group" FROM ZARAssociation WHERE IHMSubCategory = %d)`, and
+  `nav_poi.sqlite` ships `ZARAssociation` with 15 rows — so which POI subcategories count as
+  danger zones is editable data. See [Running the tools](RUNNING.md).
+
+So the remaining offline question is the record layout alone.
 
 **Why this is the better lead than the maps:** a current speed-camera dataset exists publicly
 in a way map data does not, the container is a standard compression format, and the unit

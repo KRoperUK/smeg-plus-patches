@@ -1,0 +1,22 @@
+{
+  "name": "spy-dump-userdata-partition",
+  "description": "Make the on-unit SPYSTORE collect back up the WHOLE /USER_DATA partition instead of only the /USER_DATA/user_data subtree that spy-dump-userdata captures. The partition holds the settings tree (/user_data) plus its siblings - /address_book, /internet_user, /welcome_screen, /picture_cache, /catalog, /TurboBoot - which are separate directories on the SAME C_FS_STORAGE_DEVICE_USER_DATA device, so the existing patch misses them. Confirmed by the path-fragment table at 0x02f08418: each C_FS_STORAGE_CTRL_PATH::Get*Dir getter is just SetDevice(<device>) + SetPartition(n) + AddName(\"<fragment>\"), so device+partition with NO AddName is that device's root. This patch rebuilds the source entity that way (fresh ctor, SetDevice(USER_DATA), SetPartition(4)) and copies it, so ONE Xcopy captures every sibling. SUPERSEDES spy-dump-userdata: it overwrites the same 0x01273a1c block with a wider one and subsumes its /user_data result. Do not apply both - the expect check will refuse it. Trade-off: this consumes TWO adjacent copy blocks (the calibration *.log copy AND the *regen* block that spy-dump-userdata already repurposed), so the spy dump also loses the calibration *.log files. Structural cost of no usable code cave in .text - verified: every >=32-byte run of nops/zeros in the image is .rodata (sqlite3/utf8proc tables), and text ends at 0x02def4c0. NAV only: the addresses are per build and this has not been derived for AUDIO_BT / AUDIO_BT_256.",
+  "variants": {
+    "NAV": {
+      "app_image": "NAV/AppBin/f_BigQuick.bin",
+      "inf": "NAV/AppBin/f_BigQuick.bin.inf",
+      "smeg_inf": "NAV/smeg.inf",
+      "ctrl": "NAV_ctrl.bin",
+      "base": "0x01000000",
+      "firmware": "5.43.A.R2",
+      "patches": [
+        {
+          "addr": "0x012739dc",
+          "expect": "3d2001063bc9c8547fc903a67fa3eb784e8004213c8002f6388472787f8903a67fa3eb784e8004217fa3eb787fe4fb787f4903a64e8004212f83ffff419e00c87fc903a67fa3eb784e8004213c8002f6388472807f8903a67fa3eb784e8004217fa3eb787fe4fb787f4903a64e8004212f83ffff419e0088",
+          "bytes": "7fa3eb787ee903a64e8004213d2001063929702c7d2903a64e8004217c641b787fa3eb783d200107392988c47d2903a64e8004213d2001073929892c7d2903a6388000047fa3eb784e8004217fa3eb787fe4fb787f4903a64e80042160000000600000006000000060000000600000006000000060000000",
+          "why": "C_BCM_SPY::CallBackCopy: replace the calibration *.log copy block AND the *regen* block that spy-dump-userdata repurposed (120 bytes, 0x012739dc..0x01273a53, ending just before the SYSTOOL_PlayBeep_Spy setup at 0x01273a54) with a single copy of the whole USER_DATA device root. The routine re-constructs the source entity (r29) via C_FS_STORAGE_ENTITY::C1 [r23, already loaded with 0x01068d24], sets C_FS_STORAGE_DEVICE_USER_DATA::Instance() [0x0106702c] with SetDevice [0x010688c4] and SetPartition(4) [0x0106892c] - the same partition GetUserDataDir uses - and deliberately adds NO name, which is what makes it the device root rather than a subdirectory. r26 still holds C_FS_STORAGE_CTRL_IO::Xcopy [0x010554f4] from 0x0127397c, r31 is the destination (stick SPY/<timestamp>) and r29 the source entity, all live callee-saved registers at this point. The 7 trailing nops pad the reclaimed 120 bytes. Both original Xcopy error branches (beq to the 0x1273ae0/0x1273ad8 handlers) are removed with their blocks; the fall-through at 0x01273a54 does not inspect r3, so nothing is left unchecked that was checked before."
+        }
+      ]
+    }
+  }
+}
