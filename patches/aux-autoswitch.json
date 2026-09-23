@@ -14,13 +14,15 @@
           "addr": "0x02247718",
           "expect": "9421ffa0",
           "bytes": "386000014e800020",
-          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)"
+          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)",
+          "disasm": "li r3, 1 ; blr"
         },
         {
           "addr": "0x023032e8",
           "expect": "419e014c",
           "bytes": "60000000",
-          "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged +0x10c -> nop (remove GetMediaDevice bail-out)"
+          "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged +0x10c -> nop (remove GetMediaDevice bail-out)",
+          "disasm": "nop"
         }
       ]
     },
@@ -36,13 +38,15 @@
           "addr": "0x02247718",
           "expect": "9421ffa0",
           "bytes": "386000014e800020",
-          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)"
+          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)",
+          "disasm": "li r3, 1 ; blr"
         },
         {
           "addr": "0x023032e8",
           "expect": "419e014c",
           "bytes": "60000000",
-          "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged +0x10c -> nop"
+          "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged +0x10c -> nop",
+          "disasm": "nop"
         }
       ]
     },
@@ -58,13 +62,15 @@
           "addr": "0x02247858",
           "expect": "9421ffa0",
           "bytes": "386000014e800020",
-          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)"
+          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)",
+          "disasm": "li r3, 1 ; blr"
         },
         {
           "addr": "0x02303428",
           "expect": "419e014c",
           "bytes": "60000000",
-          "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged +0x10c -> nop"
+          "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged +0x10c -> nop",
+          "disasm": "nop"
         }
       ]
     }
