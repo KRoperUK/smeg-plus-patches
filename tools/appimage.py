@@ -28,6 +28,18 @@ HEADER_SIZE = 0x801
 BUILD_PATH_RE = re.compile(rb"04_HMI_DEV-([^/\x00]{1,32})/")
 
 
+def crc32_file(path):
+    """CRC32 of a file, read in chunks so a large image does not land in memory."""
+    c = 0
+    with open(path, "rb") as fh:
+        while True:
+            b = fh.read(1 << 20)
+            if not b:
+                break
+            c = zlib.crc32(b, c)
+    return c & 0xFFFFFFFF
+
+
 def inflate(raw):
     """Unwrap the container, returning (stream offset, inflated image).
 
