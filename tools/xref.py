@@ -16,24 +16,15 @@ usage:
 
 import argparse
 import bisect
+import os
 import struct
 import sys
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 
-def load_symbols(path):
-    syms = {}
-    with open(path, "r", errors="replace") as fh:
-        for line in fh:
-            p = line.split()
-            if len(p) >= 3:
-                try:
-                    syms[int(p[0], 16)] = p[2]
-                except ValueError:
-                    # the symbol map has header and section lines whose first
-                    # field is not a hex address; those are not symbols
-                    pass
-    return syms
+from symbols import load_symbols
 
 
 def main():

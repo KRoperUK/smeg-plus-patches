@@ -12,29 +12,20 @@ usage:
 
 import argparse
 import bisect
+import os
 import sys
 from pathlib import Path
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+from symbols import load_symbols
 
 try:
     from capstone import CS_ARCH_PPC, CS_MODE_32, CS_MODE_BIG_ENDIAN, Cs
     from capstone.ppc import PPC_OP_IMM, PPC_OP_REG
 except ImportError:
     sys.exit("capstone is required:  pip install capstone")
-
-
-def load_symbols(path):
-    syms = {}
-    with open(path, "r", errors="replace") as fh:
-        for line in fh:
-            p = line.split()
-            if len(p) >= 3:
-                try:
-                    syms[int(p[0], 16)] = p[2]
-                except ValueError:
-                    # the symbol map has header and section lines whose first
-                    # field is not a hex address; those are not symbols
-                    pass
-    return syms
 
 
 def main():
