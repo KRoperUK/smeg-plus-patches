@@ -492,6 +492,39 @@ own file (for `MAPPE/001/DESCRI.DAT`, the sidecar says `4c75a293` while `crc32` 
 not `crc32` of the country payload gzipped or inflated either. Identifying *that* is the
 remaining task, and it is worth naming precisely because it is now the only one.
 
+### The checksums are a parameter-recovery problem
+
+Further searching narrows what "unidentified" means, and it is worth recording the negative
+results because they bound the work rather than restarting it.
+
+**`DESCRI.DAT` uses a 16-bit CRC, not 32.** Its records carry four hex digits per payload —
+`CD_VER,001,\DATA\MAPPE\001\CD_VER.LA.INF,CRC,15af` — so the *descriptor* layer is CRC16.
+That is a different family from the `.inf` field, which is eight hex digits.
+
+**Neither matches a standard variant.** For `DESCRI.DAT`'s `15af` and the `.inf`'s
+`4c75a293`, every common parameterisation was tried and missed: CRC16 as
+CCITT-FALSE/XMODEM/ARC/MODBUS/USB/KERMIT/X25/DNP, and CRC32 as ISO-HDLC/JAMCRC/BZIP2/MPEG-2/
+POSIX/XFER/Castagnoli/Koopman/Q. So the polynomial, or what bytes are covered, is not one of
+the published ones — and on this evidence the value is not computed over the file as the
+package ships it.
+
+That turns it into a bounded, offline problem rather than a mystery: **recover the CRC
+parameters from samples** — the standard approach is CRC RevEng, which recovers poly/init/
+reflect/xorout from a handful of (message, checksum) pairs. Three payloads and several
+countries supply the samples. Worth noting the likely wrinkle: the updater `Untar`s the
+payloads, so the bytes the vendor checksummed may not be the bytes in the package.
+
+**And there is a third layer above both.** The package ships
+`UHD6E2P01200REU_MEDIA_CONTENT.md5`, headed `MD5 Created with MD5_ISO Creator Ver. 2.10`,
+listing **MD5s for every file including the `.inf` sidecars** — `CCT.DAT`, `CCT.DAT.inf`,
+`MAPPE\001\DESCRI.DAT` and so on, 205 lines. That is a *distribution* integrity layer, not a
+unit one: it is how the media image is validated as a whole. It also confirms the update
+layout, since its paths carry the `DATA\` prefix that `CheckCCTFileRow` resolves against.
+
+So there are three distinct integrity schemes in play — the `.inf` field, `DESCRI.DAT`'s
+CRC16, and the MD5 manifest — and the unit's own gate (`CCT.DAT`) is a string comparison
+against the first of them.
+
 **It is also a licence.** `CCT.DAT` is how HERE's cartography is licensed per vehicle, and
 OpenStreetMap carries ODbL attribution and share-alike. Both are decisions for whoever ships a
 map. This page documents the mechanism because that is what the repository does; it does not
