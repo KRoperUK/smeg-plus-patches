@@ -118,9 +118,7 @@ def test_ship_user_data_checks_every_source_before_writing(tmp_path):
     out = tmp_path / "out"
 
     with pytest.raises(SystemExit, match="no missing.sqlite"):
-        bp.ship_user_data(
-            str(out), str(tree), ["up_common.sqlite", "missing.sqlite"], "NAV"
-        )
+        bp.ship_user_data(str(out), str(tree), ["up_common.sqlite", "missing.sqlite"], "NAV")
 
     assert not out.exists(), "a missing source must not leave a partial USER_DATA payload"
 

@@ -74,7 +74,7 @@ class Volume:
             n = pos // SECTOR
             start = pos - n * SECTOR
             take = min(SECTOR - start, length)
-            out += self.sector(n)[start:start + take]
+            out += self.sector(n)[start : start + take]
             pos += take
             length -= take
         return bytes(out)
@@ -158,7 +158,7 @@ def main(argv):
         out, pend = [], []
         for base, data in regions(cl):
             for i in range(0, len(data), 32):
-                e = data[i:i + 32]
+                e = data[i : i + 32]
                 if len(e) < 32 or e[0] == 0:
                     return out
                 if e[0] == 0xE5:
@@ -171,12 +171,17 @@ def main(argv):
                 ext = e[8:11].decode("latin1").rstrip()
                 low = struct.unpack("<H", e[26:28])[0]
                 high = struct.unpack("<H", e[20:22])[0] if fat32 else 0
-                out.append({
-                    "off": base + i, "short": short + ("." + ext if ext else ""),
-                    "attr": e[11], "nt": e[12],
-                    "lfn": "".join(x[1] for x in reversed(pend)) or None,
-                    "lfn_ents": pend, "clus": low | (high << 16),
-                })
+                out.append(
+                    {
+                        "off": base + i,
+                        "short": short + ("." + ext if ext else ""),
+                        "attr": e[11],
+                        "nt": e[12],
+                        "lfn": "".join(x[1] for x in reversed(pend)) or None,
+                        "lfn_ents": pend,
+                        "clus": low | (high << 16),
+                    }
+                )
                 pend = []
         return out
 
@@ -188,8 +193,10 @@ def main(argv):
                 return e
         return None
 
-    print(f"volume: fstype={fstype!r} bytes/sector={bps} sectors/cluster={spc} "
-          f"{'FAT32' if fat32 else 'FAT16'}")
+    print(
+        f"volume: fstype={fstype!r} bytes/sector={bps} sectors/cluster={spc} "
+        f"{'FAT32' if fat32 else 'FAT16'}"
+    )
 
     cur = 0
     for part in PAYLOAD_PARTS:
@@ -205,10 +212,16 @@ def main(argv):
         if e["short"] in (".", ".."):
             continue
         flags = " ".join(f for f, m in (("LC-BASE", 0x08), ("LC-EXT", 0x10)) if e["nt"] & m)
-        print(f"  {'DIR ' if e['attr'] & 0x10 else 'FILE'} short={e['short']!r:14s} "
-              f"ntres=0x{e['nt']:02x} {flags:8s} LFN={e['lfn']!r}")
-        if e["attr"] & 0x10 and e["lfn"] and e["lfn"].lower().startswith(WANT_LFN_PREFIX) \
-                and e["lfn"].lower() != TARGET_NAME:
+        print(
+            f"  {'DIR ' if e['attr'] & 0x10 else 'FILE'} short={e['short']!r:14s} "
+            f"ntres=0x{e['nt']:02x} {flags:8s} LFN={e['lfn']!r}"
+        )
+        if (
+            e["attr"] & 0x10
+            and e["lfn"]
+            and e["lfn"].lower().startswith(WANT_LFN_PREFIX)
+            and e["lfn"].lower() != TARGET_NAME
+        ):
             victim = e
         if e["attr"] & 0x10 and e["lfn"] == TARGET_NAME:
             print("OK: FAT long-filename entry is exactly 'sqlite'")
@@ -228,11 +241,15 @@ def main(argv):
             "  mv .../user_data/sqlite .../user_data/sqlite_dat"
         )
     if len(victim["lfn_ents"]) != 1:
-        sys.exit(f"{victim['lfn']!r} spans {len(victim['lfn_ents'])} LFN entries; "
-                 "use a name of 9-13 characters so it fits in one")
+        sys.exit(
+            f"{victim['lfn']!r} spans {len(victim['lfn_ents'])} LFN entries; "
+            "use a name of 9-13 characters so it fits in one"
+        )
 
-    print(f"\nrewriting LFN {victim['lfn']!r} -> {TARGET_NAME!r} "
-          f"(short name {victim['short']!r} and its checksum are unchanged)")
+    print(
+        f"\nrewriting LFN {victim['lfn']!r} -> {TARGET_NAME!r} "
+        f"(short name {victim['short']!r} and its checksum are unchanged)"
+    )
     if dry:
         print("dry run: nothing written")
         os.close(fh)
