@@ -306,8 +306,7 @@ def check_user_data(rep, pkg, module):
         rep.add(
             BAD,
             "USER_DATA",
-            "the hard-coded path names the NAV module, so a %s payload is not read at all"
-            % module,
+            "the hard-coded path names the NAV module, so a %s payload is not read at all" % module,
         )
 
 

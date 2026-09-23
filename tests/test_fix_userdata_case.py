@@ -56,9 +56,7 @@ def fat32(path, sqlite_name=None, lowercase_short=False):
 
 
 def run(path, *flags):
-    return subprocess.run(
-        [sys.executable, TOOL, *flags, str(path)], capture_output=True, text=True
-    )
+    return subprocess.run([sys.executable, TOOL, *flags, str(path)], capture_output=True, text=True)
 
 
 def test_check_accepts_exact_lowercase_long_filename(tmp_path):

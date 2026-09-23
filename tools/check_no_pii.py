@@ -44,7 +44,10 @@ import sys
 from pathlib import Path
 
 PATTERNS = (
-    ("UK mobile number", re.compile(r"(?<!\d)(?:\+44\s?7|07)\d{3}[\s\-.]?\d{3}[\s\-.]?\d{3}(?!\d)")),
+    (
+        "UK mobile number",
+        re.compile(r"(?<!\d)(?:\+44\s?7|07)\d{3}[\s\-.]?\d{3}[\s\-.]?\d{3}(?!\d)"),
+    ),
     ("UK postcode", re.compile(r"(?<![A-Z0-9])[A-Z]{1,2}\d{1,2}[A-Z]? \d[A-Z]{2}(?![A-Z])")),
     ("email address", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
     ("NI number", re.compile(r"(?<![A-Z])[A-Z]{2} ?\d{2} ?\d{2} ?\d{2} ?[A-D](?![A-Z])")),
@@ -55,8 +58,24 @@ SAFE = ("example.com", "example.org", "example.net", "noreply@", "users.noreply.
 
 # Reading these as text is pointless and can be slow.
 BINARY_SUFFIX = (
-    ".bin", ".out", ".mot", ".crc", ".rcc", ".pkg", ".wav", ".sqlite", ".ttf",
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".zip", ".gz", ".7z", ".pdf",
+    ".bin",
+    ".out",
+    ".mot",
+    ".crc",
+    ".rcc",
+    ".pkg",
+    ".wav",
+    ".sqlite",
+    ".ttf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".zip",
+    ".gz",
+    ".7z",
+    ".pdf",
 )
 
 MARKER = "pii-ok"

@@ -27,6 +27,7 @@ smeg-splash = "tools.splash:main"
 smeg-studio = "tools.patch_studio:main"
 smeg-emu = "tools.ppcemu:main"
 smeg-syms = "tools.elfsyms:main"
+smeg-cartography = "tools.cartography:main"
 
 [tool.bandit]
 # Run from the pre-push hook. The tools read and write files the user points them at and

@@ -7,6 +7,20 @@ This page exists because the answer changed. `CAPABILITIES.md` used to park maps
 then the **engine turned out to be shipped unstripped**. Every claim here comes from files in
 the update packages, not from inference — the evidence is named as it goes.
 
+**`tools/cartography.py` reads every layer that is fully understood** — the name pools, the
+`.inf` sidecars, the `%03dSCC.DST` record tables and the `CCT.DAT` table — so the claims on
+this page can be checked against your own package rather than taken on trust:
+
+```sh
+uv run tools/cartography.py names  <pool>                      # a NUL-separated string pool
+uv run tools/cartography.py inf    MAPPE/005/DESCRI.DAT.inf    # the .inf checksum + fields
+uv run tools/cartography.py scc    <module>/005SCC.DST         # the record table
+uv run tools/cartography.py cct    CCT.DAT --image app_nav.bin # decrypt via the firmware key
+```
+
+It does **not** read the tiles, because they are not decoded — the bit-packing below is the
+reason. Where a claim is an inference rather than a reading, the page says so.
+
 ## Where the truth comes from
 
 Two PowerPC ELF files carry the whole subsystem, and neither is stripped:

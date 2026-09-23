@@ -437,8 +437,7 @@ def main():
             if gui_ver is not None:
                 set_gui_ver(tree, gui_ver)
                 print(
-                    "==> GUI_VER = %s  (Data_base/smeg.inf - shows as 'Display version')"
-                    % gui_ver
+                    "==> GUI_VER = %s  (Data_base/smeg.inf - shows as 'Display version')" % gui_ver
                 )
             for slot, name in name_map.items():
                 if not (slot.startswith("ring") and slot[4:].isdigit()):

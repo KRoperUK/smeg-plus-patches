@@ -187,7 +187,6 @@ def test_a_missing_package_is_a_clean_error(tmp_path):
     assert "no such package" in (r.stdout + r.stderr)
 
 
-
 def test_refuses_a_user_data_payload_in_a_wrongly_named_folder(tmp_path):
     """The updater does not search for the payload — it checks one hard-coded path.
 

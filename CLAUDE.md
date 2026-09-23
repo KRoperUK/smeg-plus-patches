@@ -117,6 +117,7 @@ this ordering — prefer it over running the tools by hand.
 | `splash.py` | the `Data_base/graphics/logo/*.pkg` marque bundles (**not** the boot splash) |
 | `unpack.py`, `mkelf.py`, `ppcdis.py`, `xref.py`, `callers.py` | the analysis tools every patch address was derived with; need `capstone`; untested |
 | `check_commit_msg.py`, `check_no_firmware.sh` | the two enforcement hooks |
+| `cartography.py` | the map metadata that *is* understood: name pools, `.inf` sidecars, `SCC` records, `CCT.DAT` (decrypt only — see the licensing note in `docs/CARTOGRAPHY.md`) |
 
 ### Reverse-engineering toolchain
 
