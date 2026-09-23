@@ -130,6 +130,37 @@ contents and the consumer both are. What remains cheap is the
 this, and note that the retrofit piggyback these units are paired with already displays
 OpenStreetMap-derived navigation today.
 
+#### What the tiles actually look like
+
+Sampling one small member of each extension from the Italian part splits them into three
+groups, which is what makes the size of the job legible:
+
+| group | extensions | shape |
+|---|---|---|
+| **text-bearing** | `POI`, `DAT` | readable names, NUL-terminated, with binary fields alongside |
+| **`RS` container** | `TOP`, `S_C`, `LZW` | magic `52 53` + a type byte + lengths, then compressed payload |
+| **binary tables** | `DEG`, `DST`, `CAT`, `IND`, `COD`, `DPL`, `LET` | fixed-width records, delta-encoded integers |
+
+The most tractable thing in the whole cartography is the **POI family**:
+
+- **`001POI.DAT`** (44 MB) is mostly *plain text* — `VIA LUIGI COLOMBO`,
+  `INTESA SANPAOLO`, `VIA BATTAGLIA SAN MARTINO, 38`, `TIGROS` — with a NUL-terminated name
+  followed by a handful of binary bytes that are plausibly packed coordinates. That is a
+  record table, not an opaque blob.
+- **`001_<LANG>.POI`** (~5 KB each) holds the POI **category names per language** — Danish
+  gives `SKOLE`, `HOSPITAL`, `LUFTHAVN`, `TANKSTATION` — and it is **back-reference
+  compressed**: strings appear as tails like `JERE UDDANNELSE` (from *VIDERE UDDANNELSE*) and
+  `DEHAVN` (from *LYSTBÅDEHAVN*).
+- **`001DSP.POI`** (7 MB) is the binary *spatial index* over them — no strings at all.
+
+`.DAT` files carry **named** sections — `001_GRUPPO_BCR.DAT` opens with `SEG_TO_BCR.IND` and
+`BCR_OFFSET.IND` — so the self-description reaches into the tiles, not just the manifest.
+
+That balances the picture: **POIs are tractable** (readable names, a record structure, and a
+native import route already in the firmware), while the geometry and routing — `DEG`, `DST`
+and the 232 MB `DET.DRS` — remain the hard core, because that is what the engine's routing has
+to agree with.
+
 The on-unit copy is still behind the updater, so this does **not** make the *live* map data
 readable — it makes the shipped cartography readable.
 
