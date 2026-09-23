@@ -373,25 +373,22 @@ tarballs.
 `DATA/MAPPE/NNN/`, `DESCRI.DAT`, `CD_VER.*.INF`, `GRUPPO_4_*` — but which mechanism presents it
 to the unit has not been established here.
 
-!!! warning "The decisive open question"
+!!! success "Answered: it covers the map data — and the container is re-sealable"
 
-    **Does `CCT.DAT` cover the map data, or only authorise the region?** If it only authorises,
-    the data underneath could in principle be replaced. If it binds the data — by hash or
-    signature — then a self-built map **cannot be delivered at all**, and no amount of format
-    work changes that.
+    Decrypting `CCT.DAT` (next section) yields a **per-country checksum keyed to that country's
+    `DESCRI.DAT`**, which is the manifest over the country's payloads. So it **does bind the
+    map data**, rather than merely authorising a region.
 
-    Nothing here answers that, and it is the first thing to settle: it decides whether the rest
-    of this page is a route or a dead end. It is also why the name-pool PoC was built to stand
-    on its own.
+    That is not the dead end it sounds like. The value is **32 bits, not a signature**, and the
+    cipher enclosing it is a byte subtraction whose key vector **ships in the application
+    image**. So the token is re-sealable in principle, and what remains is identifying one
+    checksum — the same shape as `contract.dat`, not the shape of a signed token.
 
-    There is a licensing dimension to this as well as a technical one. `CCT.DAT` is how HERE's
-    cartography is licensed per vehicle, and OpenStreetMap brings its own ODbL obligations. Both
-    are decisions for whoever ships a map, and they are different in kind from everything else
-    in this repository.
+    There is still a licensing dimension, and it is not the same question. `CCT.DAT` is how
+    HERE's cartography is licensed per vehicle, and OpenStreetMap brings its own ODbL
+    obligations. Both are decisions for whoever ships a map.
 
 ### What `CCT.DAT` is made of
-
-Partial progress, recorded so the next attempt starts further in.
 
 **It is a fixed-block file.** `Test_Read_CCT_table` (`0x0169f330`) reads it **76 bytes at a
 time** — `li r5, 0x4c` on the read and `cmpwi r3, 0x4c` on the return — and 456 = **6 × 76**.
@@ -414,20 +411,61 @@ and it holds small values in the same `0x00`–`0x0F` range, starting `00 04 01 
 0f 0b 0f 06 0c`, which is *the same sequence* as the first record's key run. That overlap is
 not a coincidence and is probably the thread to pull.
 
-**Where it stops.** The inner loop computes `out[i] = (key[idx] − src[i]) & 0xFF` where `idx`
-comes from a divide-by-7 idiom (`0x92492493`). Simulating that arithmetic gives `idx = 0` for
-every iteration, which would mean a one-byte key — and applying it yields no readable text, so
-**the register tracking is wrong somewhere and the plaintext is not yet recovered.**
-Reproducing it means reading `Test_Read_CCT_table` in Ghidra rather than by eye, which is the
-same tool this page already names for the tile loaders.
+**It decrypts, and the key ships in the firmware.** Ghidra on `Test_Read_CCT_table`
+(`0x0169f330`) gives the loop directly:
 
-**What can be said without the plaintext.** Six 76-byte records is 456 bytes: that is a
-licence-shaped payload — a code, an activation key, a region — and there is **no evidence
-anywhere of a digest taken over the cartography**. The strings name `TestGetMapCode` and
-`TestWriteMapCode` and a VIN lookup, not a map hash. So the balance of evidence is that
-`CCT.DAT` **authorises rather than binds** — but that is an inference from size and naming,
-**not** a demonstration, and it should not be relied on until the plaintext or the comparison
-is read. Say so plainly if it comes up.
+```c
+iVar4 = iVar6 - ((iVar6 / 0x380) * 0x400 + (iVar6 / 0x380 & 0x1ffffffU) * -0x80);  // = iVar6 % 896
+iVar6 = iVar4 + 1;
+cVar5 = acStack_b2[iVar3] - ChipherCCT_Vect[iVar4];
+acStack_b2[iVar3] = cVar5;
+```
+
+so the transform is a **byte subtraction against a key vector applied cyclically with period
+896**, over a counter that runs continuously across all six 76-byte blocks. The
+`0x92492493` constant that looked like a divide-by-7 is a **divide by 896** (`7 × 128`) — a
+reminder that reading this by eye got it wrong and Ghidra got it right in one pass.
+
+`ChipherCCT_Vect` is a **896-byte data symbol at `0x035E4CD8`, inside the application image**.
+Applying it reproduces the plaintext exactly.
+
+**What `CCT.DAT` actually says.** Decrypted, it is a per-country table — six records here,
+one per country in the package:
+
+```
+001 … 4c75a293 … /MAPPE/001/DESCRI.DAT
+002 … 05e1dd3e … /MAPPE/002/DESCRI.DAT
+003 … e3eb4cb5 … /MAPPE/003/DESCRI.DAT
+004 … 30d2c5af … /MAPPE/004/DESCRI.DAT
+005 … 1b526603 … /MAPPE/005/DESCRI.DAT
+012 … 4deaa03f … /MAPPE/012/DESCRI.DAT
+```
+
+**So the decisive question is answered in the affirmative: it covers the cartography.** It is a
+per-country integrity value keyed to that country's `DESCRI.DAT` — and `DESCRI.DAT` is itself
+the manifest carrying each payload's size and CRC, so the chain commits to the map data.
+
+**And it is a checksum, not a signature.** The value is **32 bits, stored as ASCII hex**, and
+the key it is enclosed by is a plain subtraction table sitting in the firmware. That is the
+same shape as `contract.dat`, not the shape of a signed token.
+
+**The one gap: the algorithm.** The value is not `crc32`, `adler32`, or a truncated
+`md5`/`sha1`/`sha256` of the shipped `DESCRI.DAT` (nor of its `.inf`), and it is not `crc32`
+of the country's payload `.BIN` in either its gzipped or inflated form — every combination
+tried, on two countries, missed. So *which* bytes are summarised, and by what, is not
+established. Given the firmware uses `crc32` everywhere else, a CRC over bytes that differ
+from the shipped file (the updater `Untar`s the payloads, so the on-unit layout is not the
+package layout) is the most likely explanation.
+
+That gap matters, and its size is worth stating plainly: **identifying the checksum is what
+decides whether a self-built map can be delivered.** The container is re-sealable — the cipher
+is a subtraction and its key is in the image — so the remaining work is reproducing one
+32-bit value, not breaking a signature.
+
+**It is also a licence.** `CCT.DAT` is how HERE's cartography is licensed per vehicle, and
+OpenStreetMap carries ODbL attribution and share-alike. Both are decisions for whoever ships a
+map. This page documents the mechanism because that is what the repository does; it does not
+provide a tool for forging the token.
 
 ## Caveats
 
