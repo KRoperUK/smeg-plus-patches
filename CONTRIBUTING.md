@@ -47,6 +47,24 @@ images, symbol maps, ring tones or other Magneti Marelli / Stellantis content �
 `.gitignore` blocks the usual extensions, but check before you commit. Tests build a
 synthetic package precisely so that no real firmware is needed.
 
+## 3. No personal data
+
+This repository is public, and the things that get pasted into it are exactly the things that
+carry your details — a screenshot of a settings screen, a transcribed log, a note about which
+car was tested. `tools/check_no_pii.py` runs as a `pre-commit` hook and refuses the commit if
+it finds a UK mobile number, a full postcode, an email address or an NI number.
+
+If a match is a deliberate example rather than a real one, put `pii-ok` on that line.
+
+Two things it deliberately does **not** flag. A bare `/Users/<name>/` home path, because the
+committed `builds/*.json` manifests are local build recipes that already carry one and the
+docs say so. And car registrations, because the format collides with ordinary uppercase
+tokens in patch notes — a guard that cries wolf gets turned off, and then it protects
+nothing.
+
+It is a floor, not a guarantee: nothing catches personal data that matches no pattern. Read
+the diff before you push.
+
 ## Working with AI agents
 
 If you are an AI agent, or you use one on this repository, read
@@ -79,7 +97,7 @@ The `bytes` field does not have to be written from memory: [the toolchain
 page](docs/TOOLCHAIN.md) covers assembling a single instruction with `llvm-mc`, or compiling
 and linking a whole routine at the patch address with `clang` and `lld`.
 
-## 3. Gotchas worth knowing
+## 4. Gotchas worth knowing
 
 Things that have each cost time here at least once, in roughly the order you meet them.
 
