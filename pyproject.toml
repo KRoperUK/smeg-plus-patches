@@ -30,6 +30,7 @@ smeg-syms = "tools.elfsyms:main"
 smeg-cartography = "tools.cartography:main"
 smeg-crc-recover = "tools.crc_recover:main"
 smeg-fingerprint = "tools.fingerprint:main"
+smeg-prepare-usb = "tools.prepare_usb:main"
 smeg-verify-package = "tools.verify_package:main"
 
 [tool.bandit]

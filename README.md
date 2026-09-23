@@ -127,6 +127,7 @@ SMEG+ update on the car (engine running). See [`docs/FLASHING.md`](docs/FLASHING
 | `tools/cartography.py` | read the map metadata: name pools, `.inf` sidecars, `SCC` records, `CCT.DAT` |
 | `tools/crc_recover.py` | recover CRC parameters from `(message, checksum)` samples |
 | `tools/fingerprint.py` | identify which build an application image is, or refuse |
+| `tools/prepare_usb.py` | copy a package to a stick, verify the copy, check the layout |
 | `tools/verify_package.py` | audit a package's checksum cascade before flashing |
 | `tools/apply_files.sh` | overlay patched files onto a package copy |
 
