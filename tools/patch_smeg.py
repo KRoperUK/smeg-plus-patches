@@ -232,7 +232,7 @@ def assert_crc_record(out_dir, rel, want, what):
         raise SystemExit("%s: %s does not record CRC %#010x" % (what, rel, want))
 
 
-def verify_written(out_dir, name, v, base):
+def verify_written(out_dir, name, v, base, stock=False):
     """Re-read a variant's written files and close the loop on them.
 
     Everything up to here has been checked in memory. This goes back to the files on disk,
@@ -246,11 +246,12 @@ def verify_written(out_dir, name, v, base):
     start, img = inflate(bq)
     for p in v["patches"]:
         off = int(str(p["addr"]), 16) - base
-        want = bytes.fromhex(p["bytes"])
+        # in stock mode nothing was written, so the site must still hold the original
+        want = bytes.fromhex(p["expect"] if stock else p["bytes"])
         if img[off : off + len(want)] != want:
             raise SystemExit(
-                "%s: after writing, %#x does not hold the patched bytes"
-                % (name, int(str(p["addr"]), 16))
+                "%s: after writing, %#x does not hold the %s bytes"
+                % (name, int(str(p["addr"]), 16), "original" if stock else "patched")
             )
 
     bq_crc = crc32(bq)
@@ -323,6 +324,11 @@ def main():
         help="copy the whole package into --out before overlaying changes",
     )
     ap.add_argument("--level", type=int, default=6, help="zlib level for re-packing (default 6)")
+    ap.add_argument(
+        "--stock",
+        action="store_true",
+        help="apply no patches, but rebuild and verify the checksum cascade",
+    )
     args = ap.parse_args()
 
     spec = json.loads(Path(args.patches).read_text())
@@ -367,8 +373,15 @@ def main():
         start, img = inflate(old_bq)
         img = bytearray(img)
         check_firmware(img, v.get("firmware"), name)
-        check_build(img, name, spec)
-        apply_patches(img, base, v["patches"], name)
+        if args.stock:
+            # No patches, but everything else - re-pack, re-seal, verify. The unit rewrites
+            # the application only when its content differs, so this is a baseline to
+            # restore from, and a canary for the packaging path itself: if a re-sealed stock
+            # package is refused, the sealing is wrong rather than the patch.
+            print("    %-14s stock: no patches applied" % "mode")
+        else:
+            check_build(img, name, spec)
+            apply_patches(img, base, v["patches"], name)
 
         new_bq = old_bq[:start] + zlib.compress(bytes(img), args.level)
         chk = zlib.decompressobj()
@@ -403,7 +416,7 @@ def main():
             "    %-14s %9d -> %-9d  crc %#010x -> %#010x"
             % ("f_BigQuick", len(old_bq), len(new_bq), old_crc["bq"], new_crc_bq)
         )
-        ctrl_crcs[name] = verify_written(args.out, name, v, base)
+        ctrl_crcs[name] = verify_written(args.out, name, v, base, stock=args.stock)
         done += 1
 
     if done:
