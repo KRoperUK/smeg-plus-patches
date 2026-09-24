@@ -54,18 +54,19 @@ import shutil
 import struct
 import sys
 import tarfile
-import zlib
 from pathlib import Path
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from smeglib import crc32, swap_crc  # noqa: E402
 
 SYSTEM_PREFIX = "/SYSTEM/"
 RECORD_SIZE = 264  # system_ctrl.bin record stride
 RECORD_CRC_OFF = 260  # CRC32 sits at path_offset + 260
 MODULES = ("AUDIO_BT", "AUDIO_BT_256", "NAV")
 TONE_DIRS = ("ring_tones", "wait_tones")
-
-
-def crc32(b):
-    return zlib.crc32(b) & 0xFFFFFFFF
 
 
 def die(msg):
@@ -215,16 +216,6 @@ def patch_inf(inf_bytes, new_crc, size_fields):
         if n != 1:
             die("no %s field in system.bin.inf" % key)
     return out
-
-
-def swap_crc(buf, old, new, what):
-    pat = struct.pack(">I", old)
-    if buf.count(pat) != 1:
-        die(
-            "expected exactly one %s CRC %#010x in the manifest, found %d"
-            % (what, old, buf.count(pat))
-        )
-    return buf.replace(pat, struct.pack(">I", new))
 
 
 # --------------------------------------------------------------------- commands
