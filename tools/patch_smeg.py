@@ -48,14 +48,7 @@ sys.path.insert(0, HERE)
 
 from appimage import DEFAULT_BASE, inflate  # noqa: E402
 from fingerprint import identify, variants_from_spec  # noqa: E402
-
-
-def crc32(b):
-    return zlib.crc32(b) & 0xFFFFFFFF
-
-
-def s32(v):
-    return struct.unpack(">i", struct.pack(">I", v))[0]
+from smeglib import crc32, s32, swap_crc  # noqa: E402
 
 
 def rewrite_inf(blob, new_crc):
@@ -72,18 +65,6 @@ def rewrite_smeg_inf(blob, new_crc):
     if n != 1:
         raise SystemExit("no 'BIGQUICK_CRC32:' field found in smeg.inf")
     return out
-
-
-def swap_crc(buf, old, new, what):
-    """Replace one 4-byte big-endian CRC in a control file."""
-    pat = struct.pack(">I", old)
-    n = buf.count(pat)
-    if n != 1:
-        raise SystemExit(
-            "expected exactly one occurrence of %s CRC %#010x in the control file, found %d"
-            % (what, old, n)
-        )
-    return buf.replace(pat, struct.pack(">I", new))
 
 
 def load(path):
