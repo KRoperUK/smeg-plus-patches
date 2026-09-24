@@ -60,7 +60,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from smeglib import crc32, swap_crc  # noqa: E402
+from smeglib import crc32, rewrite_inf_field, swap_crc  # noqa: E402
 
 SYSTEM_PREFIX = "/SYSTEM/"
 RECORD_SIZE = 264  # system_ctrl.bin record stride
@@ -207,14 +207,10 @@ def patch_system_ctrl(ctrl_bytes, changes, old_data):
 
 
 def patch_inf(inf_bytes, new_crc, size_fields):
-    out, n = re.subn(rb"CRC32: -?\d+", b"CRC32: %d" % new_crc, inf_bytes, count=1)
-    if n != 1:
-        die("no CRC32 field in system.bin.inf")
+    out = rewrite_inf_field(inf_bytes, "CRC32", new_crc, "system.bin.inf")
     for key, val in size_fields.items():
-        k = key.encode()
-        out, n = re.subn(k + rb": \d+", k + b": %d" % val, out, count=1)
-        if n != 1:
-            die("no %s field in system.bin.inf" % key)
+        # SIZE / SIZE_n are unsigned counts, unlike the CRC32 fields
+        out = rewrite_inf_field(out, key, val, "system.bin.inf", signed=False)
     return out
 
 

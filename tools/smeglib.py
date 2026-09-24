@@ -51,11 +51,20 @@ def read_inf_field(text, field="CRC32"):
     return None if m is None else int(m.group(1)) & 0xFFFFFFFF
 
 
-def rewrite_inf_field(blob, field, value):
-    """Rewrite one `FIELD: <int>` in place, refusing when it is not there exactly once."""
+def rewrite_inf_field(blob, field, value, where, signed=True):
+    """Rewrite one `FIELD: <int>` in place, refusing when it is not there exactly once.
+
+    `signed` is not cosmetic and is not inferred. The CRC32 fields are written in the
+    signed-decimal form the .inf files use, so a value above 0x7fffffff goes out negative;
+    the SIZE fields are plain unsigned counts. Collapsing the two would write a negative
+    size for a partition above 2 GiB, which no test here would notice.
+    """
     out, n = re.subn(
-        (field + r": -?\d+").encode(), ("%s: %d" % (field, s32(value))).encode(), blob, count=1
+        (field + r": -?\d+" if signed else field + r": \d+").encode(),
+        ("%s: %d" % (field, s32(value) if signed else value)).encode(),
+        blob,
+        count=1,
     )
     if n != 1:
-        raise SystemExit("no '%s:' field found in the .inf" % field)
+        raise SystemExit("no '%s:' field found in %s" % (field, where))
     return out
