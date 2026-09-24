@@ -75,8 +75,40 @@ def write_ctrl(path, entries):
         fh.write(bytes(out))
 
 
-def build_package(root, variant="NAV", patch_addr=0x100, img=None):
-    """Create a minimal package containing one variant. Returns a dict of paths."""
+OTHER_MODULES = ("BSP", "HARMONY", "RENESAS", "USERGUIDE")
+
+
+def write_other_module(root, name):
+    """A module that is not an application module: its own content, and no AppBin/.
+
+    BSP carries the boot images, USERGUIDE its document. What matters here is only that
+    there is no AppBin/f_BigQuick.bin, which is the property two tools got wrong.
+    """
+    mod = os.path.join(root, name)
+    os.makedirs(mod, exist_ok=True)
+    payload = os.path.join(mod, "%s.bin" % name)
+    Path(payload).write_bytes(("not an application module: %s" % name).encode())
+    write_ctrl(
+        os.path.join(root, "%s_ctrl.bin" % name),
+        [(1, crc32(Path(payload).read_bytes()), "/%s/%s.bin" % (name, name))],
+    )
+
+
+def build_package(root, variant="NAV", patch_addr=0x100, img=None, other_modules=OTHER_MODULES):
+    """Create a minimal package containing one variant. Returns a dict of paths.
+
+    It also writes the modules a real package carries that are *not* application modules -
+    BSP, HARMONY, RENESAS, USERGUIDE. A fixture of one application module and nothing else is
+    not a package: it is the one shape in which "does every module ship AppBin/f_BigQuick.bin?"
+    has the answer yes, so no tool was ever exercised against the answer no. Two of them then
+    shipped the assumption, and a real vendor package failed four checks and was refused a copy.
+
+    Deliberately only one *application* module. A second one would need a second image, and
+    identical images share a CRC - which would make patch_smeg's "exactly one occurrence of
+    this CRC in the control file" check ambiguous, so the fixture must not create that.
+
+    Pass other_modules=() for the old minimal shape.
+    """
     img = img if img is not None else make_image()
     mod = os.path.join(root, variant)
     appbin = os.path.join(mod, "AppBin")
@@ -100,12 +132,10 @@ def build_package(root, variant="NAV", patch_addr=0x100, img=None):
             (1, crc32(Path(smeg_path).read_bytes()), "/%s/smeg.inf" % variant),
         ],
     )
-    write_ctrl(
-        os.path.join(root, "ctrl.bin"),
-        [
-            (1, crc32(Path(ctrl_path).read_bytes()), "/%s_ctrl.bin" % variant),
-        ],
-    )
+    for name in other_modules:
+        if name != variant:
+            write_other_module(root, name)
+    set_root_ctrl(root, [variant] + [m for m in other_modules if m != variant])
 
     return {
         "variant": variant,

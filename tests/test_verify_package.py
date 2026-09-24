@@ -142,7 +142,7 @@ def test_json_output_is_parseable(pkg):
     r = run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p), "--json")
     assert r.returncode == 1
     doc = json.loads(r.stdout)
-    assert doc["problems"] and doc["summary"]["modules"] == ["NAV"]
+    assert doc["problems"] and "NAV" in doc["summary"]["modules"]
 
 
 def test_a_package_with_no_modules_is_not_reported_as_consistent(tmp_path):
@@ -164,7 +164,5 @@ def test_non_application_modules_are_not_failures(tmp_path):
     p = tmp_path / "SMEG_PLUS_UPG"
     p.mkdir()
     helpers.build_package(str(p), variant="NAV")
-    bsp = p / "BSP"
-    bsp.mkdir()
-    (bsp / "vxWorks.bin").write_bytes(b"not an application module")
+    assert (p / "BSP").is_dir() and not (p / "BSP" / "AppBin").exists()
     assert verify_package.audit(str(p)) == []
