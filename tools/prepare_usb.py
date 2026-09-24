@@ -92,6 +92,13 @@ def check_layout(root):
     # rejected a real vendor package that was perfectly good, so what is required is that at
     # least one application module is present, not that all of them are.
     app_modules = [m for m in modules if os.path.isfile(os.path.join(root, m, MODULE_IMAGE))]
+    # A module carrying an AppBin/ with no image inside it is a half-built module, and that is
+    # a problem wherever it occurs. It is a different thing from a module that never had an
+    # application image at all: "requires at least one application module" on its own accepts a
+    # NAV whose f_BigQuick.bin is missing, which is the file the patch step needs.
+    for m in modules:
+        if os.path.isdir(os.path.join(root, m, "AppBin")) and m not in app_modules:
+            problems.append("%s has an AppBin/ but no %s" % (m, MODULE_IMAGE))
     if modules and not app_modules:
         problems.append(
             "no application module (none of %s ships %s)" % (", ".join(modules), MODULE_IMAGE)
