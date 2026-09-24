@@ -332,9 +332,8 @@ def test_modules_without_an_app_image_are_not_layout_problems(tmp_path):
     """
     p = tmp_path / "SMEG_PLUS_UPG"
     make_package(str(p))
-    bsp = p / "BSP"
-    bsp.mkdir()
-    (bsp / "vxWorks.bin").write_bytes(b"its own content")
+    # the fixture builds them, so this asserts against it rather than a hand-made copy
+    assert (p / "BSP").is_dir() and not (p / "BSP" / "AppBin").exists()
     assert prepare_usb.check_layout(str(p)) == []
 
 
