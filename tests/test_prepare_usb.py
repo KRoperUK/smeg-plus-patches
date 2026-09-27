@@ -210,6 +210,22 @@ def test_shadows_of_copied_files_are_removed_and_nothing_else(tmp_path):
     assert (top / "ctrl.bin").read_bytes() == b"c"
 
 
+def test_the_package_folders_own_shadow_is_removed_too(tmp_path):
+    """The folder the copy creates gets a `._SMEG_PLUS_UPG` at the stick root, outside it.
+
+    That is where a real stick still had one after the first fix, found only by looking.
+    """
+    top = tmp_path / "SMEG_PLUS_UPG"
+    top.mkdir()
+    (top / "ctrl.bin").write_bytes(b"c")
+    (tmp_path / "._SMEG_PLUS_UPG").write_bytes(b"shadow")
+    (tmp_path / "._something_else").write_bytes(b"not ours")
+
+    assert prepare_usb.remove_own_shadows(str(top), ["ctrl.bin"]) == 1
+    assert not (tmp_path / "._SMEG_PLUS_UPG").exists()
+    assert (tmp_path / "._something_else").exists()
+
+
 def test_junk_on_the_stick_fails_rather_than_warning(pkg, tmp_path):
     """`._*` is a failure, not a warning - the updater does not expect it.
 

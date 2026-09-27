@@ -156,9 +156,15 @@ def remove_own_shadows(top, names):
         while rel:
             paths.add(rel)
             rel = os.path.dirname(rel)
+    top = os.path.normpath(top)
+    # the package folder is written too, so its shadow lands beside it at the stick root
+    shadows = [os.path.join(os.path.dirname(top), APPLEDOUBLE + os.path.basename(top))]
+    shadows += [
+        os.path.join(top, os.path.dirname(rel), APPLEDOUBLE + os.path.basename(rel))
+        for rel in paths
+    ]
     removed = 0
-    for rel in paths:
-        shadow = os.path.join(top, os.path.dirname(rel), APPLEDOUBLE + os.path.basename(rel))
+    for shadow in shadows:
         if os.path.isfile(shadow):
             os.remove(shadow)
             removed += 1
