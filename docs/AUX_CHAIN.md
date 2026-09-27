@@ -437,6 +437,73 @@ there. What is still unknown is where `logMsg`'s output physically surfaces on t
 which is issue #94. Until that is settled the diagnostic build is buildable but not
 readable.
 
+## What the first car test established
+
+The build described above was flashed and observed. Three results, one of them a
+falsification.
+
+**`aux-boot-default` is applied, correctly located, and ineffective.** The shipped image holds
+`39200007` at `0x0169948c` (pristine holds `81210008`), and that site falls inside
+`C_MGR_SRC::StartUp` (`0x016990b8`, 1004 bytes, ending exactly where `C_MGR_SRC::Init` begins at
+`0x016994a4`). So the patch does what its description says — `li r9,7` then `stw r9,0xb4(r31)`,
+with the value read straight back at `0x01699498` — and the unit still comes up on **FM**, *with
+audio playing into the AUX input*. AUX was visible and selectable, so `aux-autoswitch` worked.
+
+That falsifies the obvious explanation. The reading this file previously leaned on — no signal,
+so no request node, so FM — does not survive a test with signal present: a node for
+`Sched_Pos = 7` is there and does not win.
+
+**Where the match actually happens.** A full scan for readers of `+0xb4` finds `0x01695b90`,
+inside `ExecuteAllocationFirstRound` (`0x016957ec`–`0x01695bfc`), near the end of it. It is the
+only reader of that field in that function.
+
+**A hypothesis, explicitly not a finding: ordering.** `ExecuteAllocationFirstRound` is at
+`0x016957ec` and `StartUp` at `0x016990b8`. If the first allocation pass runs *before* `StartUp`
+writes `+0xb4`, then the match ran against the old value — `Last_Source` = 1, FM — and picked FM
+correctly; after which `StartUp` writes 7 into a field nothing reads again until the next boot,
+by which time FM has overwritten it. That accounts for "always FM, whatever is on the input".
+
+**The ordering is not verified.** Address order is not execution order, and this file already
+records one conclusion that executing overturned.
+
+**The candidate fix, if the ordering holds:** patch the read at `0x01695b90` to a constant 7
+rather than the write at `0x0169948c` — the same one-instruction trick, applied downstream of the
+ambiguity so it holds whichever order the two functions run in. Deliberately not written as a
+patch entry yet.
+
+## A symbol map now exists
+
+The SPYSTORE dump from the same unit carries `abs_symbols_base.txt.gz` and four companions —
+**98,365 symbols**. This is the first symbol map this repository has had, and it changes what is
+checkable rather than merely making it convenient:
+
+  * `tools/callers.py` works: a scan finds 108,907 `bl` sites and 12,982 in-image targets. Its
+    documented limit stands — direct branches only — and `C_MGR_SRC::StartUp` genuinely has **0
+    direct callers** because it is virtual. The vtable holds exactly one pointer to it, at
+    `0x0307aa74`.
+  * `ppcdis`, `xref`, `callers` and `symdiff` can now be run against real firmware, which is
+    what issue **#38** says has never happened.
+
+A warning for whoever picks this up: the entry point `InitializeMetaNav` at `0x01000000` also has
+0 direct callers, and that is correct — the boot loader jumps to it, nothing in the image branches
+to it. Using it as a control for "is the tool working" produces a false negative, as it briefly
+did while writing this.
+
+## Two display findings
+
+**The version shown on the unit is not `GUI_VER`.** `GUI_VER` was set to `32.01` for this build,
+and it appears nowhere on the unit. The "Display version" screen reads `cd 26482`, which is
+`Data_base/media.inf` verbatim — a file this build did not touch. The claim in `AGENTS.md` that
+`GUI_VER` is "the only safe visible field" is therefore wrong or at least misleading; do not use
+it as an "did it apply" beacon.
+
+**A renamed ringtone keeps its old name.** The custom tone played (so the media partition
+applied), but the list still said `Alien`. The names are rows in
+`Data_base/sqlite/up_common.sqlite` (`UP_Keys`, section `phone`, key `Ringing_List`) — a settings
+database, not a media file. A normal package update writes the package's copy, not the unit's
+live one, which is also why paired phones survive. **Inference, not verified**: it has not been
+confirmed that the unit reads the name from its own copy rather than from the package.
+
 ## Status of each claim
 
 | claim | how it is known |
@@ -457,3 +524,11 @@ readable.
 | `AllocateSource` is the client entry that feeds `AddRequest` | read statically; the function's own runtime lines were captured |
 | `Last_Source` uses `Sched_Pos`, not raw `SrcId` | **executed** — tuner had `Last_Source=1`, `SrcId=0xbc00`, `Sched_Pos=1` |
 | `7` is the value AUX needs | strongly supported: enum says `POS_AUX=7`; AUX tuple and live setting still not executed |
+| `aux-boot-default` applies and is correctly located in `C_MGR_SRC::StartUp` | **executed** — `39200007` verified in the shipped image at `0x0169948c` |
+| `aux-boot-default` changes the boot source | **falsified on hardware** — still FM, with audio playing into AUX |
+| `ExecuteAllocationFirstRound` reads `+0xb4` at `0x01695b90` | **read from disassembly**, whole-image scan for readers of that field |
+| `StartUp` runs before the first allocation pass | **not known** — ordering assumed from address order, which is not evidence |
+| the vtable for `C_MGR_SRC` holds exactly one pointer to `StartUp`, at `0x0307aa74` | **read from the image** |
+| `callers.py` finds direct `bl` callers | **executed** — 108,907 sites, 12,982 targets; virtual methods return 0 by design |
+| the Display-version screen reads `media.inf`, so `GUI_VER` is not a visible beacon | **executed on hardware** — `cd 26482` is `media.inf` verbatim |
+| a renamed ringtone keeps its old name after a package update | **executed on hardware**; the settings-database reason is **inferred** |
