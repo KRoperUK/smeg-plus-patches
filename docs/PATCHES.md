@@ -473,8 +473,8 @@ Both offsets were verified against all three images (`AUDIO_BT`, `AUDIO_BT_256`,
 
     Flashed with the bytes below verified in the shipped image, and the unit still booted to
     FM with audio playing into AUX. The restore target is set, but AUX's request never gets a
-    chance to match it. A saved source is restored only when its request is in the
-    `ScheduledInit` table, and AUX has no row there, while the tuner does. See
+    chance to match it. AUX's source request carries the `PrOnly` flag, which keeps it out of
+    the `ScheduledInit` table that the restore goes through, so it never reaches the comparison. See
     [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
     Do not flash this expecting a boot to AUX. Everything below is kept as the record of what
     the patch does.

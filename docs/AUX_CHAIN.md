@@ -527,18 +527,23 @@ the `+0xb4` match (`0x01695b84`) runs only when the byte at `this+0x3c0` is non-
 is 0 from the constructor and `Init`. `SchedulerInitTimeout` sets it, and four sites in
 `AddRequest` set or clear it.
 
-**A saved source is restored only if its request matches the restore table.** *Read.*
-`AddRequest` restores in two ways:
+**A saved source is restored only through the `ScheduledInit` path in `AddRequest`.** *Read* —
+disassembly, confirmed against Ghidra's decompilation of `AddRequest`. A type-5 or type-6
+request is first added to the list at `+0xd4` (jump table at `0x02f4b080`), which is the list the
+first pass matches against. Then, **only if the request's byte at `+0x28` is clear**
+(`0x0169846c`–`0x01698474`):
 
-| request type | condition | effect |
-|---|---|---|
-| 4 (a scheduled-init registration) | its `Sched_Pos` equals `+0xb4` **and** its priority equals `+0xac` (`0x016983bc`, `0x016984f4`) | cancels the init timer, sets the flag, allocates |
-| 5 or 6 | the request's byte at `+0x28` is clear **and** `IsInitialized(Sched_Pos, priority)` is true (`0x01698480`), i.e. the pair is in the `ScheduledInit` table at `+0x370` | cancels the timer, sets the flag, `ForceSchedulerPosition(Sched_Pos)`. **`Last_Source` is not consulted** |
+| the request's `(Sched_Pos, priority)` pair… | effect |
+|---|---|
+| is already in the `ScheduledInit` table at `+0x370` (`IsInitialized`) | cancels the init timer, sets the flag, `ForceSchedulerPosition(Sched_Pos)` — a source that asks again after boot is switched to straight away |
+| is new | `SetScheduledInit` adds it to the table. If it also equals (`+0xb4`, `+0xac`) — i.e. (`Last_Source`, `Last_Source_Priority`) — the init timer is cancelled and the flag set. Then `ExecuteAllocation` runs, and the first pass matches `+0xb4`: **this is the restore** |
+
+A request with `+0x28` set skips all of that and goes straight to `ExecuteAllocation`. It never
+enters the table and can never be restored. Type-4 requests take a separate branch with the same
+table-and-compare logic but are never added to a request list.
 
 The request's type is the field at request `+0x14`: the spy line's `Type=`, confirmed from the
-format string at `0x0300a63c` and `WriteMgrSrcSpy`'s loads. Type 4 is the only type that goes
-through `SetScheduledInit`, which fills the table. Types 5 and 6 go into the list at `+0xd4`
-(jump table at `0x02f4b080`), which is the list the first pass matches against.
+format string at `0x0300a63c` and `WriteMgrSrcSpy`'s loads.
 
 **If nothing matches in time, the timer picks FM.** *Read.* `SchedulerInitTimeout` calls
 `ChangeToNextSchedulerPosition(0, 0)`. If that function finds an eligible request in the list
@@ -546,7 +551,19 @@ at `+0xd4`, it moves the old `+0xb4` into `+0xe4`, stores a literal **1** into `
 (`0x01697b44`–`0x01697b48`), and runs allocation. Position 1 is `POS_TUNER`. If it finds none,
 the flag is cleared again and a 5 s retry timer is started.
 
-**AUX is not in the restore table.** *Executed* — the spy's own dump of the table:
+**AUX's request has `+0x28` set, so AUX never enters the table.** *Executed* — the spy's
+request-list dump. The last column, `PrOnly`, is the byte at `+0x28`:
+
+```
+Nb|src|id|Status|Norm|NoSr|Lock|Type|sche|Post|Susp|PrOnly|
+ 1|0xa   |0xbc00   |WAITING|  10| 254| 254|   5|   1|   1|   1|   0|  false|
+ 2|0x3   |0x17400  |WAITING|  20| 254| 254|   5|   9|   0|   1|   1|  false|
+ 5|0x3   |0xe200   |ACKNOWL|  20| 255| 255|   5|   7|   0|   1|   1|  true|
+```
+
+The rows are the tuner (`0xbc00`, position 1), USB (`0x17400`, position 9) and AUX (`0xe200`,
+position 7). AUX's priority (`Norm`) is **20**, and AUX is the only request with `PrOnly` true.
+The table dump agrees: every source whose request has `PrOnly` false has a row, and AUX has none.
 
 ```
 m_Mgr_src_ScheduledInit[0] ->  10 |   1 |POS_TUNER
@@ -572,28 +589,39 @@ The columns are `PNormal | SchedPos`. No row has position 7.
 The tuner was granted at 10221 ms, about 3.7 s after `Last_Source` was read. That is well
 inside the 7.5 s window, so the timer did not choose FM on that boot. AUX's request (`SrcId
 0xe200`, `Type=5`, `Sched_Pos=7`) was told to wait until AUX was selected by hand at 25789 ms.
-The later state dump shows AUX active at priority 20: `m_Mgr_src_SourceContextPerm -> 57856`,
-`m_Mgr_src_CurrentPermSrcPriority -> 20`. That makes 20 the likely priority of AUX's request.
-*Inferred* — the priority is not printed in the `AllocateSource` line.
+The settings dump taken after that selection holds `Last_Source = 7` and
+`Last_Source_Priority = 20`, exactly AUX's pair. So **even stock firmware cannot resume AUX**
+after you switch off on AUX: the saved values are right, but AUX's request is excluded by
+`PrOnly` before the comparison. *Inferred* from the path above and the executed values; not
+observed as a separate boot.
 
 **What this means for `aux-boot-default`.** *Inferred.* Writing 7 into `+0xb4` changes the value
-that the type-4 route and the post-timer first pass compare against. It adds nothing that lets
-AUX's request match:
+compared against, but AUX's request never reaches the comparison. On the patched boot the tuner's
+pair (1, 10) does not equal (7, saved priority), so the tuner is not restored either. Nothing sets
+the flag, the 7.5 s timer fires, and `ChangeToNextSchedulerPosition` writes 1 → FM. That fits
+the car test, but which route chose FM on the patched boot is **not known**: the only spy archive
+is from an unpatched boot. A capture from a patched boot, left untouched on FM, would settle it.
 
-* AUX sends a type-5 request, and the type-5 route checks only the `ScheduledInit` table, which
-  has no AUX row.
-* The tuner *is* in the table. It can be forced on its own request without `Last_Source` being
-  consulted, and if nothing wins first, the timer resets `+0xb4` to 1 anyway.
+**A candidate fix, deliberately not written as a patch.** Two instruction changes, NAV only:
 
-Either way FM comes out, which matches the car test. Which of the two routes won on the
-patched boot is **not known**: the only spy archive is from an unpatched boot. A capture from a
-patched boot, left untouched on FM, would settle it.
+| site | original | candidate | effect |
+|---|---|---|---|
+| `0x01698474` in `AddRequest` | `bne cr7,0x1698364` | `nop` | type-5/6 requests enter the table whatever their `PrOnly` |
+| `0x01699444` in `StartUp` | `lwz r0,8(r1)` | `li r0,20` | the restored `Last_Source_Priority` is always AUX's 20 |
 
-**Consequences for a fix.** A working boot default has to put AUX in the restore table, i.e. a
-type-4 registration for position 7, or keep the tuner's type-5 request from forcing the scheduler
-before AUX's arrives. Neither is a one-instruction change. Changing the literal 1 at
-`0x01697b44` is not a safe shortcut: `ChangeToNextSchedulerPosition` is also what
-`C_SRV_AUDIO::bcm_ActivateNextSource` calls, so the edit would change normal source cycling.
+Together with `aux-boot-default` (`+0xb4 = 7`), AUX's first request would match (7, 20), cancel
+the timer and be allocated. Without `aux-boot-default`, the first edit alone might let stock
+"resume last source" work for AUX. *Both inferred, not emulated, not flashed.* Known risks:
+
+* **`PrOnly` exists for a reason that is not known.** Dropping it also means that when AUX asks
+  again after boot, it is **forced** (`IsInitialized` → `ForceSchedulerPosition`), which could
+  fight a manual source choice. Any other source that sets `PrOnly` gets the same treatment, and
+  the 2026-09-14 dump shows only AUX's, not every source's.
+* The first request-list dump from a patched boot should show whether the tuner still wins first.
+
+Changing the literal 1 at `0x01697b44` is **not** a safe shortcut: `ChangeToNextSchedulerPosition`
+is also what `C_SRV_AUDIO::bcm_ActivateNextSource` calls, so that edit would change normal source
+cycling.
 
 ## Two display findings
 
@@ -637,11 +665,13 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | `Init` runs before `StartUp` | **inferred** — `StartUp` takes the lock `Init` creates |
 | `StartUp` restores `Last_Source` → `+0xb4` and `Last_Source_Priority` → `+0xac`, then starts a 7.5 s init timer | **read from disassembly** |
 | the first pass ignores `+0xb4` until the init timer fires or a matching request arrives (`+0x3c0`) | **read from disassembly** |
-| restore needs a type-4 match on both keys, or a type-5/6 request in the `ScheduledInit` table | **read from disassembly** |
+| restore needs the request's (`Sched_Pos`, priority) to equal (`Last_Source`, `Last_Source_Priority`) as it enters the `ScheduledInit` table; requests with `PrOnly` (`+0x28`) set skip this | **read** — disassembly and Ghidra decompilation of `AddRequest` |
 | the timer path writes a literal 1 (`POS_TUNER`) into `+0xb4` | **read from disassembly** — `0x01697b44` |
-| AUX has no `ScheduledInit` row | **executed** — spy table dump, 2026-09-14 |
+| AUX's request has `PrOnly` set and has no `ScheduledInit` row; every `PrOnly`-false source has one | **executed** — spy request-list and table dumps, 2026-09-14 |
 | on an unpatched boot the tuner won about 3.7 s after the restore, and AUX's request waited | **executed** — spy lines, 2026-09-14 |
-| AUX's request priority is 20 | **inferred** — the perm priority while AUX was active |
+| AUX's request priority is 20 | **executed** — `Norm` column of the spy request-list dump |
+| stock firmware cannot resume AUX even with `Last_Source`=7 / priority 20 saved | **inferred** — from the path and the executed values; no dedicated boot observed |
+| nopping `0x01698474` plus `li r0,20` at `0x01699444` would boot to AUX | **not known** — a candidate, not emulated or flashed |
 | which route chose FM on the patched boot | **not known** — needs a spy archive from a patched boot |
 | `traces.bin` holds source-manager output | **false** — it is a 2017–2020 exception log |
 | the vtable for `C_MGR_SRC` holds exactly one pointer to `StartUp`, at `0x0307aa74` | **read from the image** |
