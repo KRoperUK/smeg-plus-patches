@@ -194,7 +194,7 @@ Ready-made **schemes** live in `builds/`. Each is a whole build, so a scheme is 
 | scheme | what it does | needs |
 |---|---|---|
 | `builds/aux-only.json` | the AUX patches and nothing else — the closest thing to stock that still enables AUX, and the baseline to reach for when something behaves unexpectedly | nothing |
-| `builds/aux-boot.json` | AUX selectable **and** resumed on every boot (`aux-boot-default`), with a `GUI_VER` marker so you can see which build is running | nothing |
+| `builds/aux-boot.json` | AUX selectable, plus `aux-boot-default`, which was meant to resume AUX on every boot and **does not** (falsified on hardware, see [the AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen)) | nothing |
 | `builds/diagnostic.json` | turns the application's own logging back on, for establishing whether a message reaches the app at all | nothing |
 | `builds/force-aux-default.json` | AUX patches, custom tone and name, and `Last_Source` set so the unit starts on AUX | a tone file, and the `/USER_DATA` acknowledgement |
 
