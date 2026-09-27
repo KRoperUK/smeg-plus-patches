@@ -526,11 +526,13 @@ So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. P
 
 `aux-boot-default` sets the restore target to 7, but AUX's source request carries a `PrOnly`
 flag (request byte `+0x28`) that makes `C_MGR_SRC::AddRequest` skip the restore block entirely,
-so the target is never compared against. This set makes AUX's request take part:
+so the target is never compared against. The flag is the `bool` argument of
+`C_HMI_SrcMgntBase::ActivateSource`, and the AUX input handler passes `true`. This set makes
+that one call pass `false`, and so lets AUX's request take part:
 
 | build | address | original | patched |
 |---|---|---|---|
-| `NAV` | `0x01698474` | `40 9e fe f0` (`bne cr7,0x01698364`, the `PrOnly` skip) | `60 00 00 00` (`nop`) |
+| `NAV` | `0x02303474` | `38 80 00 01` (`li r4,1`: `ActivateSource(aux, true)` in `HandleAudioAuxInputStatusChnged`) | `38 80 00 00` (`li r4,0`) |
 | `NAV` | `0x01699444` | `80 01 00 08` (`lwz r0,8(r1)`, the saved `Last_Source_Priority`) | `38 00 00 14` (`li r0,20`) |
 
 Use it **with** `aux-boot-default`: the restore compares a request's (position, priority) with
@@ -539,12 +541,15 @@ is the current car build with this added.
 
 !!! warning "Candidate — never flashed"
 
-    Verified under emulation: `AddRequest` on the NAV image, fed AUX's request, fills the
-    `ScheduledInit` table, sets the restore flag and cancels the init timer only when patched.
-    Not verified: `StartUp` (the second edit is checked by decoding only), anything after
-    `ExecuteAllocation`, and the car. Once AUX is in the table, a later AUX request is
-    **forced**, which could override a manual source choice. Why `PrOnly` exists is not
-    known. See [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+    Verified under emulation: `AddRequest` on the NAV image fills the `ScheduledInit` table,
+    sets the restore flag and cancels the init timer for AUX's request with `PrOnly` clear,
+    and does none of that with `PrOnly` set. Not verified: the handler and `StartUp` (both
+    edits are checked by decoding only), anything after `ExecuteAllocation`, and the car.
+
+    **Expect an auto-switch as well.** Once AUX is in the table, AUX becoming available again
+    is **forced** to the front (`ForceSchedulerPosition`). The handler fires only when the aux
+    status changes, so this happens when AUX appears, not continuously. That is what
+    `PrOnly = true` was there to prevent: a device that appears should not take the audio. See [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
 
 ### `spy-dump-userdata` — SPYSTORE also backs up `/USER_DATA`
 

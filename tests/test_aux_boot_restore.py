@@ -1,8 +1,9 @@
 """`aux-boot-restore` lets AUX's source request take part in C_MGR_SRC's boot restore.
 
 Two edits. `AddRequest` skips the ScheduledInit/restore block for a request whose PrOnly
-byte is set, and AUX's is the request that sets it; `StartUp` restores Last_Source_Priority,
-which has to equal AUX's 20 for the comparison to match. Neither check needs firmware:
+byte is set, and the AUX input handler sets it by calling `ActivateSource(aux, true)`;
+`StartUp` restores Last_Source_Priority, which has to equal AUX's 20 for the comparison to
+match. Neither check needs firmware:
 
   1. each `expect` and `bytes` decodes to the instruction the definition claims, so a wrong
      branch encoding or register fails here rather than on a car, and
@@ -26,7 +27,7 @@ sys.path.insert(0, TOOLS)
 import helpers  # noqa: E402
 
 PATCH_FILE = os.path.join(ROOT, "patches", "aux-boot-restore.json")
-PRONLY_BRANCH = 0x01698474  # C_MGR_SRC::AddRequest
+AUX_ACTIVATE = 0x02303474  # C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged
 PRIORITY_LOAD = 0x01699444  # C_MGR_SRC::StartUp
 
 
@@ -39,17 +40,14 @@ def edits():
     return {int(p["addr"], 16): p for p in spec["variants"]["NAV"]["patches"]}
 
 
-def test_first_edit_nops_the_pronly_branch_back_into_addrequest():
-    """`bne cr7` to 0x01698364, the jump past the ScheduledInit block, becomes a nop."""
-    p = edits()[PRONLY_BRANCH]
-    w = word(p["expect"])
-    assert w >> 26 == 16, "expect should be a conditional branch (opcode 16)"
-    assert (w >> 21) & 0x1F == 4, "BO=4: branch if the condition bit is clear, i.e. bne"
-    assert (w >> 16) & 0x1F == 30, "BI=30: cr7[eq], set by the preceding cmpwi cr7,r0,0"
-    disp = w & 0xFFFC
-    disp = disp - 0x10000 if disp & 0x8000 else disp
-    assert PRONLY_BRANCH + disp == 0x01698364, "it must be the jump past the restore block"
-    assert p["bytes"] == "60000000", "replaced by a nop"
+def test_first_edit_makes_auxs_activate_call_pass_pronly_false():
+    """`li r4, 1` (ActivateSource's PrOnly argument for AUX) becomes `li r4, 0`."""
+    p = edits()[AUX_ACTIVATE]
+    for field, want in (("expect", 1), ("bytes", 0)):
+        w = word(p[field])
+        assert w >> 26 == 14 and (w >> 16) & 0x1F == 0, "li form: addi rD, 0, imm"
+        assert (w >> 21) & 0x1F == 4, "r4: the bool argument, after `this` in r3"
+        assert w & 0xFFFF == want
 
 
 def test_second_edit_loads_auxs_priority_instead_of_the_saved_one():
@@ -65,7 +63,9 @@ def test_second_edit_loads_auxs_priority_instead_of_the_saved_one():
 
 def test_shipped_definition_applies_and_cascades(tmp_path):
     """End-to-end: patches/aux-boot-restore.json applies through patch_smeg.py."""
-    img = bytearray(helpers.make_image_with_build("5.43.A.R2", size=0x6A0000))
+    img = bytearray(
+        helpers.make_image_with_build("5.43.A.R2", size=0x1304000)
+    )  # reaches 0x02303474
     for addr, p in edits().items():
         off = addr - 0x01000000
         img[off : off + 4] = bytes.fromhex(p["expect"])
