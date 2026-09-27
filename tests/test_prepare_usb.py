@@ -185,6 +185,31 @@ def test_a_good_copy_succeeds_and_lands_the_package(pkg, tmp_path):
     assert os.path.isfile(os.path.join(landed, "contract.dat"))
 
 
+def test_shadows_of_copied_files_are_removed_and_nothing_else(tmp_path):
+    """macOS writes `._*` for a file it has just created on FAT, however the data was copied.
+
+    The kernel tags new files with `com.apple.provenance`, and FAT can only hold that as an
+    AppleDouble shadow - so a data-only copy still left 164 of them on a real stick. Only the
+    shadow of a file or directory this run wrote is ours to remove.
+    """
+    top = tmp_path / "SMEG_PLUS_UPG"
+    (top / "NAV").mkdir(parents=True)
+    (top / "ctrl.bin").write_bytes(b"c")
+    (top / "NAV" / "smeg.inf").write_bytes(b"s")
+    (top / "._ctrl.bin").write_bytes(b"shadow")
+    (top / "._NAV").write_bytes(b"shadow")
+    (top / "NAV" / "._smeg.inf").write_bytes(b"shadow")
+    (top / "._stranger").write_bytes(b"not a shadow of anything we copied")
+
+    removed = prepare_usb.remove_own_shadows(
+        str(top), ["ctrl.bin", os.path.join("NAV", "smeg.inf")]
+    )
+
+    assert removed == 3
+    assert sorted(os.path.basename(p) for p in prepare_usb.count_junk(str(top))) == ["._stranger"]
+    assert (top / "ctrl.bin").read_bytes() == b"c"
+
+
 def test_junk_on_the_stick_fails_rather_than_warning(pkg, tmp_path):
     """`._*` is a failure, not a warning - the updater does not expect it.
 

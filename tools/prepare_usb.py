@@ -13,8 +13,8 @@ firmware fault, which is an expensive way to find out. This makes both failures 
 
   1. probe the target — the updater wants **MBR + FAT32**, and says how to fix it otherwise
   2. check free space against the package
-  3. copy, excluding AppleDouble and `.DS_Store`, using a data-only copy so no `._*` is
-     created in the first place
+  3. copy, excluding AppleDouble and `.DS_Store`, using a data-only copy, then delete the
+     `._*` shadows macOS still writes for each new file on FAT
   4. **re-read every file from the stick and compare checksums** against the source, which
      is what catches the mid-copy removal
   5. confirm the layout the updater looks for, and count any `._*` left behind as a failure
@@ -127,8 +127,8 @@ def copy_tree(src, dst):
     """Copy `src` into `dst/<basename(src)>`, skipping junk and without copying metadata.
 
     `shutil.copyfile` rather than `copy2`: on macOS `copy2` carries extended attributes
-    across, and on a FAT target those become the `._*` files this is trying to avoid. Copying
-    the data alone is the whole point.
+    across, and on a FAT target those become `._*` files. That is necessary but not
+    sufficient - see `remove_own_shadows`.
     """
     top = os.path.join(dst, os.path.basename(src.rstrip(os.sep)))
     names = []
@@ -142,6 +142,27 @@ def copy_tree(src, dst):
             shutil.copyfile(os.path.join(dirpath, n), os.path.join(target_dir, n))
             names.append(os.path.join(rel, n) if rel != "." else n)
     return top, names
+
+
+def remove_own_shadows(top, names):
+    """Delete the `._*` shadow of every file and directory the copy wrote. Returns the count.
+
+    A data-only copy is not enough on macOS: the kernel tags each newly created file with
+    `com.apple.provenance`, and FAT can only store that as an AppleDouble `._*` beside it.
+    Only shadows of what this run wrote are removed - other litter still fails the check.
+    """
+    paths = set()
+    for rel in names:
+        while rel:
+            paths.add(rel)
+            rel = os.path.dirname(rel)
+    removed = 0
+    for rel in paths:
+        shadow = os.path.join(top, os.path.dirname(rel), APPLEDOUBLE + os.path.basename(rel))
+        if os.path.isfile(shadow):
+            os.remove(shadow)
+            removed += 1
+    return removed
 
 
 def verify_copy(src, dst):
@@ -336,6 +357,9 @@ def main(argv=None):
     # 4. copy, then re-read every byte from the stick
     top, names = copy_tree(src, dst)
     print("  copied   %d file(s) to %s" % (len(names), top))
+    shadows = remove_own_shadows(top, names)
+    if shadows:
+        print("  cleaned  %d AppleDouble shadow(s) macOS wrote during the copy" % shadows)
 
     bad = verify_copy(src, top)
     for rel, why in bad:
@@ -355,7 +379,8 @@ def main(argv=None):
             print("  junk     %s" % os.path.relpath(j, dst))
         raise SystemExit(
             "%d AppleDouble/editor file(s) on the stick - the updater does not expect them.\n"
-            "  Remove them (macOS: dot_clean %s) and re-run." % (len(junk), dst)
+            "  Remove them (macOS: dot_clean -m %s) and check the stick again; a re-run\n"
+            "  refuses to copy over the package that is already there." % (len(junk), dst)
         )
 
     print("  verified %d file(s), no junk, layout intact" % len(names))
