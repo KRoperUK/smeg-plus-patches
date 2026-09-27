@@ -267,7 +267,7 @@ invisible to them. That is the gap this closes.
 | `patches/aux-autoswitch.json` | `IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out | **Flashed**{ .pill .pill-ok } the combined build — accepted by the contract check; first edit confirmed on hardware |
 | `patches/aux-always-available.json` | `IsAUXSRCAvailable()` true only — AUX stops greying out | **Confirmed**{ .pill .pill-ok } behavioural; no switching |
 | `patches/aux-sticky.json` | removes the bail-out **and** turns "signal absent" into a no-op | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
-| `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Never flashed**{ .pill .pill-wip } restore effect verified under emulation |
+| `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
 | `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
 | `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
@@ -468,6 +468,16 @@ Both offsets were verified against all three images (`AUDIO_BT`, `AUDIO_BT_256`,
 
 
 ### `aux-boot-default` — resume AUX on every boot
+
+!!! failure "Falsified on hardware — 2026-09-27 (NAV)"
+
+    Flashed with the bytes below verified in the shipped image, and the unit still booted to
+    FM with audio playing into AUX. The restore target is set, but AUX's request never gets a
+    chance to match it. A saved source is restored only when its request is in the
+    `ScheduledInit` table, and AUX has no row there, while the tuner does. See
+    [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+    Do not flash this expecting a boot to AUX. Everything below is kept as the record of what
+    the patch does.
 
 `Last_Source` is the source the unit restores at start-up — but it is **not** a fixed
 preference. `C_MGR_SRC::ImmediateSourceSave` (`0x01695d68`) writes the active source back to

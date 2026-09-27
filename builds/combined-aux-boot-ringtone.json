@@ -3,7 +3,7 @@
   "_sources": ["builds/aux-only.json", "builds/aux-boot.json", "builds/alien-piano-riff.json"],
   "_pairs": {
     "aux-autoswitch": "supersedes aux-always-available, which patches only IsAUXSRCAvailable; this also removes the GetMediaDevice bail-out",
-    "aux-boot-default": "C_MGR_SRC::StartUp restores AUX (position 7) on every boot, ignoring Last_Source",
+    "aux-boot-default": "meant to make C_MGR_SRC::StartUp restore AUX (position 7) on every boot; FALSIFIED on hardware 2026-09-27 - still boots to FM, see docs/AUX_CHAIN.md",
     "spy-dump-userdata-partition": "from alien-piano-riff; a different address, no overlap with the AUX sites"
   },
   "_beacon": "gui_ver 32.01 is the visible did-it-apply signal, and ring1 renamed to Piano_riff",

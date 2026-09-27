@@ -178,7 +178,7 @@ one into the other — and there are more than two.
 | HMI source | `OnEventSelect*` → `CreateNotificationCommand` | **7** |
 | audio module `SRC_*` | the name table at `0x02f9d60c`, printed as `Current_source` | **5** |
 | `C_MGR_SRC` scheduler position (`POS_*`) | `AllocateSource`'s `Sched_Pos` field and the SPY dump's switch | **7** |
-| `C_MGR_SRC` request `SrcId` | `AllocateSource`'s `SrcId` field | **unknown for AUX**; observed values are `0xba00`, `0xbc00`, `0xc000`, `0xe200`, `0x17400`, `0x1e200`, `0x1e600` |
+| `C_MGR_SRC` request `SrcId` | `AllocateSource`'s `SrcId` field | **`0xe200` for AUX** (executed, 2026-09-14 spy archive); observed values are `0xba00`, `0xbc00`, `0xc000`, `0xe200`, `0x17400`, `0x1e200`, `0x1e600` |
 | screen position | `GetSourceAtPosition`, 0-based | **4** |
 
 The audio module's table is contiguous from `SRC_NO_SOURCE = 0`:
@@ -321,8 +321,10 @@ FUN_016977d0(this, req.Sched_Pos, 1, 1);
 
 The request carries both values: `SrcId` at request `+0x04` (byte `0x10` of the message payload)
 and `Sched_Pos` at request `+0x18` (byte `0x24` of the payload). The live dump prints both, which
-is what exposed the earlier conflation. AUX's `Sched_Pos` is known (`7`); AUX's raw `SrcId` remains
-unknown and is not what `Last_Source` stores.
+is what exposed the earlier conflation. AUX's `Sched_Pos` is `7`, and its raw `SrcId` is `0xe200`,
+**executed** in the 2026-09-14 spy archive: the one request with `Sched_Pos= 7`, and the source
+`ActivateSourceID` switched to when AUX was selected. `0xe200` is not what `Last_Source`
+stores.
 
 Requests reach the dispatcher through the client entry `C_MGR_SRC::AllocateSource`
 (`0x0169bf74`), which copies the 0x2c-byte request and sends it. `AllocateSource` is reached
@@ -414,12 +416,12 @@ through `Log_msg`'s stubbed sink, so a boot-time dump would list the registered 
 `POS_*` ids without the log sink being fixed first. See
 [Cheatcodes](CHEATCODES.md#a-module-dump-reaches-the-spy-not-the-dead-log-sink) and issue **#24**.
 
-**Capture AUX's request at runtime.** The SPY dump already proved `Last_Source` follows
-`Sched_Pos`, not `SrcId`, and the enum says `POS_AUX = 7`. What this capture did not contain is an
-AUX `AllocateSource` line: AUX was available, but the current source stayed tuner. Selecting AUX
-before running `SPYSTORE` should yield the missing tuple (`MsgSrc`, raw `SrcId`, `Sched_Pos=7`)
-without resolving the dynamic service table. That would execute the AUX side of the mapping as
-well as the tuner side.
+**Capture AUX's request at runtime — done.** The 2026-09-14 user spy archive
+(`TAR/…-USER.tar.gz`) contains it:
+`AllocateSource : MsgSrc = 3, SrcId= 0xe200,Type=5, Sched_Pos= 7`. So AUX's raw `SrcId` is
+`0xe200`, its sender is `MsgSrc` 3, and it is a type-5 request. The next capture worth having is
+the same archive from a boot of the `aux-boot-default` build, left untouched on FM. See
+[How the boot source is actually chosen](#how-the-boot-source-is-actually-chosen).
 
 **Give the firmware a log to write to.** The handler logs its own name at level 1 on its
 **shared return path** — and **executed**: every one of the four exit paths, plus the success
@@ -455,21 +457,17 @@ so no request node, so FM — does not survive a test with signal present: a nod
 
 **Where the match actually happens.** A full scan for readers of `+0xb4` finds `0x01695b90`,
 inside `ExecuteAllocationFirstRound` (`0x016957ec`–`0x01695bfc`), near the end of it. It is the
-only reader of that field in that function.
+only reader of that field in that function — but not the only access: the same function also
+*writes* `+0xb4` at `0x01695b30`, and the class has eleven writers in all. See
+[How the boot source is actually chosen](#how-the-boot-source-is-actually-chosen).
 
-**A hypothesis, explicitly not a finding: ordering.** `ExecuteAllocationFirstRound` is at
-`0x016957ec` and `StartUp` at `0x016990b8`. If the first allocation pass runs *before* `StartUp`
-writes `+0xb4`, then the match ran against the old value — `Last_Source` = 1, FM — and picked FM
-correctly; after which `StartUp` writes 7 into a field nothing reads again until the next boot,
-by which time FM has overwritten it. That accounts for "always FM, whatever is on the input".
-
-**The ordering is not verified.** Address order is not execution order, and this file already
-records one conclusion that executing overturned.
-
-**The candidate fix, if the ordering holds:** patch the read at `0x01695b90` to a constant 7
-rather than the write at `0x0169948c` — the same one-instruction trick, applied downstream of the
-ambiguity so it holds whichever order the two functions run in. Deliberately not written as a
-patch entry yet.
+**Withdrawn: the ordering hypothesis.** This section previously proposed that the first
+allocation pass runs *before* `StartUp` writes `+0xb4`, and that patching the read at
+`0x01695b90` to a constant 7 would fix it. Both are withdrawn. `ExecuteAllocationFirstRound` is
+reachable only through `ExecuteAllocation`, which only request and scheduler paths call —
+`StartUp` never enters allocation — and the match at `0x01695b90` is disabled until a flag that
+`StartUp`'s own timer sets. The hypothesis came from reading address order as execution order,
+which this section had itself warned against. The section below replaces it.
 
 ## A symbol map now exists
 
@@ -481,6 +479,12 @@ checkable rather than merely making it convenient:
     documented limit stands — direct branches only — and `C_MGR_SRC::StartUp` genuinely has **0
     direct callers** because it is virtual. The vtable holds exactly one pointer to it, at
     `0x0307aa74`.
+  * **That limit matters more than it sounds.** This firmware mostly calls through a register:
+    `lis`/`addi` builds the callee's address, then `mtctr`/`bctrl`. `callers.py` reports 0
+    callers for nearly every `C_MGR_SRC` method for that reason, not only the virtual ones. A
+    scan for `lis`/`addi` pairs that build the target address finds them — for example
+    `ExecuteAllocationFirstRound`'s single caller, `ExecuteAllocation+0x4c`. Treat "0 callers"
+    from `callers.py` as "no *direct* callers", never as "unreachable".
   * `ppcdis`, `xref`, `callers` and `symdiff` can now be run against real firmware, which is
     what issue **#38** says has never happened.
 
@@ -488,6 +492,108 @@ A warning for whoever picks this up: the entry point `InitializeMetaNav` at `0x0
 0 direct callers, and that is correct — the boot loader jumps to it, nothing in the image branches
 to it. Using it as a control for "is the tool working" produces a false negative, as it briefly
 did while writing this.
+
+**`traces.bin` is not a source-manager trace.** The dump's `traces.bin` (356 KB) is a VxWorks
+exception log: a `FILE DATA` header, then ten `EXCEPTION DATA` records of `0x8e64` bytes each,
+from firmware `SMEG5.2.A.R9`, dated 2017–2020. The file itself was last modified in 2020. It holds
+task lists and stack dumps from old crashes and nothing from `C_MGR_SRC`. The source manager's
+runtime lines are in the **user spy archive** instead: `SPY/<stamp>/TAR/<stamp>-USER.tar.gz`,
+under `RAMDISK_SPY/`. That archive is present only in a dump taken after a user spy collect
+(`log_error.txt`: *"collect of spy asked by user"*). The 2026-09-14 dump has one; the
+2026-09-27 dump does not.
+
+## How the boot source is actually chosen
+
+Read from the NAV image, with the 2026-09-14 user spy archive as runtime evidence. That archive
+comes from a boot with `Last_Source = 1`, **not** from a boot of the `aux-boot-default` build.
+Each step carries its tier.
+
+**`Init` runs before `StartUp`.** *Inferred from the code.* Both are `C_MGR_SRC` virtuals, at
+vtable slots `0x0307aa6c` and `0x0307aa74`. `Init` creates the lock at `+0x80`, and `StartUp`
+takes that lock before it restores anything. `Init` also writes `+0xb4 = 1` and
+`+0xac = 1` unconditionally (`0x016995b0`–`0x016995b8`), so whatever `StartUp` restores lands on
+top of that.
+
+**`StartUp` restores two keys, not one.** *Read.* It reads `Last_Source` into `+0xb4`
+(`0x01699490`, the site `aux-boot-default` patches) and `Last_Source_Priority` into `+0xac`
+(`0x01699448`). The key names are the strings at `0x0300a578` and `0x0300a584`. It then starts a
+7.5 s timer (`0x1d4c` ms). Its callback, `Mgr_src_SCHED_INIT_TIMEOUT`, leads to
+`SchedulerInitTimeout` through a private message (`HandlePrivateMessage+0x1bc`).
+
+**Until that timer fires, the first allocation pass does not look at `+0xb4`.** *Read.*
+`ExecuteAllocationFirstRound` branches on a mode word at `0x035e4cd4`. `SetCurrentStatus`
+(`0x01695424`) sets that word to 1 in the normal case: not locked, and `+0x7c` clear. In mode 1
+the `+0xb4` match (`0x01695b84`) runs only when the byte at `this+0x3c0` is non-zero. That byte
+is 0 from the constructor and `Init`. `SchedulerInitTimeout` sets it, and four sites in
+`AddRequest` set or clear it.
+
+**A saved source is restored only if its request matches the restore table.** *Read.*
+`AddRequest` restores in two ways:
+
+| request type | condition | effect |
+|---|---|---|
+| 4 (a scheduled-init registration) | its `Sched_Pos` equals `+0xb4` **and** its priority equals `+0xac` (`0x016983bc`, `0x016984f4`) | cancels the init timer, sets the flag, allocates |
+| 5 or 6 | the request's byte at `+0x28` is clear **and** `IsInitialized(Sched_Pos, priority)` is true (`0x01698480`), i.e. the pair is in the `ScheduledInit` table at `+0x370` | cancels the timer, sets the flag, `ForceSchedulerPosition(Sched_Pos)`. **`Last_Source` is not consulted** |
+
+The request's type is the field at request `+0x14`: the spy line's `Type=`, confirmed from the
+format string at `0x0300a63c` and `WriteMgrSrcSpy`'s loads. Type 4 is the only type that goes
+through `SetScheduledInit`, which fills the table. Types 5 and 6 go into the list at `+0xd4`
+(jump table at `0x02f4b080`), which is the list the first pass matches against.
+
+**If nothing matches in time, the timer picks FM.** *Read.* `SchedulerInitTimeout` calls
+`ChangeToNextSchedulerPosition(0, 0)`. If that function finds an eligible request in the list
+at `+0xd4`, it moves the old `+0xb4` into `+0xe4`, stores a literal **1** into `+0xb4`
+(`0x01697b44`–`0x01697b48`), and runs allocation. Position 1 is `POS_TUNER`. If it finds none,
+the flag is cleared again and a 5 s retry timer is started.
+
+**AUX is not in the restore table.** *Executed* — the spy's own dump of the table:
+
+```
+m_Mgr_src_ScheduledInit[0] ->  10 |   1 |POS_TUNER
+m_Mgr_src_ScheduledInit[1] ->  20 |   9 |POS_USB
+m_Mgr_src_ScheduledInit[2] ->  10 |  10 |POS_IPOD
+m_Mgr_src_ScheduledInit[3] ->  10 |   8 |POS_BT
+m_Mgr_src_ScheduledInit[4] ->  10 |   4 |POS_CDC
+```
+
+The columns are `PNormal | SchedPos`. No row has position 7.
+
+**The boot sequence in that archive.** *Executed* — spy lines, in ms since boot:
+
+```
+6511::Last_Source   : 1 (0x1)
+9727::AllocateSource  : MsgSrc = 10, SrcId= 0xbc00,Type=5, Sched_Pos= 1, ...
+10062::AllocateSource  : MsgSrc = 3, SrcId= 0xe200,Type=5, Sched_Pos= 7, ...
+10062::SendWAIT [MsgSrc + Source_ID]  : 3, 0xe200
+10221::SendACK [MsgSrc + Source_ID]  : 10, 0xbc00
+25789::ActivateSourceID::p_source_ID   : 57856 (0xe200)
+```
+
+The tuner was granted at 10221 ms, about 3.7 s after `Last_Source` was read. That is well
+inside the 7.5 s window, so the timer did not choose FM on that boot. AUX's request (`SrcId
+0xe200`, `Type=5`, `Sched_Pos=7`) was told to wait until AUX was selected by hand at 25789 ms.
+The later state dump shows AUX active at priority 20: `m_Mgr_src_SourceContextPerm -> 57856`,
+`m_Mgr_src_CurrentPermSrcPriority -> 20`. That makes 20 the likely priority of AUX's request.
+*Inferred* — the priority is not printed in the `AllocateSource` line.
+
+**What this means for `aux-boot-default`.** *Inferred.* Writing 7 into `+0xb4` changes the value
+that the type-4 route and the post-timer first pass compare against. It adds nothing that lets
+AUX's request match:
+
+* AUX sends a type-5 request, and the type-5 route checks only the `ScheduledInit` table, which
+  has no AUX row.
+* The tuner *is* in the table. It can be forced on its own request without `Last_Source` being
+  consulted, and if nothing wins first, the timer resets `+0xb4` to 1 anyway.
+
+Either way FM comes out, which matches the car test. Which of the two routes won on the
+patched boot is **not known**: the only spy archive is from an unpatched boot. A capture from a
+patched boot, left untouched on FM, would settle it.
+
+**Consequences for a fix.** A working boot default has to put AUX in the restore table, i.e. a
+type-4 registration for position 7, or keep the tuner's type-5 request from forcing the scheduler
+before AUX's arrives. Neither is a one-instruction change. Changing the literal 1 at
+`0x01697b44` is not a safe shortcut: `ChangeToNextSchedulerPosition` is also what
+`C_SRV_AUDIO::bcm_ActivateNextSource` calls, so the edit would change normal source cycling.
 
 ## Two display findings
 
@@ -527,8 +633,19 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | `aux-boot-default` applies and is correctly located in `C_MGR_SRC::StartUp` | **executed** — `39200007` verified in the shipped image at `0x0169948c` |
 | `aux-boot-default` changes the boot source | **falsified on hardware** — still FM, with audio playing into AUX |
 | `ExecuteAllocationFirstRound` reads `+0xb4` at `0x01695b90` | **read from disassembly**, whole-image scan for readers of that field |
-| `StartUp` runs before the first allocation pass | **not known** — ordering assumed from address order, which is not evidence |
+| ~~`StartUp` runs before the first allocation pass~~ | **withdrawn** — the question was mis-posed: allocation is reached only through request and scheduler paths, and `StartUp` never enters it |
+| `Init` runs before `StartUp` | **inferred** — `StartUp` takes the lock `Init` creates |
+| `StartUp` restores `Last_Source` → `+0xb4` and `Last_Source_Priority` → `+0xac`, then starts a 7.5 s init timer | **read from disassembly** |
+| the first pass ignores `+0xb4` until the init timer fires or a matching request arrives (`+0x3c0`) | **read from disassembly** |
+| restore needs a type-4 match on both keys, or a type-5/6 request in the `ScheduledInit` table | **read from disassembly** |
+| the timer path writes a literal 1 (`POS_TUNER`) into `+0xb4` | **read from disassembly** — `0x01697b44` |
+| AUX has no `ScheduledInit` row | **executed** — spy table dump, 2026-09-14 |
+| on an unpatched boot the tuner won about 3.7 s after the restore, and AUX's request waited | **executed** — spy lines, 2026-09-14 |
+| AUX's request priority is 20 | **inferred** — the perm priority while AUX was active |
+| which route chose FM on the patched boot | **not known** — needs a spy archive from a patched boot |
+| `traces.bin` holds source-manager output | **false** — it is a 2017–2020 exception log |
 | the vtable for `C_MGR_SRC` holds exactly one pointer to `StartUp`, at `0x0307aa74` | **read from the image** |
 | `callers.py` finds direct `bl` callers | **executed** — 108,907 sites, 12,982 targets; virtual methods return 0 by design |
+| most `C_MGR_SRC` calls are `lis`/`addi` + `bctrl`, invisible to `callers.py` | **executed** — an address-materialisation scan finds the callers `callers.py` misses |
 | the Display-version screen reads `media.inf`, so `GUI_VER` is not a visible beacon | **executed on hardware** — `cd 26482` is `media.inf` verbatim |
 | a renamed ringtone keeps its old name after a package update | **executed on hardware**; the settings-database reason is **inferred** |
