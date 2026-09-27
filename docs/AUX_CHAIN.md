@@ -602,21 +602,36 @@ the flag, the 7.5 s timer fires, and `ChangeToNextSchedulerPosition` writes 1 �
 the car test, but which route chose FM on the patched boot is **not known**: the only spy archive
 is from an unpatched boot. A capture from a patched boot, left untouched on FM, would settle it.
 
-**A candidate fix, deliberately not written as a patch.** Two instruction changes, NAV only:
+**The candidate fix: `patches/aux-boot-restore.json`.** Two instruction changes, NAV only:
 
 | site | original | candidate | effect |
 |---|---|---|---|
 | `0x01698474` in `AddRequest` | `bne cr7,0x1698364` | `nop` | type-5/6 requests enter the table whatever their `PrOnly` |
 | `0x01699444` in `StartUp` | `lwz r0,8(r1)` | `li r0,20` | the restored `Last_Source_Priority` is always AUX's 20 |
 
-Together with `aux-boot-default` (`+0xb4 = 7`), AUX's first request would match (7, 20), cancel
-the timer and be allocated. Without `aux-boot-default`, the first edit alone might let stock
-"resume last source" work for AUX. *Both inferred, not emulated, not flashed.* Known risks:
+**Emulated** (`tools/ppcemu.py`, the NAV image, `AddRequest` run for real on a synthetic
+`C_MGR_SRC` object whose `+0xb4`/`+0xac` hold (7, 20) and whose init timer exists, with only
+`memcpy`, the node allocator, `wdCancel`, `ExecuteAllocation` and `ForceSchedulerPosition`
+stubbed), fed AUX's request (type 5, position 7, priority 20, `PrOnly` set):
+
+| image | `ScheduledInit` | restore flag `+0x3c0` | init timer cancelled |
+|---|---|---|---|
+| stock | empty | 0 | no |
+| patched | `(7, 20)` | **1** | **yes** |
+| stock, same request with `PrOnly` clear (control) | `(7, 20)` | 1 | yes |
+| patched, but `+0xac` = 10 (edit 2 absent) | `(7, 20)` | 0 | no |
+
+So `PrOnly` is the only gate between AUX and the restore, the first edit removes it, and the
+second edit is needed as well: without it, the restored priority must already be 20. What is
+**not** emulated: `StartUp` itself, so the second edit is checked only by decoding it, and
+everything downstream of `ExecuteAllocation`. Whether the unit boots to AUX is **not known**
+until it is flashed. Known risks:
 
 * **`PrOnly` exists for a reason that is not known.** Dropping it also means that when AUX asks
-  again after boot, it is **forced** (`IsInitialized` → `ForceSchedulerPosition`), which could
-  fight a manual source choice. Any other source that sets `PrOnly` gets the same treatment, and
-  the 2026-09-14 dump shows only AUX's, not every source's.
+  again after boot, it is **forced**: emulated, a second AUX request under the patch reaches
+  `ForceSchedulerPosition`. That could fight a manual source choice, though it is also close to
+  the auto-switch this project wants. Any other source that sets `PrOnly` gets the same
+  treatment, and the 2026-09-14 dump shows only AUX's, not every source's.
 * The first request-list dump from a patched boot should show whether the tuner still wins first.
 
 Changing the literal 1 at `0x01697b44` is **not** a safe shortcut: `ChangeToNextSchedulerPosition`
@@ -671,7 +686,8 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | on an unpatched boot the tuner won about 3.7 s after the restore, and AUX's request waited | **executed** — spy lines, 2026-09-14 |
 | AUX's request priority is 20 | **executed** — `Norm` column of the spy request-list dump |
 | stock firmware cannot resume AUX even with `Last_Source`=7 / priority 20 saved | **inferred** — from the path and the executed values; no dedicated boot observed |
-| nopping `0x01698474` plus `li r0,20` at `0x01699444` would boot to AUX | **not known** — a candidate, not emulated or flashed |
+| with `aux-boot-restore`, AUX's first request enters the table, sets the restore flag and cancels the init timer | **executed under emulation** — `AddRequest` on the NAV image |
+| with `aux-boot-restore`, the unit boots to AUX | **not known** — not flashed |
 | which route chose FM on the patched boot | **not known** — needs a spy archive from a patched boot |
 | `traces.bin` holds source-manager output | **false** — it is a 2017–2020 exception log |
 | the vtable for `C_MGR_SRC` holds exactly one pointer to `StartUp`, at `0x0307aa74` | **read from the image** |

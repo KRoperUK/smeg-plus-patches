@@ -1,0 +1,34 @@
+{
+  "_comment": "The current car build (combined-aux-boot-ringtone) plus aux-boot-restore, the candidate fix for booting to FM. NOT tested on hardware; the restore path is verified only under emulation. LOCAL build manifest: edit the paths below before reusing.",
+  "_sources": ["builds/combined-aux-boot-ringtone.json"],
+  "_pairs": {
+    "aux-autoswitch": "AUX selectable and available",
+    "aux-boot-default": "forces the restored Last_Source to 7; falsified on its own, needed as half of the pair",
+    "aux-boot-restore": "lets AUX's PrOnly request reach the restore, and forces the restored priority to AUX's 20",
+    "spy-dump-userdata-partition": "SPYSTORE also copies /USER_DATA; a different address, no overlap"
+  },
+  "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
+  "package": "~/Downloads/SMEG_PLUS_UPG",
+  "out": "~/Downloads/stick_bootrestore/SMEG_PLUS_UPG",
+  "module": "NAV",
+  "app": {
+    "patches": [
+      "aux-autoswitch",
+      "aux-boot-default",
+      "aux-boot-restore",
+      "spy-dump-userdata-partition"
+    ]
+  },
+  "media": {
+    "tones": {
+      "ring_tones/ring1RT.wav": {
+        "source": "/Users/kieran/Downloads/piano-riff.mp3",
+        "gain_db": 7.4
+      }
+    },
+    "names": {
+      "ring1": "Piano_riff"
+    }
+  },
+  "seal": true
+}

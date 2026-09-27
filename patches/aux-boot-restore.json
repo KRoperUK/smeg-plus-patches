@@ -1,0 +1,28 @@
+{
+  "name": "aux-boot-restore",
+  "description": "CANDIDATE, NEVER FLASHED. Lets AUX's source request take part in C_MGR_SRC's boot restore, which it is otherwise excluded from. Pair with aux-boot-default. The restore happens in C_MGR_SRC::AddRequest: a type-5/6 request's (Sched_Pos, priority) is added to the ScheduledInit table and compared against (Last_Source, Last_Source_Priority) - but only when the request's PrOnly byte (+0x28) is clear, and AUX's request is the one that sets it (executed: 2026-09-14 spy request-list dump). Edit 1 drops that PrOnly test; edit 2 makes the restored Last_Source_Priority always 20, AUX's priority (executed, same dump), so AUX's (7, 20) matches aux-boot-default's forced Last_Source 7. RISKS: why PrOnly exists is not known; once AUX is in the table, a later AUX request is forced (ForceSchedulerPosition) and could override a manual source choice; any other source that sets PrOnly is affected too. See docs/AUX_CHAIN.md#how-the-boot-source-is-actually-chosen. NAV only.",
+  "variants": {
+    "NAV": {
+      "app_image": "NAV/AppBin/f_BigQuick.bin",
+      "inf": "NAV/AppBin/f_BigQuick.bin.inf",
+      "smeg_inf": "NAV/smeg.inf",
+      "ctrl": "NAV_ctrl.bin",
+      "base": "0x01000000",
+      "firmware": "5.43.A.R2",
+      "patches": [
+        {
+          "addr": "0x01698474",
+          "expect": "409efef0",
+          "bytes": "60000000",
+          "why": "C_MGR_SRC::AddRequest: `bne cr7,0x01698364` after `lbz r0,0x30(r1); cmpwi cr7,r0,0` skips the ScheduledInit/restore block for any request with PrOnly (+0x28) set. nop it so AUX's type-5 request enters the table and is compared against Last_Source."
+        },
+        {
+          "addr": "0x01699444",
+          "expect": "80010008",
+          "bytes": "38000014",
+          "why": "C_MGR_SRC::StartUp: replace `lwz r0,8(r1)` (the saved Last_Source_Priority, stored to this+0xac at 0x01699448) with `li r0,20`, AUX's request priority, so the restore compares against (7, 20) whatever priority was saved."
+        }
+      ]
+    }
+  }
+}

@@ -268,6 +268,7 @@ invisible to them. That is the gap this closes.
 | `patches/aux-always-available.json` | `IsAUXSRCAvailable()` true only — AUX stops greying out | **Confirmed**{ .pill .pill-ok } behavioural; no switching |
 | `patches/aux-sticky.json` | removes the bail-out **and** turns "signal absent" into a no-op | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
 | `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
+| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Never flashed**{ .pill .pill-wip } restore path verified under emulation |
 | `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
 | `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
@@ -520,6 +521,30 @@ So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. P
     and falls back to the default. That is the thing to confirm before a car trip.
 
     NAV only — the `StartUp` address differs on the `AUDIO_BT` builds and must be re-derived.
+
+### `aux-boot-restore` — let AUX take part in the boot restore
+
+`aux-boot-default` sets the restore target to 7, but AUX's source request carries a `PrOnly`
+flag (request byte `+0x28`) that makes `C_MGR_SRC::AddRequest` skip the restore block entirely,
+so the target is never compared against. This set makes AUX's request take part:
+
+| build | address | original | patched |
+|---|---|---|---|
+| `NAV` | `0x01698474` | `40 9e fe f0` (`bne cr7,0x01698364`, the `PrOnly` skip) | `60 00 00 00` (`nop`) |
+| `NAV` | `0x01699444` | `80 01 00 08` (`lwz r0,8(r1)`, the saved `Last_Source_Priority`) | `38 00 00 14` (`li r0,20`) |
+
+Use it **with** `aux-boot-default`: the restore compares a request's (position, priority) with
+(`Last_Source`, `Last_Source_Priority`), and AUX's pair is (7, 20). `builds/aux-boot-restore.json`
+is the current car build with this added.
+
+!!! warning "Candidate — never flashed"
+
+    Verified under emulation: `AddRequest` on the NAV image, fed AUX's request, fills the
+    `ScheduledInit` table, sets the restore flag and cancels the init timer only when patched.
+    Not verified: `StartUp` (the second edit is checked by decoding only), anything after
+    `ExecuteAllocation`, and the car. Once AUX is in the table, a later AUX request is
+    **forced**, which could override a manual source choice. Why `PrOnly` exists is not
+    known. See [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
 
 ### `spy-dump-userdata` — SPYSTORE also backs up `/USER_DATA`
 
