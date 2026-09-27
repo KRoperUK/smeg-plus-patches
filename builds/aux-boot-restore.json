@@ -4,7 +4,7 @@
   "_pairs": {
     "aux-autoswitch": "AUX selectable and available",
     "aux-boot-default": "forces the restored Last_Source to 7; falsified on its own, needed as half of the pair",
-    "aux-boot-restore": "lets AUX's PrOnly request reach the restore, and forces the restored priority to AUX's 20",
+    "aux-boot-restore": "AUX input handler sends its request without PrOnly so it reaches the restore, and the restored priority is forced to AUX's 20; also auto-switches to AUX when it appears",
     "spy-dump-userdata-partition": "SPYSTORE also copies /USER_DATA; a different address, no overlap"
   },
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",

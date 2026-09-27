@@ -602,36 +602,49 @@ the flag, the 7.5 s timer fires, and `ChangeToNextSchedulerPosition` writes 1 �
 the car test, but which route chose FM on the patched boot is **not known**: the only spy archive
 is from an unpatched boot. A capture from a patched boot, left untouched on FM, would settle it.
 
+**Where `PrOnly` comes from.** *Read* — Ghidra decompilation and disassembly. The HMI's
+`C_HMI_SrcMgntBase` keeps its request at `this+0x10`, so the `PrOnly` byte is `this+0x38`.
+`ActivateSource(bool)` writes its argument there for the one `AllocateSource` it sends, then puts
+the old value back. `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged` calls
+`ActivateSource(aux, true)` (`li r4,1` at `0x02303474`) when the AUX input becomes available.
+The handler runs only when the AUX status actually changes, because it compares against a cached
+copy at `this+0x51449`. When AUX goes away, it releases the source. So `PrOnly` means
+"this device has appeared; do not take the audio for it", which is exactly what the boot restore
+and the re-request force honour. The video app passes `true` as well (`HandleMediaStateReady`,
+`HandleVideoTrackFound`). Inside `C_MGR_SRC`, the byte is read only by `AddRequest`'s restore
+gate and by `AllocateSource`'s spy line.
+
 **The candidate fix: `patches/aux-boot-restore.json`.** Two instruction changes, NAV only:
 
 | site | original | candidate | effect |
 |---|---|---|---|
-| `0x01698474` in `AddRequest` | `bne cr7,0x1698364` | `nop` | type-5/6 requests enter the table whatever their `PrOnly` |
+| `0x02303474` in `HandleAudioAuxInputStatusChnged` | `li r4,1` | `li r4,0` | AUX's request is sent with `PrOnly` clear, so it enters the table; no other source changes |
 | `0x01699444` in `StartUp` | `lwz r0,8(r1)` | `li r0,20` | the restored `Last_Source_Priority` is always AUX's 20 |
 
 **Emulated** (`tools/ppcemu.py`, the NAV image, `AddRequest` run for real on a synthetic
 `C_MGR_SRC` object whose `+0xb4`/`+0xac` hold (7, 20) and whose init timer exists, with only
 `memcpy`, the node allocator, `wdCancel`, `ExecuteAllocation` and `ForceSchedulerPosition`
-stubbed), fed AUX's request (type 5, position 7, priority 20, `PrOnly` set):
+stubbed), fed AUX's request (type 5, position 7, priority 20):
 
-| image | `ScheduledInit` | restore flag `+0x3c0` | init timer cancelled |
+| request | `ScheduledInit` | restore flag `+0x3c0` | init timer cancelled |
 |---|---|---|---|
-| stock | empty | 0 | no |
-| patched | `(7, 20)` | **1** | **yes** |
-| stock, same request with `PrOnly` clear (control) | `(7, 20)` | 1 | yes |
-| patched, but `+0xac` = 10 (edit 2 absent) | `(7, 20)` | 0 | no |
+| `PrOnly` set (stock AUX) | empty | 0 | no |
+| `PrOnly` clear (what the first edit sends) | `(7, 20)` | **1** | **yes** |
+| `PrOnly` clear, but `+0xac` = 10 (second edit absent) | `(7, 20)` | 0 | no |
+| `PrOnly` clear, second request with `(7, 20)` already in the table | — | — | `ForceSchedulerPosition` reached |
 
-So `PrOnly` is the only gate between AUX and the restore, the first edit removes it, and the
-second edit is needed as well: without it, the restored priority must already be 20. What is
-**not** emulated: `StartUp` itself, so the second edit is checked only by decoding it, and
-everything downstream of `ExecuteAllocation`. Whether the unit boots to AUX is **not known**
-until it is flashed. Known risks:
+So `PrOnly` is the only gate between AUX and the restore, and the second edit is needed as
+well. An earlier version of this patch removed the gate itself (`nop` at `0x01698474` in
+`AddRequest`) and emulated identically. It was replaced because that would also have changed
+the video sources, which pass `true`. What is **not** emulated: the handler and `StartUp` (both
+edits are checked only by decoding them), and everything downstream of `ExecuteAllocation`.
+Whether the unit boots to AUX is **not known** until it is flashed. What to expect beyond boot:
 
-* **`PrOnly` exists for a reason that is not known.** Dropping it also means that when AUX asks
-  again after boot, it is **forced**: emulated, a second AUX request under the patch reaches
-  `ForceSchedulerPosition`. That could fight a manual source choice, though it is also close to
-  the auto-switch this project wants. Any other source that sets `PrOnly` gets the same
-  treatment, and the 2026-09-14 dump shows only AUX's, not every source's.
+* **An auto-switch.** Once AUX is in the table, AUX becoming available again is forced to the
+  front: `IsInitialized` → `ForceSchedulerPosition`, emulated above. Because the handler fires only
+  on a change of AUX status, that happens when AUX appears, not continuously against a manual
+  choice. It is the behaviour `PrOnly = true` was there to prevent, and the one this project
+  wants.
 * The first request-list dump from a patched boot should show whether the tuner still wins first.
 
 Changing the literal 1 at `0x01697b44` is **not** a safe shortcut: `ChangeToNextSchedulerPosition`
@@ -687,6 +700,7 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | AUX's request priority is 20 | **executed** — `Norm` column of the spy request-list dump |
 | stock firmware cannot resume AUX even with `Last_Source`=7 / priority 20 saved | **inferred** — from the path and the executed values; no dedicated boot observed |
 | with `aux-boot-restore`, AUX's first request enters the table, sets the restore flag and cancels the init timer | **executed under emulation** — `AddRequest` on the NAV image |
+| `PrOnly` is `ActivateSource`'s argument, and the AUX input handler passes `true` (`0x02303474`) | **read** — decompilation and disassembly |
 | with `aux-boot-restore`, the unit boots to AUX | **not known** — not flashed |
 | which route chose FM on the patched boot | **not known** — needs a spy archive from a patched boot |
 | `traces.bin` holds source-manager output | **false** — it is a 2017–2020 exception log |
