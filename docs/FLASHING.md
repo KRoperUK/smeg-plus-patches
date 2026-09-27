@@ -135,6 +135,11 @@ fault, which is an expensive way to find out. `._*` and `.DS_Store` count as a *
 a warning**: the updater does not expect them, so the exit code is non-zero and nothing is
 left to judgement.
 
+A data-only copy does not stop macOS writing `._*` files. The kernel tags every newly created
+file with a `com.apple.provenance` attribute, and FAT can only store that as a `._*` shadow
+beside it. After copying, the tool deletes the shadow of each file and directory it wrote, and
+nothing else. Any other litter inside the package still fails the check.
+
 It only ever writes inside `--target`, and refuses to copy a package into itself.
 
 **It also refuses to write into a package that is already there.** Copying into a directory
