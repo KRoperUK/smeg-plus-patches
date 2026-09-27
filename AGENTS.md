@@ -188,7 +188,9 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
   sum of the file sizes in the tar, `SIZE_n` the same rounded up per file to *n* KiB.
 - **Version strings are not a safe marker.** Display reads `Data_base/smeg.inf` *inside*
   the media partition, so patching the app image changes nothing visible. Editing
-  `media.inf` can block the update outright. `GUI_VER` is the only safe visible field.
+  `media.inf` can block the update outright. The Display-version screen reads `media.inf`,
+  not `smeg.inf`, so `GUI_VER` is **not** a visible beacon — setting it changes nothing on
+  screen (verified on a real unit, 2026-09).
 - The **updater reboots** the unit during the BootROM and Renesas steps. Never propose
   updating while driving.
 - **A modified package must be re-sealed** before flashing, or the unit rejects it with
