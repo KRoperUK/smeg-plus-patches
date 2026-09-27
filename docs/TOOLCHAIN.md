@@ -87,6 +87,30 @@ e300 is none of the specific ones, which matches the [architecture notes](ARCHIT
 calling it plain PowerPC with no vendor extensions. Import the ELF, not the raw image: the
 symbols are the reason to bother.
 
+### Ghidra from Claude Code (optional)
+
+The repository's `.mcp.json` points Claude Code at a
+[pyghidra-mcp](https://github.com/clearbluejar/pyghidra-mcp) server on
+`http://127.0.0.1:8000/mcp`. Nothing is shipped for it, because the ELF is vendor material and
+stays outside the repository. To use it, run one server against your own ELF and leave it
+running:
+
+```sh
+export GHIDRA_INSTALL_DIR=/path/to/ghidra        # Homebrew: $(brew --prefix ghidra)/libexec
+export JAVA_HOME=/path/to/jdk-21                  # Ghidra wants 21; newer JDKs may not work
+uvx pyghidra-mcp --transport streamable-http --port 8000 \
+  --project-path ~/ghidra-work/projects --project-name smeg ~/ghidra-work/app_nav.elf
+```
+
+The first start analyses the whole image, which takes a long time; later starts reuse the
+project.
+
+**Run one server, over HTTP, never one per session.** Ghidra lets a single process hold a
+project. A stdio server configured at user scope is started by *every* Claude session, and every
+copy after the first fails with `LockException: Unable to lock project`, which Claude Code
+reports only as "connection closed". Sessions and the desktop app can all share the one HTTP
+server. Without it running, the entry simply fails to connect and nothing else is affected.
+
 ## Writing PowerPC
 
 For a handful of instructions — which is what most entries in `patches/*.json` are — you do
