@@ -738,7 +738,10 @@ Nb|src|id|Status|Norm|NoSr|Lock|Type|sche|Post|Susp|PrOnly|
  3|0x3   |0xe200   |WAITING|  20| 255| 255|   5|   7|   0|   1|   1|  true|
 ```
 
-* **`aux-boot-default` works:** `Last_Source` is 7.
+* ~~**`aux-boot-default` works:** `Last_Source` is 7.~~ **Withdrawn:** that trace line logs the
+  *saved* value before `aux-boot-default` overrides it (see
+  [the third car test](#what-the-third-car-test-established)), so it cannot show the patch
+  working. That session had simply ended on AUX.
 * **AUX's boot request still had `PrOnly` set,** and `ScheduledInit` still has no position-7 row
   (USB, iPod, BT, CDC and TUNER only). So the handler edit did not reach the boot request.
 * **FM was chosen by the init timer:** 8847 ms + 7500 ms = 16347 ms, the exact time of the tuner's
@@ -751,6 +754,35 @@ iPod, BT, CDC, AUX) is `InitApp`'s order, and `InitApp`'s AUX activation is the 
 passes `true` (`0x022c0678`, *read*). The handler runs only on a later *change* of the AUX input setting. The
 `InitApp` edit was added to `aux-boot-restore` as a result, and that version is **not yet
 flashed**.
+
+## What the third car test established
+
+On 2026-09-28, later the same day, `builds/aux-boot-restore.json` was flashed with the
+**three-edit** `aux-boot-restore` (the `InitApp` edit added) plus `aux-boot-default`. The unit
+**booted to AUX three times** *(observed)*. The `SPYTAKE` + `SPYSTORE` capture of the last boot,
+read with `tools/spy_read.py`, gives *(executed)*:
+
+```
+ 6531 ms  saved Last_Source = 1
+10228 ms  request  SrcId 0xe200   pos 7   type 5  PrOnly false   <- AUX
+10228 ms  SendACK  SrcId 0xe200
+ScheduledInit: POS_TUNER (1, 10), POS_USB (9, 20), POS_IPOD (10, 10), POS_BT (8, 10), POS_CDC (4, 10), POS_AUX (7, 20)
+verdict: AUX was acknowledged first, at 10228 ms
+```
+
+* **AUX's boot request now carries `PrOnly` false** (it was true in the second test). The
+  `InitApp` edit reached the request the restore sees.
+* **AUX is in `ScheduledInit` as (7, 20)** and matched the restore target: it was acknowledged in
+  the same millisecond it asked, with no tuner acknowledgement at the 7.5 s mark.
+* **`aux-boot-default` is what made it match.** `StartUp` logs `Last_Source` with the *saved*
+  value (`lwz r5,8(r1)` passed to `WriteMgrSrcSpy` at `0x01699488`) and only then overwrites it
+  with 7 at `0x0169948c` *(read)*. The saved value here was **1** (FM), so without the override
+  the restore target would have been the tuner.
+
+Both patch sets are therefore **confirmed on hardware as a pair**: `aux-boot-default` alone
+still boots to FM (first test), and the two-edit `aux-boot-restore` did too (second test). Why the
+saved value was 1 after three AUX boots is *not known*: when `C_MGR_SRC` saves the source is
+described in [the scheduler](SCHEDULER.md).
 
 ## Two display findings
 
