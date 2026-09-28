@@ -259,18 +259,42 @@ contract's records.
 
 ### `*_ctrl.bin` format
 
+The same layout as `system_ctrl.bin` ([Media partition](MEDIA_PARTITION.md)):
+
 ```
-"19/09/2017  2.1.0.0"      generation date + manifest format version, padded
-<count>                    1 byte (ctrl.bin = 0x13 = 19, USERGUIDE = 0x1E = 30,
-                                    BSP_512 = 0x06 = 6, NAV = 0x13)
-<count> x { CheckType(1 byte), CRC32(4 bytes big-endian), path(NUL-padded) }
+0x00  "19/09/2017  2.1.0.0"      generation date + manifest version, NUL-padded to 0x2c
+0x2c  u32 BE                     record count (ctrl.bin 19, NAV_ctrl.bin 19)
+0x30  count x 264-byte record:   [0..255]   path, NUL-padded
+                                 [256..259] CheckType, u32 BE
+                                 [260..263] value, u32 BE (see below)
+end   u32 BE                     CRC32 of every byte before it
 ```
 
-Confirmed by byte inspection: the record for `/BSP/SMEG_PLUS_512/dbsystem.bin` is
-preceded by `02 21 51 67 F7`, i.e. `CheckType 2` + the CRC `0x215167F7`; the
-`vxWorks.bin` record carries `0x71242C66`. The updater logs
-`CheckEntryFile : CheckType = 0 / 1 / 2 / 3 / unknown for file %s`, so the first byte is
-the check type. `flasher.crc` is the CRC32 of `flasher.inf`.
+Checked on the stock 5.43.A.R2 `ctrl.bin` and `NAV_ctrl.bin` *(executed)*: both are 5 068
+bytes, which is `0x30 + 19 × 264 + 4`, and each trailer is the CRC32 of the rest of its file.
+
+What the value holds depends on `CheckType`:
+
+| CheckType | value | evidence |
+|---|---|---|
+| 2 | CRC32 of the file | *executed*: every type-2 record whose file is in the package matches it (e.g. `/AUDIO_BT_256_ctrl.bin` → `0xb7f65b8b`) |
+| 1 | the file's size | *executed* for the one type-1 record, `/ctrl.bin` itself: `0x13cc` = 5 068, its own length. That it means size in general is *inferred*, and agrees with `contract.dat`'s types |
+| 3 | not a CRC32 of the whole file | *executed*: none of the six type-3 records (the updater ELFs, `db_dwnl_gl.out`) matches. The values are small signed numbers; what they are is *not known*. `contract.dat` uses 3 for a content spot check |
+
+!!! failure "Corrected: the record layout was misread"
+
+    An earlier version of this section read the manifest as a 1-byte count followed by
+    `{CheckType (1 byte), CRC32, path}` records. It was worked out by eye from a hex dump: the
+    `02 21 51 67 F7` "before the `dbsystem.bin` path" is the **previous** record's type and
+    value. That reading paired each CRC with the wrong file. The tools were never affected,
+    because they find a CRC by its value, not by parsing records.
+
+Patched packages have carried a stale trailer: `patch_smeg` and `patch_media` did not
+recompute it until #159. Units accepted those packages, which suggests the trailer is not
+checked *(inferred)*. The tools now recompute it, so a patched manifest has the stock shape.
+
+The updater logs `CheckEntryFile : CheckType = 0 / 1 / 2 / 3 / unknown for file %s`, so the
+type field is what it switches on. `flasher.crc` is the CRC32 of `flasher.inf`.
 
 `SD_DIR_TTS.crc` uses a different, textual scheme (`NUMBERFILES:394`, `CRC16:2305`).
 
@@ -289,10 +313,10 @@ and cannot be copied."* unless the contract is regenerated — the format is dec
 ## 6. Open questions
 
 - Exact field offsets inside `dbsystem.bin`.
-- `CheckType` semantics for values 0–3 **in the `*_ctrl.bin` manifests**. For
-  **`contract.dat`** this is answered: 1 = size, 2 = CRC32, 3 = spot check, anything else
-  fails *(read, `RsaCheckDataBlock`; see [The update flow](UPGRADE_FLOW.md#the-contract-check))*.
-  The manifests are checked by `CheckEntryFile`, which is in `upgrade.out` and not in the
-  application image, so the application cannot answer it.
+- `CheckType` in the `*_ctrl.bin` manifests: 2 = CRC32 and 1 = size are now established
+  from the stock files ([above](#_ctrlbin-format)). What a type-3 value is, and what type 0
+  means, is still open. `CheckEntryFile`, which checks them, is in `upgrade.out`, not in the
+  application image. For **`contract.dat`**: 1 = size, 2 = CRC32, 3 = spot check, anything
+  else fails *(read, `RsaCheckDataBlock`; see [The update flow](UPGRADE_FLOW.md#the-contract-check))*.
 - Which module a given unit selects at runtime (`AUDIO_BT` vs `_256` vs `NAV`) — read
   from the vehicle/hardware type, not traced.

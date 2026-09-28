@@ -176,10 +176,10 @@ It checks every `*.inf` sidecar against the file beside it, `smeg.inf` against t
 image, each `<MODULE>_ctrl.bin` against its module's files, and `ctrl.bin` against each module
 manifest. Exit is non-zero if anything disagrees; `--json` is there for scripting.
 
-It deliberately does **not** parse the manifest layout. The exact record stride has not been
-verified against a vendor package here — `patch_media` declines to trust a record count it has
-not seen for the same reason — so instead it looks for each CRC as a *value* in the manifest.
-That is layout-free, and still catches a manifest that does not describe what shipped.
+It deliberately does **not** parse the manifest layout, although the layout is now known
+([Boot & update chain](FLASH_CHAIN.md#_ctrlbin-format)). It looks for each CRC as a *value* in
+the manifest instead. That is layout-free, and still catches a manifest that does not describe
+what shipped.
 
 ### Keeping a rollback package
 
