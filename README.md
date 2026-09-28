@@ -202,7 +202,7 @@ The CLI tools need nothing but `uv` — each script declares its own dependencie
 
 ```sh
 uv venv --seed --python 3.13 .venv
-uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt -r requirements-docs.txt
 ```
 
 `requirements-dev.txt` brings `unicorn` and `capstone`; without them the emulator tests skip
