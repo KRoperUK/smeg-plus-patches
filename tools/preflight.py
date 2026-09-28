@@ -210,11 +210,13 @@ def check_patches(rep, img, module):
     present = []
     for addr, stock, patched, why in KNOWN_PATCHES.get(module, []):
         off = addr - 0x01000000
+        # each form is compared over its own length: a patch longer than the stock bytes it
+        # replaces (`li r3,1; blr` over `stwu`) otherwise makes a stock image "unrecognised"
         here = img[off : off + len(patched) // 2].hex()
         if here == patched:
             present.append(why)
             rep.add(OK, "application image", "PATCHED  %s" % why)
-        elif here == stock:
+        elif img[off : off + len(stock) // 2].hex() == stock:
             rep.add(INFO, "application image", "stock    %s" % why)
         else:
             rep.add(
