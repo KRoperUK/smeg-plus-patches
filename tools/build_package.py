@@ -29,7 +29,7 @@ Manifest (JSON — no extra dependency):
       "media": {
         "tones":  { "ring_tones/ring1RT.wav": "piano-riff.mp3" },
         "splash": { "peugeot": "snoopy.png" },
-        "names":  { "ring1": "Piano Riff" },
+        "names":  { "ring2": "Piano Riff" },
         "gui_ver": "32.01"
       },
       "seal": true
@@ -37,8 +37,9 @@ Manifest (JSON — no extra dependency):
 
 Every section is optional. `app.patches` names files in `patches/`; `media.tones` maps a
 partition-relative destination to a source audio file of any format ffmpeg reads;
-`media.splash` maps a marque to an image; `media.names` renames the ringtone entries the
-phone UI shows (on a real unit a renamed tone kept its stock name, 2026-09-27);
+`media.splash` maps a marque to an image; `media.names` renames ring1..ring5 in the phone's
+ringtone menu. Those names are literals in the application image (#190), so this becomes an
+application patch - NAV 5.43.A.R2 only, and each name has a fixed maximum length;
 `media.gui_ver` sets `GUI_VER` in the partition's `Data_base/smeg.inf`. That field is harmless,
 but it was not seen on the unit when changed (2026-09-27), so it is no build marker.
 
@@ -335,7 +336,7 @@ def main():
     gui_ver = media.get("gui_ver")
     user_data = cfg.get("user_data") or {}
     ud_sqlite = user_data.get("sqlite") or []
-    any_media = bool(tone_map or splash_map or name_map or settings or gui_ver or ud_sqlite)
+    any_media = bool(tone_map or splash_map or settings or gui_ver or ud_sqlite)
 
     if ud_sqlite and not user_data.get("accept_data_loss"):
         sys.exit(
@@ -394,6 +395,34 @@ def main():
         if not args.dry_run:
             overlay(o1, out)
 
+    # ring tone names are literals in the application image, not media-partition data (#190),
+    # so they are one more application patch set, generated from media.names
+    if name_map:
+        rt_names = load_module("ringtones")
+        names_json = os.path.join(work, "ring-tone-names.json")
+        Path(names_json).write_text(json.dumps(rt_names.name_patch_spec(module, name_map)))
+        for slot, name in sorted(name_map.items()):
+            print("==> %s shown as %r (application image)" % (slot, name))
+        o_names = os.path.join(work, "app-ring-tone-names")
+        run(
+            [
+                PY,
+                tool("patch_smeg.py"),
+                "--src",
+                src if args.dry_run else out,
+                "--out",
+                o_names,
+                "--only",
+                module,
+                "--patches",
+                names_json,
+            ],
+            "applying ring tone names",
+            args.dry_run,
+        )
+        if not args.dry_run:
+            overlay(o_names, out)
+
     if any_media:
         # 3. extract the media partition and make the edits in the tree
         tree = os.path.join(work, "media")
@@ -448,12 +477,6 @@ def main():
             if gui_ver is not None:
                 set_gui_ver(tree, gui_ver)
                 print("==> GUI_VER = %s  (Data_base/smeg.inf - not shown on the unit)" % gui_ver)
-            for slot, name in name_map.items():
-                if not (slot.startswith("ring") and slot[4:].isdigit()):
-                    sys.exit("%s: names only apply to ring1..ring5" % slot)
-                idx = int(slot[4:]) - 1
-                print("==> %s shown as %r" % (slot, name))
-                rt.set_ring_name(tree, idx, name)
 
         # 4. rebuild the partition and the checksum cascade
         o2 = os.path.join(work, "media-overlay")

@@ -131,19 +131,38 @@ uv run tools/patch_media.py restore --backup backup --tree media \
 
 ## Names
 
-The name each slot shows in the phone UI is a row in the seed settings database
-(`Data_base/sqlite/up_common.sqlite`, `UP_Keys`, section `phone`, `Ringing_List`), not part of
-the audio file:
+The name each slot shows in the phone's ringtone menu is **a string literal in the
+application image**, not part of the audio file and not a database row *(read, #190)*:
+`C_SRV_RING_TOUCH::SetRingFilePath` pairs each `ringN RT.wav` with one of them and serves the
+list over DBus (`GetRingToneList`), and the menu displays those strings.
 
-```sh
-uv run tools/ringtones.py names  --tree media
-uv run tools/ringtones.py rename --tree media --slot ring1 --name Piano_riff
+| slot | stock name | address (NAV 5.43.A.R2) | max length |
+|---|---|---|---|
+| ring1 | `Alien` | `0x03063198` | 7 |
+| ring2 | `Blue_lemon` | `0x030631ac` | 11 |
+| ring3 | `Blue_tangerine` | `0x030631c4` | 15 |
+| ring4 | `Green_apple` | `0x030631e0` | 11 |
+| ring5 | `Green_lemon` | `0x030631f8` | 11 |
+
+The maximum is the string plus the NUL padding before the next literal; each string has
+exactly one reference *(read)*. `build_package.py`'s `media.names` turns into an application
+patch that rewrites the literal in place:
+
+```json
+"media": { "names": { "ring1": "Piano" } }
 ```
 
-`build_package.py`'s `media.names` does the same. **On a real unit the rename did not show**:
-the replaced tone played, but the list still said `Alien` *(observed, 2026-09-27)*. The likely
-reason is that the unit reads the live copy of that database in `/USER_DATA`, not the seed
-*(inferred, not verified)*. Replacing the audio works; renaming does not, yet.
+It refuses a name that is too long, non-ASCII, or for a module whose addresses are not
+mapped (only NAV 5.43.A.R2 is).
+
+!!! failure "Corrected: names were written to the wrong place"
+
+    Until #190, `media.names` rewrote `phone/Ringing_List` in the seed `up_common.sqlite`. On a
+    real unit the tone changed but the list still said `Alien` *(observed, 2026-09-27)*. The
+    key appears nowhere in the application image, and the `USER_DATA` copy holds the same
+    stock list, so no database edit could work. The earlier guess that the unit read the
+    `/USER_DATA` copy was wrong. `ringtones.py names` / `rename` still inspect and edit that
+    seed list, but they say so. **The renamed build has not been flashed yet.**
 
 ## Level — the thing that will annoy you
 

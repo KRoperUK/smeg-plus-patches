@@ -101,8 +101,10 @@ def test_probe_reports_format(tmp_path):
 
 # --------------------------------------------------------------- ringtone names
 #
-# The names the phone UI shows are not in the WAVs. They are rows in up_common.sqlite,
-# so replacing a tone changes what you hear and renaming changes what you see.
+# The seed database's ring tone list. The unit does NOT display it (the menu's names are
+# literals in the application image, see test_tone_names.py); these cover the tool that
+# inspects and edits it. They are rows in up_common.sqlite,
+# so these cover the tool, not what the car shows.
 
 import sqlite3  # noqa: E402
 

@@ -145,8 +145,9 @@ media check passed, the application image was written, and the unit came back up
   copied"*) never appeared, which was the blocker for the whole project.
 - [x] **`IsAUXSRCAvailable()`** — AUX no longer greys out without a signal, and it is back in
   the SRC cycle.
-- [x] **Custom ring tone** audio. A *renamed* tone still showed its stock name on the car
-  (2026-09-27), so names are not solved — see [Ring tones](RINGTONES.md#names).
+- [x] **Custom ring tone** audio. A *renamed* tone kept its stock name on the car
+  (2026-09-27): the names are literals in the application image, which `media.names` now
+  patches (not yet flashed) — see [Ring tones](RINGTONES.md#names).
 - [x] **`SPYSTORE` backs up `/USER_DATA`** — the `spy-dump-userdata` patch, confirmed on a car.
 - [ ] **The automatic AUX switch.** The original handler patch rested on a wrong premise: the
   handler follows the saved AUX *setting*. `aux-signal-switch` routes the real signal event
