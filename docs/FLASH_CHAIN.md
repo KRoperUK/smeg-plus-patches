@@ -279,7 +279,31 @@ What the value holds depends on `CheckType`:
 |---|---|---|
 | 2 | CRC32 of the file | *executed*: every type-2 record whose file is in the package matches it (e.g. `/AUDIO_BT_256_ctrl.bin` → `0xb7f65b8b`) |
 | 1 | the file's size | *executed* for the one type-1 record, `/ctrl.bin` itself: `0x13cc` = 5 068, its own length. That it means size in general is *inferred*, and agrees with `contract.dat`'s types |
-| 3 | not a CRC32 of the whole file | *executed*: none of the six type-3 records (the updater ELFs, `db_dwnl_gl.out`) matches. The values are small signed numbers; what they are is *not known*. `contract.dat` uses 3 for a content spot check |
+| 3 | a CRC-16 of the whole file | *executed*: reproduced for every type-3 record whose file is loose in the stock package (110 of 110, including the updater ELFs, `db_dwnl_gl.out` and the HARMONY skins; see below) |
+
+### The type-3 value *(#197)*
+
+A reflected CRC-16 over the whole file: table polynomial **`0xD415`** (`0xA82B` in normal
+form), initial value 0, no final XOR. The two result bytes are stored **swapped**, and the
+16-bit value is **sign-extended** to 32 bits, which is why so many look like `0xffffXXXX`.
+
+- **Executed:** a clean-room implementation, with the table built from the polynomial alone,
+  reproduces all 110 type-3 records whose file is loose in the stock 5.43.A.R2 package.
+  Those are the updater ELFs, `db_dwnl_gl.out`, the HARMONY skin files and `BIG_HARMONY.bin`
+  (26 MB), and the licence and cheat-code library members. An independent re-check of the
+  five in `ctrl.bin` and `NAV_ctrl.bin` also matches. Beware: a table built from `0xA82B`
+  itself, the normal form, matches none.
+- **Read:** in `upgrade.out`, `C_UPGRADE::CheckEntryFile` sends type 1 to `fstat`, type 2 to
+  `VerifyCRC32ofFile` and type 3 to the kernel's `CheckCRCFile`. In `vxWorks.bin`,
+  `ComputeCrc` (`0x2875dc`) is a two-table byte-wise CRC, and `ComputeCRCFile` (`0x294188`)
+  runs it over the file from an offset.
+- **Not known:** `CheckCRCFile` also appears to compare against a value read from a sidecar
+  or header (`CheckCRCInf` / `ReadFileCRC`). Whether `CheckEntryFile` compares the manifest's
+  own value, and which callers pass a non-zero offset, is not known.
+
+No file our tools edit has a type-3 record, since tones, logos and `up_common` are all type
+2. So nothing changes today. `smeglib.ctrl_crc16()` computes the value for anyone who needs
+to edit a type-3 file; they would also need to find the sidecar.
 
 !!! failure "Corrected: the record layout was misread"
 
@@ -314,7 +338,7 @@ and cannot be copied."* unless the contract is regenerated — the format is dec
 
 - Exact field offsets inside `dbsystem.bin`.
 - `CheckType` in the `*_ctrl.bin` manifests: 2 = CRC32 and 1 = size are now established
-  from the stock files ([above](#_ctrlbin-format)). What a type-3 value is, and what type 0
+  from the stock files ([above](#_ctrlbin-format)). A type-3 value is a CRC-16 ([above](#the-type-3-value-197)); what type 0
   means, is still open. `CheckEntryFile`, which checks them, is in `upgrade.out`, not in the
   application image. For **`contract.dat`**: 1 = size, 2 = CRC32, 3 = spot check, anything
   else fails *(read, `RsaCheckDataBlock`; see [The update flow](UPGRADE_FLOW.md#the-contract-check))*.

@@ -20,6 +20,35 @@ def crc32(b):
     return zlib.crc32(b) & 0xFFFFFFFF
 
 
+def _crc16_table(poly=0xD415):
+    table = []
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            c = (c >> 1) ^ poly if c & 1 else c >> 1
+        table.append(c)
+    return table
+
+
+_CRC16 = _crc16_table()
+
+
+def ctrl_crc16(data):
+    """The value a CheckType-3 `ctrl` record holds for a file (docs/FLASH_CHAIN.md, #197).
+
+    A reflected CRC-16, table polynomial 0xD415 (0xA82B in normal form), init 0, no final XOR;
+    the two result bytes are stored swapped and the 16-bit value sign-extended to 32 bits.
+    Built from the polynomial alone. Reproduced for every type-3 record whose file is loose in
+    the stock 5.43.A.R2 package (executed). The unit's `CheckCRCFile` may also compare a
+    sidecar value and take an offset; that part is not known.
+    """
+    c = 0
+    for b in data:
+        c = (c >> 8) ^ _CRC16[(c ^ b) & 0xFF]
+    v = ((c & 0xFF) << 8) | (c >> 8)
+    return v | 0xFFFF0000 if v & 0x8000 else v
+
+
 def s32(v):
     """The signed-decimal form the `.inf` files use for CRC32.
 
