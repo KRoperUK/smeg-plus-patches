@@ -23,6 +23,36 @@ patch you want to make to one of these units.
     package. The licence key material needed to re-seal a package is recovered from that
     package at runtime and is never stored here.
 
+## Start here
+
+<div class="grid cards" markdown>
+
+-   :lucide-car:{ .lg .middle } __I own one of these cars__
+
+    ---
+
+    Build a package, put it on a stick safely, flash it, and get back if it goes wrong.
+
+    1. [What is reachable](CAPABILITIES.md): what can and cannot be changed
+    2. [Running the tools](RUNNING.md): one command builds a package
+    3. [Flashing](FLASHING.md#the-test-loop-end-to-end): the whole test loop, parked
+    4. [Recovery](RECOVERY.md): before you need it
+
+-   :lucide-microscope:{ .lg .middle } __I want the firmware internals__
+
+    ---
+
+    How the application image is built, what has been read closely, and how claims are
+    checked.
+
+    1. [Architecture](ARCHITECTURE.md) and the [Firmware map](FIRMWARE_MAP.md)
+    2. [The source scheduler](SCHEDULER.md), [the audio module](AUDIO_MODULE.md),
+       [the AUX chain](AUX_CHAIN.md)
+    3. [Emulation](EMULATION.md): running firmware functions on a desktop
+    4. [Verification](VERIFICATION.md): what was proven, and how
+
+</div>
+
 ## Find your way in
 
 The site is organised by the part of the firmware you are touching. Start with whichever
