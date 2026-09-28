@@ -2,7 +2,8 @@
 """Find direct (bl) callers of one or more addresses in a SMEG+ PPC image.
 
 Only direct branches are found; virtual calls and calls made through function
-pointers (`bctrl`) are not, which is normal for C++ code.
+pointers (`bctrl`) are not, which is normal for C++ code. `survey.py` counts the `lis`/`addi` references
+that most calls in this firmware go through.
 
 usage:
     python3 tools/callers.py app_nav.bin abs_symbols_base.txt 0x02324928

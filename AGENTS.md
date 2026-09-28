@@ -161,6 +161,7 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 | `tools/symdiff.py` | Symbol-level diff between two releases, and locates a patch site in one nobody has analysed. Reports the **displacement** the images differ by, which a byte comparison buries under ~80% noise. A derived address is a **candidate**, never a patch. |
 | `tools/crc_recover.py` | Recovers CRC parameters from `(message, checksum)` samples. Checked against published variants, because a recovery tool that fails quietly reports "not a CRC" — and that is how its negative result on the map checksums is trustworthy. |
 | `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. Need `capstone`. Untested — see #38; `tools/symbols.py` is the closest thing they have to a net. |
+| `tools/survey.py` | Whole-image function inventory, including the `lis`/`addi` references `callers.py` misses. Tested with a synthetic image. Its output is derived from the vendor symbol map, so it is never committed. |
 | the toolchain | Per-machine, not bundled: `clang`/`ld.lld`/`llvm-mc`/`rizin`/Ghidra. On macOS only `lld` lands on `PATH`, and Apple's `clang` cannot target PowerPC. See [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md). |
 | `docs/` | Published with Zensical to <https://smeg.kroper.uk/>. A broken anchor fails the build; run `zensical build` before pushing docs. |
 
