@@ -39,6 +39,24 @@ def load_symbols(path):
     return syms
 
 
+def load_typed_symbols(path):
+    """address -> (type letter, name), with the same skipping and last-wins rule.
+
+    The survey needs the `nm` type to tell code (`T`/`W`) from data; everything else wants
+    only the name, which is why this is separate rather than a change to `load_symbols`.
+    """
+    syms = {}
+    with open(path, "r", errors="replace") as fh:
+        for line in fh:
+            p = line.split()
+            if len(p) >= 3:
+                try:
+                    syms[int(p[0], 16)] = (p[1], p[2])
+                except ValueError:
+                    pass
+    return syms
+
+
 def extents(syms, image_len, base):
     """name -> (start, size), size being up to the next symbol in address order.
 

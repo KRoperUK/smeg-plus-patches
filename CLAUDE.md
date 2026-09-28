@@ -116,6 +116,7 @@ this ordering — prefer it over running the tools by hand.
 | `patch_studio.py` | Qt front-end over ringtones + patch selection |
 | `splash.py` | the `Data_base/graphics/logo/*.pkg` marque bundles (**not** the boot splash) |
 | `unpack.py`, `mkelf.py`, `ppcdis.py`, `xref.py`, `callers.py` | the analysis tools every patch address was derived with; need `capstone`; untested |
+| `survey.py` | inventory of every function in an image: family, size, `bl` callers, materialised (`lis`/`addi`) references, data pointers, strings; output stays local — see `docs/FIRMWARE_MAP.md` |
 | `check_commit_msg.py`, `check_no_firmware.sh` | the two enforcement hooks |
 | `cartography.py` | the map metadata that *is* understood: name pools, `.inf` sidecars, `SCC` records, `CCT.DAT` (decrypt only — see the licensing note in `docs/CARTOGRAPHY.md`) |
 

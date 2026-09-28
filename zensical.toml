@@ -20,6 +20,7 @@ nav = [
   { "Concepts" = [
     { "What is reachable" = "CAPABILITIES.md" },
     { "Architecture" = "ARCHITECTURE.md" },
+    { "Firmware map" = "FIRMWARE_MAP.md" },
   ] },
   { "Flash chain & protections" = [
     { "Boot & update chain" = "FLASH_CHAIN.md" },
