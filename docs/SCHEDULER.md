@@ -285,7 +285,7 @@ image.
 
 | call site | caller | arguments | when | effect of "always 1" |
 |---|---|---|---|---|
-| `0x01697c0c` | `SchedulerInitTimeout` | `(false, false)` | the 7.5 s init watchdog fires because no boot restore matched | **FM at boot**: the tuner is acknowledged 7500 ms after `Last_Source` is read *(executed on the car; [Verification](VERIFICATION.md#later-car-tests))* |
+| `0x01697c0c` | `SchedulerInitTimeout` | `(false, false)` | the 7.5 s init watchdog fires because no boot restore matched | **FM at boot**: the tuner is acknowledged 7500 ms after `Last_Source` is read *(executed on the car; [Verification](VERIFICATION.md#log))* |
 | `0x01698620` | `AddRequest`, restore-match branch | `(false, false)` | a request matched (`+0xb4`, `+0xac`) and the timer was cancelled, but `IsRequestAtCurrentPosition()` found no permanent request at `+0xb4` | the tuner. Should be rare: the matching request is itself at `+0xb4` unless it is on a temporary list *(inferred)* |
 | `0x01697d2c` | `ChangeToFirstSchedulerPosition(clear)` | `(clear, false)` | `ForceSchedulerPosition(1, …)` failed, so nothing is at position 1; it sets `+0xb4 = 1` itself and calls this | stays at 1, so no permanent source *(inferred)* |
 | `0x016bc0d4` | `C_SRV_AUDIO::bcm_ActivateNextSource(bool const&)` | `(true, *arg)` | the DBUS `ActivateNextSource`, from the HMI's `SwitchNextSource` → `AllocateNextSource` → `C_BCM_HMI_AUDIO_CLIENT::ActivateNextSource` | "next source" goes to the tuner. `SwitchNextSource` is reached only through a data pointer (`0x03428974`), so **what triggers it is not known**. The SRC key's cycling works on the car, including reaching AUX, so it probably does not use this path *(inferred)* |
@@ -322,7 +322,7 @@ problem on the car.
 
 **For boot-to-AUX, patching this literal is the wrong lever.** `aux-boot-restore` (with
 `aux-boot-default`) avoids the timer altogether by making AUX match the restore, which cancels
-it; that pair boots to AUX on the car *(executed; [Verification](VERIFICATION.md#later-car-tests))*.
+it; that pair boots to AUX on the car *(executed; [Verification](VERIFICATION.md#log))*.
 
 ## Every function
 
@@ -378,7 +378,7 @@ Every row below is **read** or better; no function in the family was left unread
 | `01698a9c` | `ReadSupervisorData()` | 220 | mat×1 | Loads the `Src_Radio/Media_{SchedPos,Priority}` keys (defaults 1 / 250) | `+0x98 +0x9c +0xa4 +0xa8` | read |
 | `01698e0c` | `HandleMessage(…)` | 25 | ptr×1 | Routes message id `0x62d5` to `HandlePrivateMessage` | — | read |
 | `01698e70` | `End(int)` | 146 | ptr×1 | Resets the VAN source-order counter, removes the spy, cancels the timers, deletes the mutex and the context data, unsubscribes | `+0x80…+0x88` | read |
-| `016990b8` | `StartUp()` | 251 | ptr×1 | Restores `Last_Source`/`Last_Source_Priority` (logging the saved value first), subscribes to diag, arms both timers for 7.5 s | `+0xb4 +0xac +0xe4` | read; the restore executed on the car ([Verification](VERIFICATION.md#later-car-tests)) |
+| `016990b8` | `StartUp()` | 251 | ptr×1 | Restores `Last_Source`/`Last_Source_Priority` (logging the saved value first), subscribes to diag, arms both timers for 7.5 s | `+0xb4 +0xac +0xe4` | read; the restore executed on the car ([Verification](VERIFICATION.md#log)) |
 | `016994a4` | `Init()` | 193 | ptr×1 | Creates the mutex and spy; resets all state; reads supervisor data; creates the context-data entries | nearly all | read |
 | `016997a8` | `~C_MGR_SRC()` (D1) | 97 | ptr×1 | Deletes both watchdogs, clears `m_Instance`, then runs the base dtor | `+0x84 +0x88` | read |
 | `0169992c` | `~C_MGR_SRC()` (D0) | 102 | ptr×1 | Same, and frees | — | read |

@@ -37,7 +37,7 @@ Developed against **Peugeot 208 (2015), SMEG+ iV1, `NAV`, firmware `SMEG5.43.A.R
 
 Every patch set and its hardware status is in the
 [patch reference](docs/PATCHES.md#patch-sets-in-this-repository); the car tests behind each
-status are in [Hardware verification](docs/VERIFICATION.md#later-car-tests).
+status are in [Hardware verification](docs/VERIFICATION.md#log).
 
 ## Quick start: boot to AUX
 

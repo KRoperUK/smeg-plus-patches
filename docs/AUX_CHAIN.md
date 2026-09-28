@@ -10,7 +10,7 @@ observed on the car, as marked.
     * **Boot to AUX works on hardware.** `aux-autoswitch` + `aux-boot-default` + the three-edit
       `aux-boot-restore` boot the unit to AUX; neither boot set works alone. `builds/aux-boot.json`
       is the minimal build. The car evidence is summarised [below](#evidence-from-the-car) and
-      logged in [Hardware verification](VERIFICATION.md#later-car-tests).
+      logged in [Hardware verification](VERIFICATION.md#log).
     * **Stock firmware has no switch-on-signal.** The AUX handler reacts to the saved AUX input
       *setting*, not to audio arriving; see
       [What the handler actually reacts to](#what-the-handler-actually-reacts-to).
@@ -168,7 +168,7 @@ the activation passes `PrOnly` 0 ([Emulation results](AUX_SIGNAL.md#emulation-re
 
 ## Evidence from the car
 
-Each flash is logged in [Hardware verification](VERIFICATION.md#later-car-tests); the captures
+Each flash is logged in [Hardware verification](VERIFICATION.md#log); the captures
 were read with `tools/spy_read.py`.
 
 ### What the first car test established
@@ -259,6 +259,9 @@ audio server
                       gate 4  source manager NULL?             @ 0x02303468
                     ActivateSource(srcMgr, true)               @ 0x02303484
 ```
+
+The handler is also registered in the HMI event table: an entry of size `0x2c` with event id
+`0x613dc`, the handler pointer, function size `0x290` and type `7` *(read)*.
 
 ### Link A — the listener
 

@@ -168,7 +168,7 @@ cannot disagree with the patch reference.
 Per-patch detail: [Patch reference](PATCHES.md#patch-sets-in-this-repository).
 <!-- /patch-status:panel -->
 
-The car tests behind each status are in [Hardware verification](VERIFICATION.md#later-car-tests);
+The car tests behind each status are in [Hardware verification](VERIFICATION.md#log);
 open work is in the [repository issues](https://github.com/KRoperUK/smeg-plus-patches/issues).
 
 ## Lessons worth knowing first

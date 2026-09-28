@@ -192,7 +192,7 @@ Everything in this section is **inferred** from the reading above.
   `aux-boot-restore` clears `PrOnly` both there (`0x02303474`) and in `InitApp`
   (`0x022c0678`). The request the boot restore sees comes from `InitApp`: clearing it there is
   what made AUX match, and the pair with `aux-boot-default` boots to AUX on the car
-  *(executed; [Verification](VERIFICATION.md#later-car-tests))*.
+  *(executed; [Verification](VERIFICATION.md#log))*.
 
 
 ## Functions read closely
