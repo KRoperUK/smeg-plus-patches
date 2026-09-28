@@ -130,6 +130,9 @@ This checks the stick is MBR + FAT32, copies, re-reads every file, and removes t
 
 ## Tools
 
+The main ones are below. Every tool, with its `--help`, is on the generated
+[Tool reference](https://smeg.kroper.uk/TOOLS/) page (`docs/TOOLS.md`).
+
 | tool | purpose |
 |---|---|
 | `tools/build_package.py` | **start here** — manifest → patched, media-rebuilt, re-sealed and pre-flighted package |

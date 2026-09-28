@@ -48,6 +48,7 @@ nav = [
   ] },
   { "Tooling & workflow" = [
     { "Running the tools" = "RUNNING.md" },
+    { "Tool reference" = "TOOLS.md" },
     { "Flashing" = "FLASHING.md" },
     { "Recovery" = "RECOVERY.md" },
     { "Hardware verification" = "VERIFICATION.md" },
