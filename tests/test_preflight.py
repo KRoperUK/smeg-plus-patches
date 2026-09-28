@@ -234,3 +234,16 @@ def test_refuses_a_user_data_payload_for_a_non_nav_module(tmp_path):
 
     assert r.returncode != 0
     assert "not read at all" in (r.stdout + r.stderr)
+
+
+def test_a_stock_site_shorter_than_its_patch_is_reported_as_stock():
+    """IsAUXSRCAvailable's patch is 8 bytes over 4 stock bytes; stock must not read as unknown."""
+    import preflight
+
+    img = bytearray(0x1300000)
+    off = 0x02247858 - 0x01000000
+    img[off : off + 8] = bytes.fromhex("9421ffa07c0802a6")  # stock stwu, then the next insn
+    rep = preflight.Report()
+    preflight.check_patches(rep, bytes(img), "NAV")
+    rows = [m for _, area, m in rep.rows if "IsAUXSRCAvailable" in m or "0x02247858" in m]
+    assert rows == ["stock    IsAUXSRCAvailable -> return true"]
