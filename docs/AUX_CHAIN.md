@@ -606,7 +606,10 @@ is from an unpatched boot. A capture from a patched boot, left untouched on FM, 
 `C_HMI_SrcMgntBase` keeps its request at `this+0x10`, so the `PrOnly` byte is `this+0x38`.
 `ActivateSource(bool)` writes its argument there for the one `AllocateSource` it sends, then puts
 the old value back. `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged` calls
-`ActivateSource(aux, true)` (`li r4,1` at `0x02303474`) when the AUX input becomes available.
+`ActivateSource(aux, true)` (`li r4,1` at `0x02303474`) when the AUX input becomes available,
+and `C_HMI_MEDIA_APP_BASE::InitApp` does the same for the boot-time request (`li r4,1` at
+`0x022c0678`). It is the only one of `InitApp`'s six activations that passes `true`; the site is
+identified by the label it opens with, `user_HMI.AUX.Equalizer_aux`.
 The handler runs only when the AUX status actually changes, because it compares against a cached
 copy at `this+0x51449`. When AUX goes away, it releases the source. So `PrOnly` means
 "this device has appeared; do not take the audio for it", which is exactly what the boot restore
@@ -614,11 +617,12 @@ and the re-request force honour. The video app passes `true` as well (`HandleMed
 `HandleVideoTrackFound`). Inside `C_MGR_SRC`, the byte is read only by `AddRequest`'s restore
 gate and by `AllocateSource`'s spy line.
 
-**The candidate fix: `patches/aux-boot-restore.json`.** Two instruction changes, NAV only:
+**The candidate fix: `patches/aux-boot-restore.json`.** Three instruction changes, NAV only:
 
 | site | original | candidate | effect |
 |---|---|---|---|
-| `0x02303474` in `HandleAudioAuxInputStatusChnged` | `li r4,1` | `li r4,0` | AUX's request is sent with `PrOnly` clear, so it enters the table; no other source changes |
+| `0x022c0678` in `InitApp` | `li r4,1` | `li r4,0` | AUX's **boot** request is sent with `PrOnly` clear, so it enters the table and meets the restore |
+| `0x02303474` in `HandleAudioAuxInputStatusChnged` | `li r4,1` | `li r4,0` | the same for AUX's later requests, when AUX appears; no other source changes |
 | `0x01699444` in `StartUp` | `lwz r0,8(r1)` | `li r0,20` | the restored `Last_Source_Priority` is always AUX's 20 |
 
 **Emulated** (`tools/ppcemu.py`, the NAV image, `AddRequest` run for real on a synthetic
@@ -650,6 +654,40 @@ Whether the unit boots to AUX is **not known** until it is flashed. What to expe
 Changing the literal 1 at `0x01697b44` is **not** a safe shortcut: `ChangeToNextSchedulerPosition`
 is also what `C_SRV_AUDIO::bcm_ActivateNextSource` calls, so that edit would change normal source
 cycling.
+
+## What the second car test established
+
+On 2026-09-28 `builds/aux-boot-restore.json` was flashed with the **handler-only** version of
+`aux-boot-restore`, i.e. without the `InitApp` edit. The unit **always booted to FM**, with
+audio on AUX. A `SPYTAKE` + `SPYSTORE` capture of that boot (the update history puts the flash at
+01:05 and the collect at 01:07) gives, **executed**:
+
+```
+8847::Last_Source   : 7 (0x7)
+10109::AllocateSource  : MsgSrc = 3, SrcId= 0xe200,Type=5, Sched_Pos= 7, ...
+10109::SendWAIT [MsgSrc + Source_ID]  : 3, 0xe200
+10438::AllocateSource  : MsgSrc = 10, SrcId= 0xbc00,Type=5, Sched_Pos= 1, ...
+16347::SendACK [MsgSrc + Source_ID]  : 10, 0xbc00
+```
+
+```
+Nb|src|id|Status|Norm|NoSr|Lock|Type|sche|Post|Susp|PrOnly|
+ 3|0x3   |0xe200   |WAITING|  20| 255| 255|   5|   7|   0|   1|   1|  true|
+```
+
+* **`aux-boot-default` works:** `Last_Source` is 7.
+* **AUX's boot request still had `PrOnly` set,** and `ScheduledInit` still has no position-7 row
+  (USB, iPod, BT, CDC and TUNER only). So the handler edit did not reach the boot request.
+* **FM was chosen by the init timer:** 8847 ms + 7500 ms = 16347 ms, the exact time of the tuner's
+  ACK. That confirms the timer route described above for a patched boot.
+* **AUX's request arrived 1.3 s into the 7.5 s window.** Sent without `PrOnly`, it would have been
+  in time to match.
+
+The boot request comes from `InitApp`, not from the handler. The order of the requests (USB,
+iPod, BT, CDC, AUX) is `InitApp`'s order, and `InitApp`'s AUX activation is the one call that
+passes `true` (`0x022c0678`, *read*). The handler runs only on a later *change* of AUX status. The
+`InitApp` edit was added to `aux-boot-restore` as a result, and that version is **not yet
+flashed**.
 
 ## Two display findings
 
@@ -701,7 +739,10 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | stock firmware cannot resume AUX even with `Last_Source`=7 / priority 20 saved | **inferred** — from the path and the executed values; no dedicated boot observed |
 | with `aux-boot-restore`, AUX's first request enters the table, sets the restore flag and cancels the init timer | **executed under emulation** — `AddRequest` on the NAV image |
 | `PrOnly` is `ActivateSource`'s argument, and the AUX input handler passes `true` (`0x02303474`) | **read** — decompilation and disassembly |
-| with `aux-boot-restore`, the unit boots to AUX | **not known** — not flashed |
+| the handler-only version of `aux-boot-restore` boots to AUX | **falsified on hardware** — 2026-09-28, still FM |
+| AUX's boot request comes from `InitApp`, with `PrOnly` true | **executed** (spy trace, 2026-09-28) and **read** (`li r4,1` at `0x022c0678`) |
+| on the patched boot, FM was chosen by the 7.5 s init timer | **executed** — tuner ACK at 16347 ms, `Last_Source` read at 8847 ms |
+| with the `InitApp` edit added, the unit boots to AUX | **not known** — not flashed |
 | which route chose FM on the patched boot | **not known** — needs a spy archive from a patched boot |
 | `traces.bin` holds source-manager output | **false** — it is a 2017–2020 exception log |
 | the vtable for `C_MGR_SRC` holds exactly one pointer to `StartUp`, at `0x0307aa74` | **read from the image** |

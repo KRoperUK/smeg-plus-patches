@@ -268,7 +268,7 @@ invisible to them. That is the gap this closes.
 | `patches/aux-always-available.json` | `IsAUXSRCAvailable()` true only — AUX stops greying out | **Confirmed**{ .pill .pill-ok } behavioural; no switching |
 | `patches/aux-sticky.json` | removes the bail-out **and** turns "signal absent" into a no-op | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
 | `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
-| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Never flashed**{ .pill .pill-wip } restore path verified under emulation |
+| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Two-edit version falsified**{ .pill .pill-no } still FM on 2026-09-28; the three-edit version is not yet flashed |
 | `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
 | `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
@@ -527,24 +527,33 @@ So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. P
 `aux-boot-default` sets the restore target to 7, but AUX's source request carries a `PrOnly`
 flag (request byte `+0x28`) that makes `C_MGR_SRC::AddRequest` skip the restore block entirely,
 so the target is never compared against. The flag is the `bool` argument of
-`C_HMI_SrcMgntBase::ActivateSource`, and the AUX input handler passes `true`. This set makes
-that one call pass `false`, and so lets AUX's request take part:
+`C_HMI_SrcMgntBase::ActivateSource`. Two places pass `true` for AUX: `InitApp`, whose request is
+the one the boot restore sees, and the AUX input handler, which runs when AUX appears later.
+This set makes both pass `false`, and so lets AUX's requests take part:
 
 | build | address | original | patched |
 |---|---|---|---|
 | `NAV` | `0x02303474` | `38 80 00 01` (`li r4,1`: `ActivateSource(aux, true)` in `HandleAudioAuxInputStatusChnged`) | `38 80 00 00` (`li r4,0`) |
+| `NAV` | `0x022c0678` | `38 80 00 01` (`li r4,1`: the boot-time `ActivateSource(aux, true)` in `InitApp`) | `38 80 00 00` (`li r4,0`) |
 | `NAV` | `0x01699444` | `80 01 00 08` (`lwz r0,8(r1)`, the saved `Last_Source_Priority`) | `38 00 00 14` (`li r0,20`) |
 
 Use it **with** `aux-boot-default`: the restore compares a request's (position, priority) with
 (`Last_Source`, `Last_Source_Priority`), and AUX's pair is (7, 20). `builds/aux-boot-restore.json`
 is the current car build with this added.
 
-!!! warning "Candidate — never flashed"
+!!! failure "The two-edit version was flashed on 2026-09-28 and still booted to FM"
+
+    That version patched only the handler. The car's spy trace shows why it failed: AUX's boot
+    request still had `PrOnly` set, and FM won on the 7.5 s timer. The boot request comes
+    from `InitApp`, not from the handler. The `InitApp` edit (`0x022c0678`) was added for
+    that reason. See [the second car test](AUX_CHAIN.md#what-the-second-car-test-established).
+
+!!! warning "Candidate — the three-edit version is not yet flashed"
 
     Verified under emulation: `AddRequest` on the NAV image fills the `ScheduledInit` table,
     sets the restore flag and cancels the init timer for AUX's request with `PrOnly` clear,
-    and does none of that with `PrOnly` set. Not verified: the handler and `StartUp` (both
-    edits are checked by decoding only), anything after `ExecuteAllocation`, and the car.
+    and does none of that with `PrOnly` set. Not verified: the two `ActivateSource` call sites and
+    `StartUp` (all checked by decoding only), anything after `ExecuteAllocation`, and the car.
 
     **Expect an auto-switch as well.** Once AUX is in the table, AUX becoming available again
     is **forced** to the front (`ForceSchedulerPosition`). The handler fires only when the aux
