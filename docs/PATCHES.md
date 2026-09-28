@@ -236,6 +236,12 @@ being corrupted.
 After adding a set, or when a car test changes its status, run `python3 tools/patch_status.py`
 to regenerate the table above and the landing-page panel; a test fails while they are stale.
 
+### `data` — an edit that is not code
+
+Every edit is checked to decode as whole PowerPC instructions. An edit to a string or a table,
+such as the ring tone names `media.names` generates, sets `"data": true` to skip that check;
+`expect` is still verified first.
+
 ### `disasm` — pin the instructions, not just the bytes
 
 `disasm` is optional and asserts what the patched site must decode to. Without it the tool

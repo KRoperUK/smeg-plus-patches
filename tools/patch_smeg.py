@@ -274,15 +274,18 @@ def apply_patches(img, base, patches, label):
                 % (label, addr, expect.hex(), img[off : off + len(expect)].hex())
             )
         new = bytes.fromhex(p["bytes"])
-        check_site(new, label, addr, p.get("disasm"))
+        if not p.get("data"):  # a string or table edit (e.g. ring tone names) is not code
+            check_site(new, label, addr, p.get("disasm"))
         img[off : off + len(new)] = new
         print(
             "    %-14s %#010x  %s -> %s   %s"
             % (label, addr, expect.hex(), new.hex(), p.get("why", ""))
         )
-        after = disassemble(new)
+        after = None if p.get("data") else disassemble(new)
         if after:
             print("      %-14s %s" % ("", " ; ".join(after)))
+        elif p.get("data"):
+            print("      %-14s %r" % ("", new.rstrip(b"\0").decode("latin-1")))
     return img
 
 

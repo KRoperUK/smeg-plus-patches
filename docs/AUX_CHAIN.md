@@ -761,11 +761,11 @@ and it appears nowhere on the unit. The "Display version" screen reads `cd 26482
 it as an "did it apply" beacon.
 
 **A renamed ringtone keeps its old name.** The custom tone played (so the media partition
-applied), but the list still said `Alien`. The names are rows in
-`Data_base/sqlite/up_common.sqlite` (`UP_Keys`, section `phone`, key `Ringing_List`) — a settings
-database, not a media file. A normal package update writes the package's copy, not the unit's
-live one, which is also why paired phones survive. **Inference, not verified**: it has not been
-confirmed that the unit reads the name from its own copy rather than from the package.
+applied), but the list still said `Alien`. The build had changed `phone/Ringing_List` in the seed
+`up_common.sqlite`. **Corrected (#190):** that key appears nowhere in the application image. The
+names are string literals in the image, served by `C_SRV_RING_TOUCH::SetRingFilePath`
+*(read)*, so no database edit could change them. The earlier inference that the unit read
+its `/USER_DATA` copy was wrong. See [Ring tones](RINGTONES.md#names).
 
 ## Status of each claim
 

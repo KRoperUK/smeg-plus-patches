@@ -6,7 +6,7 @@
     "aux-boot-default": "meant to make C_MGR_SRC::StartUp restore AUX (position 7) on every boot; FALSIFIED on hardware 2026-09-27 - still boots to FM, see docs/AUX_CHAIN.md",
     "spy-dump-userdata-partition": "from alien-piano-riff; a different address, no overlap with the AUX sites"
   },
-  "_beacon": "gui_ver 32.01 is the visible did-it-apply signal, and ring1 renamed to Piano_riff",
+  "_beacon": "gui_ver 32.01 is the visible did-it-apply signal, and ring1 renamed to Piano (an application-image patch, #190)",
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
   "package": "~/Downloads/SMEG_PLUS_UPG",
   "out": "~/Downloads/stick_combined/SMEG_PLUS_UPG",
@@ -26,7 +26,7 @@
       }
     },
     "names": {
-      "ring1": "Piano_riff"
+      "ring1": "Piano"
     },
     "gui_ver": "32.01"
   },
