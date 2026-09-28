@@ -219,9 +219,10 @@ uv run tools/build_package.py --manifest builds/aux-only.json
 
 ### A note on the schemes as committed
 
-They carry **absolute paths for one checkout**, because a manifest is a build recipe rather
-than a portable artefact — edit the paths before reusing one. A scheme that reaches outside
-the repository (a tone file, an image) will say so in its `_comment`.
+Every path in a manifest (`package`, `out`, tone and splash sources) expands `~` and is read
+relative to the manifest file when it is not absolute. The schemes in `builds/` use
+`~/Downloads/...` for the stock package and for tone files; edit those to wherever yours are.
+A missing tone or image stops the build before any patch work starts.
 
 Every section is optional. `gain_db` is worth setting: the stock tones sit at about
 -1 dBFS, so an unmodified music track sounds muted in the car next to them.
