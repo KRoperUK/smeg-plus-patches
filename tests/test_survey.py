@@ -36,7 +36,7 @@ def fixture_with_vtable(tmp_path):
 
 def rows_by_name(tmp_path):
     image, symbols = fixture_with_vtable(tmp_path)
-    rows, fams = survey.survey(image.read_bytes(), load_typed_symbols(str(symbols)), BASE)
+    rows, fams, _ = survey.survey(image.read_bytes(), load_typed_symbols(str(symbols)), BASE)
     return {r["mangled"]: r for r in rows}, fams
 
 
@@ -49,7 +49,7 @@ def test_direct_materialised_and_data_references_are_counted_separately(tmp_path
 def test_a_pointer_inside_code_is_not_counted_as_a_table_entry(tmp_path):
     """The fixture's caller holds literal pointers in its own extent; those are not data."""
     image, symbols = helpers.make_ppc_analysis_fixture(tmp_path)
-    rows, _ = survey.survey(image.read_bytes(), load_typed_symbols(str(symbols)), BASE)
+    rows, _, _ = survey.survey(image.read_bytes(), load_typed_symbols(str(symbols)), BASE)
     t = {r["mangled"]: r for r in rows}["target_function"]
     assert t["pointers"] == 0
 
@@ -74,7 +74,7 @@ def test_families_group_by_class_prefix_and_name_libraries():
     assert survey.family("doSomething()") == "(free functions)"
 
 
-def test_cli_writes_the_three_tables_and_lists_unreached_code(tmp_path):
+def test_cli_writes_the_tables_and_lists_unreached_code(tmp_path):
     image, symbols = fixture_with_vtable(tmp_path)
     out = tmp_path / "survey"
     r = subprocess.run(
@@ -84,7 +84,14 @@ def test_cli_writes_the_three_tables_and_lists_unreached_code(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     assert "2 functions" in r.stdout
-    assert {p.name for p in out.iterdir()} == {"functions.tsv", "families.tsv", "unreached.tsv"}
+    assert {p.name for p in out.iterdir()} == {
+        "functions.tsv",
+        "families.tsv",
+        "unreached.tsv",
+        "vtables.tsv",
+        "virtual_calls.tsv",
+        "globals.tsv",
+    }
     unreached = (out / "unreached.tsv").read_text().splitlines()[1:]
     assert [line.split("\t")[3] for line in unreached] == ["caller"]
 
@@ -119,7 +126,7 @@ def scan(words, tmp_path):
     img[0x80:0x84] = struct.pack(">I", 0x4E800020)  # blr
     sym = tmp_path / "s.txt"
     sym.write_text("%08x T caller\n%08x T target\n" % (BASE, BASE + 0x80))
-    rows, _ = survey.survey(bytes(img), load_typed_symbols(str(sym)), BASE)
+    rows, _, _ = survey.survey(bytes(img), load_typed_symbols(str(sym)), BASE)
     return {r["mangled"]: r for r in rows}["target"]["materialised"]
 
 
@@ -137,3 +144,68 @@ def test_a_call_clobbers_volatile_registers(tmp_path):
 def test_ori_reads_its_source_from_the_rs_field(tmp_path):
     """`ori r4,r3,lo` combines the `lis r3`; the destination field names r4."""
     assert scan([0x3C600100, 0x60640080], tmp_path) == 1
+
+
+# ------------------------------------------- vtables, virtual calls, globals (#194)
+
+
+def vtable_fixture(tmp_path):
+    """caller at BASE: a virtual call through slot 4 in the stock `lwz r9,4(r9)` form, a
+    store to a BSS global past the end of the image, and a vtable holding target_function."""
+    words = {
+        0x00: 0x81230000,  # lwz r9,0(r3)       vtable pointer
+        0x04: 0x81290004,  # lwz r9,4(r9)       slot 4, same register
+        0x08: 0x7D2903A6,  # mtctr r9
+        0x0C: 0x4E800421,  # bctrl
+        0x10: 0x3D200101,  # lis r9,0x101
+        0x14: 0x90090010,  # stw r0,0x10(r9)    -> 0x01010010, a BSS global
+        0x18: 0x4E800020,  # blr
+        0x40: 0x4E800020,  # target_function: blr
+        0x44: 0x4E800020,  # other_function: blr
+    }
+    img = bytearray(0x100)
+    for off, w in words.items():
+        img[off : off + 4] = struct.pack(">I", w)
+    img[0x80 + 8 : 0x80 + 16] = struct.pack(">II", BASE + 0x44, BASE + 0x40)  # after the header
+    image = tmp_path / "vt.bin"
+    image.write_bytes(bytes(img))
+    sym = tmp_path / "vt.txt"
+    sym.write_text(
+        "%08x T caller\n%08x T target_function\n%08x T other_function\n"
+        "%08x V _ZTV6Widget\n%08x D pad\n%08x B g_counter\n"
+        % (BASE, BASE + 0x40, BASE + 0x44, BASE + 0x80, BASE + 0x90, BASE + 0x10010)
+    )
+    return image, sym
+
+
+def test_vtable_slots_are_read_after_the_header(tmp_path):
+    image, sym = vtable_fixture(tmp_path)
+    rows, _, extras = survey.survey(image.read_bytes(), load_typed_symbols(str(sym)), BASE)
+    slots = [(off, name) for _, _, off, _, name in extras["vtables"]]
+    assert slots == [(0, "other_function"), (4, "target_function")]
+    assert {r["mangled"]: r["vslots"] for r in rows}["target_function"] == 1
+
+
+def test_a_virtual_call_through_the_same_register_is_found(tmp_path):
+    image, sym = vtable_fixture(tmp_path)
+    _, _, extras = survey.survey(image.read_bytes(), load_typed_symbols(str(sym)), BASE)
+    assert [(site - BASE, off, name) for _, site, off, name in extras["virtual_calls"]] == [
+        (0x0C, 4, "caller")
+    ]
+
+
+def test_a_store_to_a_bss_global_past_the_image_is_attributed(tmp_path):
+    image, sym = vtable_fixture(tmp_path)
+    _, _, extras = survey.survey(image.read_bytes(), load_typed_symbols(str(sym)), BASE)
+    assert [(name, rd, wr) for _, name, rd, wr in extras["globals"]] == [
+        ("g_counter", [], ["caller"])
+    ]
+
+
+def test_a_gzipped_map_is_read_directly(tmp_path):
+    import gzip
+
+    image, sym = vtable_fixture(tmp_path)
+    gz = tmp_path / "vt.txt.gz"
+    gz.write_bytes(gzip.compress(sym.read_bytes()))
+    assert load_typed_symbols(str(gz)) == load_typed_symbols(str(sym))

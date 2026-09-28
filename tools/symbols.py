@@ -22,11 +22,20 @@ Shared here so there is one answer. `AGENTS.md` notes these analysis tools are t
 untested — see issue #38 — so the tests for this module are the closest thing they have.
 """
 
+import gzip
+
+
+def _open(path):
+    """Open a map as text, whether it is plain or the `.gz` the unit ships."""
+    if str(path).endswith(".gz"):
+        return gzip.open(path, "rt", errors="replace")
+    return open(path, "r", errors="replace")
+
 
 def load_symbols(path):
     """address -> name. Header and section lines are skipped, not guessed at."""
     syms = {}
-    with open(path, "r", errors="replace") as fh:
+    with _open(path) as fh:
         for line in fh:
             p = line.split()
             if len(p) >= 3:
@@ -46,7 +55,7 @@ def load_typed_symbols(path):
     only the name, which is why this is separate rather than a change to `load_symbols`.
     """
     syms = {}
-    with open(path, "r", errors="replace") as fh:
+    with _open(path) as fh:
         for line in fh:
             p = line.split()
             if len(p) >= 3:
