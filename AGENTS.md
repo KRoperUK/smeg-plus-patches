@@ -75,7 +75,7 @@ first.
 
 `.venv/` is gitignored, so a fresh clone has none — build it first (Python 3.13, because
 Homebrew's `python3` is 3.14, where `ensurepip` is broken and PySide6 has no wheels):
-`uv venv --seed --python 3.13 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical`.
+`uv venv --seed --python 3.13 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt -r requirements-docs.txt`.
 `unicorn` and `capstone` come from `requirements-dev.txt`; without them the emulator and
 disassembler tests **skip** rather than fail, so a venv missing them looks green and is not
 what CI runs.

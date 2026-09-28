@@ -22,7 +22,7 @@ For the tests, lint and docs, create the venv the docs assume (Python 3.13 — H
 
 ```sh
 uv venv --seed --python 3.13 .venv
-uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt -r requirements-docs.txt
 ```
 
 `requirements-dev.txt` brings `unicorn` and `capstone`. Without them the emulator and
