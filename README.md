@@ -12,7 +12,9 @@ non-NAV (`AUDIO_BT`) builds.
 **Status:** a patched, contract re-sealed package has been flashed to a real unit and
 accepted — the media check passed, the application image was written, and the
 `IsAUXSRCAvailable()` change is confirmed working (AUX no longer greys out). The
-**automatic switch itself has not yet been observed working**; that is the open question.
+**automatic switch itself has not yet been observed working**, and the handler it relied on
+turns out to follow the saved AUX input setting rather than the AUX signal (read from
+disassembly; see [The AUX chain](docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to)).
 See [Hardware verification](docs/VERIFICATION.md).
 
 > ## No vendor firmware is included
@@ -35,16 +37,19 @@ at `0x01000000`. The release also ships absolute symbol maps
 (`Application/PKG/abs_symbols_base.txt.gz`) which line up with that image, so the
 firmware can be patched by symbol rather than by blind search.
 
-The firmware already contains the auto-switch logic, in
-`C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged()`, reached via the event chain:
+The firmware was first thought to contain the auto-switch logic, in
+`C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged()`:
 
 ```
-audio server --DBUS--> C_BCM_HMI_AUDIO_CLIENT::AUDIO_AUX_SIGNAL_STATUS_CHANGED()
-  -> internal message 0xcc -> HMI event 0x613dc
+audio server --DBUS--> C_BCM_HMI_AUDIO_CLIENT::AUDIO_AUX_INPUT_STATUS_CHANGED()
+  -> internal message 0xcb
   -> HandleAudioAuxInputStatusChnged() -> SetMediaDeviceState()/ActivateSource()
 ```
 
-Two things stop that from actually switching on some units:
+**Correction:** that handler reacts to the saved AUX input *setting* changing, not to an AUX
+signal appearing, and stock firmware routes the signal notification only to a menu refresh.
+See [What the handler actually reacts to](docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to).
+The original reading, and the patches built on it, identified two obstacles:
 
 1. `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable()` only reports AUX as available when the
    vehicle configuration already has it and a signal is present.

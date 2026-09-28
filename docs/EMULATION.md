@@ -128,24 +128,32 @@ void HandleAudioAuxInputStatusChnged(this) {       // 0x0230331c
 
 Two things in there matter beyond the patch:
 
-**Gate 2 means the handler only acts on a transition.** An AUX signal that is already
-present when the state is first recorded produces no activation, because nothing changed.
+!!! note "Setting, not signal"
+
+    This section originally described the value gate 2 tests as the AUX **signal**. It is the
+    saved AUX input **setting** (`C_MODULE_AUDIO+0x8c`), read from disassembly; see
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
+    The runs below are unaffected — they fed the query a value — but their labels are.
+
+**Gate 2 means the handler only acts on a transition.** An AUX setting that is already
+non-zero when the state is first recorded produces no activation, because nothing changed.
 
 **`GetAuxStatus`'s return value is discarded.** It returns `-1` without touching the
 out-param if its proxy (`obj->0xc`) is null — and the handler reads the untouched local as
-"no signal". A failed query is indistinguishable from a genuine absence of signal, and
+"setting 0". A failed query is indistinguishable from AUX being switched off, and
 lands in gate 2 as "no change". That is a silent failure mode, and it is the shape of
 failure that matches the symptom.
 
 ### 4. `aux-sticky` was broken, and only executing it showed that
 
-The patch's second edit retargets the "AUX signal absent" branch to the shared return path,
-so an activated AUX is not handed back to radio when the signal drops. It shipped as
+The patch's second edit retargets the "AUX setting zero" branch (described at the time as
+"AUX signal absent") to the shared return path, so an activated AUX is not handed back to radio
+when that value drops. It shipped as
 `b +0x140` — the right displacement, with the condition dropped. Unconditional, so the
 branch was taken regardless of the signal, and the activate path immediately below it became
 unreachable.
 
-| bytes at `0x02303434` | signal appears | signal vanishes |
+| bytes at `0x02303434` | setting becomes non-zero | setting becomes zero |
 |---|---|---|
 | `419e0058` (stock, `beq +0x58`) | activates | releases |
 | `48000140` (shipped, `b +0x140`) | **does nothing** | does nothing |
@@ -263,7 +271,7 @@ def run(patched, device_found):
     e.stub_all, e.stub_default, e.run_for_real = True, 0x60002000, REAL
     e.stub(
         0x025CB258,
-        lambda uc: uc.mem_write(  # the AUX signal appears
+        lambda uc: uc.mem_write(  # the AUX setting query returns non-zero
             uc.reg_read(UC_PPC_REG_4), struct.pack(">I", 1)
         ),
     )

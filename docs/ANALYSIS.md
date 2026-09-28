@@ -79,6 +79,13 @@ Two distinct statuses exist:
 `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable()` consults both; that is what drives the AUX
 entry grey-out / enable behaviour in the source list.
 
+!!! warning "Corrected: `+0x74` is a lifecycle state, and `Get_aux_status` is a setting"
+
+    `+0x74` is not a flag set in `Open()`. It is `st_audio`, the module lifecycle state:
+    0 closed, 1 open, 2 radio restarted, 9 radio early-started, 10 radio started, `0x28`
+    error (*read*). `Get_aux_status` returns `+0x8c`, the saved AUX input **setting**
+    (`Auxiliary_Status`), not a signal. See [The audio module](AUDIO_MODULE.md).
+
 ## 4. Event chain
 
 ```
@@ -106,6 +113,15 @@ audio server
     So the event chain above may be the *signal* path while the auto-switch handler is
     driven by the *input* path. Which one actually fires on the car is the decisive open
     question, and is exactly what the spy capture in [Cheatcodes](CHEATCODES.md) is for.
+
+!!! failure "Corrected: the chain starts from the INPUT event, and the INPUT event is the setting"
+
+    The diagram above is wrong at its first step. `C_BCM_HMI_AUDIO_CLIENT`'s
+    `AUDIO_AUX_SIGNAL_STATUS_CHANGED` posts `0xcc`; its `AUDIO_AUX_INPUT_STATUS_CHANGED` posts
+    `0xcb`, and `0xcb` is the message the media app dispatches to
+    `HandleAudioAuxInputStatusChnged` (*read*, disassembly). The INPUT event is raised when the
+    saved AUX input setting is written, not when a signal appears. See
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
 
 The handler is registered in the HMI event table (entry: size `0x2c`, event id
 `0x613dc`, handler pointer, function size `0x290`, type `7`).

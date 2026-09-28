@@ -1,18 +1,20 @@
 # The AUX auto-switch, gate by gate
 
 This is the single reference for what has to happen, in order, for the unit to select AUX
-by itself when a signal appears — and what is known about each step. Everything with an
-address was read out of the `NAV` image; everything marked **executed** was run under
+by itself when a signal appears — the project's goal — and what is known about each step.
+Everything with an address was read out of the `NAV` image; everything marked **executed** was run under
 [the emulator](EMULATION.md) rather than reasoned about.
 
-If you only read one thing: the patch set does not fail at the step the project spent two
-years assuming it did, and the one link that has never been checked is the first one.
+If you only read one thing: the chain below does not start from the AUX **signal** at all.
+It starts from a change of the saved AUX **input setting**, so stock firmware has no path that
+switches to AUX when a signal appears. See
+[What the handler actually reacts to](#what-the-handler-actually-reacts-to).
 
 ## The chain
 
 ```mermaid
 flowchart TD
-    AS["audio server"] -->|DBUS signal| CL["C_BCM_HMI_AUDIO_CLIENT"]
+    AS["audio server"] -->|"DBUS AUDIO_AUX_INPUT_STATUS_CHANGED"| CL["C_BCM_HMI_AUDIO_CLIENT"]
     CL --> LA{"LINK A<br/>client-&gt;0x50 == NULL?"}:::unknown
     LA -->|null| STOP["return — no listener"]
     LA -->|set| P203["post message 203 (0xcb)<br/>@ 0x025cdefc"]
@@ -40,7 +42,7 @@ The same trace as a call listing:
 
 ```
 audio server
-  --DBUS signal-->  C_BCM_HMI_AUDIO_CLIENT
+  --DBUS AUDIO_AUX_INPUT_STATUS_CHANGED-->  C_BCM_HMI_AUDIO_CLIENT
                       if (client->0x50 == NULL) return;        <-- LINK A: no listener
                     post internal message 203 (0xcb)           @ 0x025cdefc
   --message 203-->  C_HMI_MEDIA_APP_BASE::HandleDBUSMessage    @ 0x02309398
@@ -58,11 +60,16 @@ audio server
 The client only posts message 203 if something registered for it:
 
 ```c
-void OnAuxSignalStatusChanged(client) {     // 0x025c9e78
+void C_BCM_AUDIO_CLIENT::AUDIO_AUX_INPUT_STATUS_CHANGED(client) {   // 0x025c9e78
     if (client->0x50 == NULL) return;       // 0x025c9e9c
     Post203(client->0x50);                  // 0x025cdefc
 }
 ```
+
+An earlier version of this page called `0x025c9e78` `OnAuxSignalStatusChanged`. The symbol map
+names it `C_BCM_AUDIO_CLIENT::AUDIO_AUX_INPUT_STATUS_CHANGED`: it is the **input** (setting)
+notification, not the signal one. The name had been assumed from what the chain was expected
+to do.
 
 `client->0x50` is written by one setter (`0x025c97f0`), called from two places, both of
 which look like this:
@@ -73,7 +80,7 @@ SetListener(app->0xc, app);
 ```
 
 So the listener exists only if `app->0xc` does. **That same `app->0xc` is what the AUX
-status query dereferences** (`0x025cb280`), returning `-1` without touching its out-param
+setting query dereferences** (`0x025cb280`), returning `-1` without touching its out-param
 when it is null — and gate 2 discards that return value. One null pointer there would
 produce exactly the symptom seen on the car: no switch, no error, nothing in the UI.
 
@@ -97,8 +104,8 @@ void HandleAudioAuxInputStatusChnged(this) {       // 0x0230331c
     app = this->0x50df4;                           // 0x022ad2c0 — a plain getter
     if (app == NULL) return;                       // gate 1  @ 0x02303358
     ctor(&obj);                                    // 0x02368080 — zeroes obj entirely
-    GetAuxStatus(app, &signal);                    // 0x025cb258 — RETURN VALUE DISCARDED
-    state = (signal != 0);
+    Get_aux_status(app, &setting);                 // 0x025cb258 — RETURN VALUE DISCARDED
+    state = (setting != 0);                        // the saved AUX input setting, not a signal
     if (state == this->0x51449) return;            // gate 2  @ 0x023033d4
     this->0x51449 = state;
     if (GetMediaDevice(mgr, AUX, &obj)) return;    // gate 3  @ 0x02303428
@@ -111,14 +118,16 @@ void HandleAudioAuxInputStatusChnged(this) {       // 0x0230331c
 | gate | tests | status |
 |---|---|---|
 | 1 | the audio client exists | **unknown** — the only untested link, see above |
-| 2 | the AUX state actually changed | **a real gate** — only acts on a transition |
+| 2 | the saved AUX input setting changed between zero and non-zero | **a real gate** — only acts on a transition |
 | 3 | `GetMediaDevice(AUX)` succeeded | **never fires** — executed; see below |
 | 4 | the device carries a source manager | **never fires once gate 3 passes** |
 
-**Gate 2 is a change detector.** A signal already present when the state is first recorded
-produces no activation, because nothing changed. Worse, because the status query's return
-value is thrown away, a *failed* query reads as "no signal" and lands here as "no change".
-A broken link A and a genuinely silent AUX input are indistinguishable at this point.
+**Gate 2 is a change detector, on the AUX input setting.** The value compared is the setting
+`Get_aux_status` returns (`C_MODULE_AUDIO+0x8c`, the `audio/Auxiliary_Status` key), not signal
+presence; see below. A setting already non-zero when the state is first recorded produces no
+activation, because nothing changed. Because the query's return value is thrown away, a
+*failed* query reads as "setting 0" and lands here as "no change". A broken link A and an
+AUX input switched off in the menu are indistinguishable at this point.
 
 **Gate 3 is what `aux-autoswitch` nops, and it never fires.** The AUX media device is
 registered unconditionally at start-up, so `GetMediaDevice(AUX)` succeeds. **Executed:**
@@ -132,6 +141,60 @@ constructor left. See [Emulating the firmware](EMULATION.md) for the full truth 
 
     `0x0230346c` loads that field straight into `r3` as `ActivateSource`'s `this`. Removing
     the guard calls a C++ method on a null pointer, on the HMI thread.
+
+## What the handler actually reacts to
+
+!!! failure "Correction: the handler follows the AUX setting, not the AUX signal"
+
+    This page, [the archived analysis](ANALYSIS.md), the README and several patch
+    descriptions described `HandleAudioAuxInputStatusChnged` as reacting to **an AUX signal
+    appearing**. It does not. The claim came from reading the chain by function names and by
+    what it was expected to do: the variable gate 2 tests was called `signal` on assumption,
+    `0x025c9e78` was named `OnAuxSignalStatusChanged` without checking the map, and the
+    emulator runs fed the status query a 1 labelled "the AUX signal appears". Those runs
+    established the handler's control flow for a given value. They said nothing about what
+    the value means.
+
+What the value is, **read** from the disassembly:
+
+* `C_MODULE_AUDIO::Get_aux_status` (`0x013b9c8c`) returns `lwz r0,0x8c(r31)` whenever the
+  module's lifecycle state `+0x74` is non-zero.
+* The only writers of that field on the module object are `setAUXGain` (`0x013bba28`,
+  `stw r30,0x8c(r29)`, the setting it was given) and `read_sqlite_AudioUserData`
+  (`0x013caba8`), which loads the user key `Auxiliary_Status`; the string is in the image.
+* So `+0x8c` is the **AUX input setting** from the media options menu, 0..3 — not whether audio
+  is arriving. Signal presence is a different call, `Get_AUX_signal_status`, which reads the
+  radio front-end.
+
+Which DBUS notification reaches the handler, **read**: `C_BCM_HMI_AUDIO_CLIENT`'s
+`AUDIO_AUX_INPUT_STATUS_CHANGED` posts HMI message `0xcb` (`li r4,0xcb` at `0x025cdf1c`), and its
+`AUDIO_AUX_SIGNAL_STATUS_CHANGED` posts `0xcc` (`li r4,0xcc` at `0x025cded0`). The media app
+dispatches the handler on `0xcb`, above. The close reading of the audio module found no `0xcc`
+case in the media app's `HandleDBUSMessage` and the audio app using `0xcc` only to refresh its
+menu — *read in that reading, not re-checked independently*.
+
+When the setting notification is raised, **read** (see [The audio module](AUDIO_MODULE.md)):
+
+* when the setting is written from the menu (`Set_aux_status` → `setAUXGain`);
+* **once per boot**, at the end of `ElabRADIO_READY_FOR_INIT_0`, which calls
+  `setAUXGain(+0x8c, 1)`. Whether the media app is listening by then is **not known**.
+
+What follows:
+
+* **Stock firmware has no path that switches to AUX because a signal appeared.** *Inferred*
+  from the routing above. The observed behaviour on the car — AUX greys out and re-enables with
+  the signal — is `IsAUXSRCAvailable()` in the audio app, a separate path.
+* **`aux-autoswitch`'s premise needs re-examining.** Its second edit nops gate 3, which never
+  fires (executed), and even with every gate open the handler would act on a *setting* change.
+  Its first edit, `IsAUXSRCAvailable()`, is confirmed on hardware and is unaffected.
+* **A real signal-triggered switch would need a new wire.** *Inferred design, untested:* route
+  `0xcc` into the media app's AUX handler, and make that handler test `Get_AUX_signal_status`
+  rather than `Get_aux_status`. Two constraints from the audio module apply: signal events are
+  dropped until the radio has started (`+0x74` = 10), and AUX is kept muted while it is the
+  current source with no signal (`+0x168`).
+* **`aux-boot-restore` is unaffected at boot.** Its boot edit is on `InitApp`, which does not go
+  through this handler. Its handler edit still covers the boot-time re-announcement and later
+  setting changes. What changes is the expected *auto-switch*: see below.
 
 ## The media device table
 
@@ -606,13 +669,14 @@ is from an unpatched boot. A capture from a patched boot, left untouched on FM, 
 `C_HMI_SrcMgntBase` keeps its request at `this+0x10`, so the `PrOnly` byte is `this+0x38`.
 `ActivateSource(bool)` writes its argument there for the one `AllocateSource` it sends, then puts
 the old value back. `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged` calls
-`ActivateSource(aux, true)` (`li r4,1` at `0x02303474`) when the AUX input becomes available,
+`ActivateSource(aux, true)` (`li r4,1` at `0x02303474`) when the AUX input setting becomes
+non-zero (see [What the handler actually reacts to](#what-the-handler-actually-reacts-to)),
 and `C_HMI_MEDIA_APP_BASE::InitApp` does the same for the boot-time request (`li r4,1` at
 `0x022c0678`). It is the only one of `InitApp`'s six activations that passes `true`; the site is
 identified by the label it opens with, `user_HMI.AUX.Equalizer_aux`.
-The handler runs only when the AUX status actually changes, because it compares against a cached
-copy at `this+0x51449`. When AUX goes away, it releases the source. So `PrOnly` means
-"this device has appeared; do not take the audio for it", which is exactly what the boot restore
+The handler runs only when the AUX input setting changes between zero and non-zero, because it
+compares against a cached copy at `this+0x51449`. When the setting goes to zero, it releases the
+source. So `PrOnly` means "this source has become available; do not take the audio for it", which is exactly what the boot restore
 and the re-request force honour. The video app passes `true` as well (`HandleMediaStateReady`,
 `HandleVideoTrackFound`). Inside `C_MGR_SRC`, the byte is read only by `AddRequest`'s restore
 gate and by `AllocateSource`'s spy line.
@@ -622,7 +686,7 @@ gate and by `AllocateSource`'s spy line.
 | site | original | candidate | effect |
 |---|---|---|---|
 | `0x022c0678` in `InitApp` | `li r4,1` | `li r4,0` | AUX's **boot** request is sent with `PrOnly` clear, so it enters the table and meets the restore |
-| `0x02303474` in `HandleAudioAuxInputStatusChnged` | `li r4,1` | `li r4,0` | the same for AUX's later requests, when AUX appears; no other source changes |
+| `0x02303474` in `HandleAudioAuxInputStatusChnged` | `li r4,1` | `li r4,0` | the same for AUX's later requests, when the AUX input setting becomes non-zero (including its once-per-boot re-announcement); no other source changes |
 | `0x01699444` in `StartUp` | `lwz r0,8(r1)` | `li r0,20` | the restored `Last_Source_Priority` is always AUX's 20 |
 
 **Emulated** (`tools/ppcemu.py`, the NAV image, `AddRequest` run for real on a synthetic
@@ -644,11 +708,12 @@ the video sources, which pass `true`. What is **not** emulated: the handler and 
 edits are checked only by decoding them), and everything downstream of `ExecuteAllocation`.
 Whether the unit boots to AUX is **not known** until it is flashed. What to expect beyond boot:
 
-* **An auto-switch.** Once AUX is in the table, AUX becoming available again is forced to the
-  front: `IsInitialized` → `ForceSchedulerPosition`, emulated above. Because the handler fires only
-  on a change of AUX status, that happens when AUX appears, not continuously against a manual
-  choice. It is the behaviour `PrOnly = true` was there to prevent, and the one this project
-  wants.
+* **Not an auto-switch on signal.** Once AUX is in the table, a *second* AUX request is forced to
+  the front: `IsInitialized` → `ForceSchedulerPosition`, emulated above. But the handler sends
+  that request only when the AUX input **setting** goes from zero to non-zero, not when a signal
+  appears (see [What the handler actually reacts to](#what-the-handler-actually-reacts-to)). An
+  earlier version of this page expected a switch "when AUX appears"; that expectation is
+  withdrawn. Turning the AUX input on in the menu would now select AUX (*inferred*).
 * The first request-list dump from a patched boot should show whether the tuner still wins first.
 
 Changing the literal 1 at `0x01697b44` is **not** a safe shortcut: `ChangeToNextSchedulerPosition`
@@ -685,7 +750,7 @@ Nb|src|id|Status|Norm|NoSr|Lock|Type|sche|Post|Susp|PrOnly|
 
 The boot request comes from `InitApp`, not from the handler. The order of the requests (USB,
 iPod, BT, CDC, AUX) is `InitApp`'s order, and `InitApp`'s AUX activation is the one call that
-passes `true` (`0x022c0678`, *read*). The handler runs only on a later *change* of AUX status. The
+passes `true` (`0x022c0678`, *read*). The handler runs only on a later *change* of the AUX input setting. The
 `InitApp` edit was added to `aux-boot-restore` as a result, and that version is **not yet
 flashed**.
 
@@ -717,6 +782,10 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | type 5 is AUX | inferred from call sites, strongly |
 | `aux-sticky`'s second edit does what it says | **executed on all three builds** — after being corrected; it shipped unconditional |
 | link A's state on a real unit | **not known** — needs the car |
+| `HandleAudioAuxInputStatusChnged` reacts to the saved AUX input setting (`C_MODULE_AUDIO+0x8c`, `Auxiliary_Status`), not to signal presence | **read** — `Get_aux_status`, its two writers, and the `0xcb`/`0xcc` posts in disassembly; supersedes the earlier "signal" reading |
+| stock firmware has no path that switches to AUX when a signal appears | **inferred** — from the routing; the media app's lack of a `0xcc` case was read in the audio-module reading, not re-checked |
+| every boot re-announces the AUX setting once (`ElabRADIO_READY_FOR_INIT_0` → `setAUXGain`) | **read** |
+| `HandleMediaStateReady` can activate AUX with a computed `PrOnly` (`0x02306a18`), outside `aux-boot-restore` | **read**; whether it runs for AUX is **not known** — see [How HMI apps request sources](HMI_SOURCES.md) |
 | `AddRequest` writes `SrcId` to `node+0x04` and `Sched_Pos` to `node+0x18`; the lists at `+0xd4` are requests, not a registry | **read from disassembly/decompiled code** — field names corroborated by the named `SetScheduledInit` call |
 | the scheduler matches `node+0x18` (`Sched_Pos`) against `+0xb4` | read statically; **runtime tuner tuple corroborates it** |
 | boot restore writes `+0xb4` with no validation | **read from decompiled code** — not executed |
