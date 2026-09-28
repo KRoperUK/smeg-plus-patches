@@ -278,6 +278,7 @@ invisible to them. That is the gap this closes.
 | `patches/aux-sticky.json` | removes the bail-out **and** turns "AUX setting switched off" into a no-op (previously described as "signal absent") | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
 | `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
 | `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Two-edit version falsified**{ .pill .pill-no } still FM on 2026-09-28; the three-edit version is not yet flashed |
+| `patches/aux-signal-switch.json` | the AUX handler reads the **signal** instead of the setting, and the media dispatch sends the signal event (`0xcc`) to it; pair with `aux-boot-restore` and `aux-sticky` | **Never flashed**{ .pill .pill-wip } both functions verified under emulation |
 | `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
 | `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
@@ -585,6 +586,32 @@ is the current car build with this added.
     One more AUX activation path exists outside this patch: `HandleMediaStateReady`, with a
     computed `PrOnly` at `0x02306a18`. Whether it ever runs for AUX is not known; see
     [How HMI apps request sources](HMI_SOURCES.md). See [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+
+### `aux-signal-switch` — switch to AUX when its signal appears
+
+Stock firmware has no switch-on-signal path. The AUX handler runs on the *setting* event
+(`0xcb`) and tests the setting, and the media app drops the *signal* event (`0xcc`). See
+[The AUX signal path](AUX_SIGNAL.md). This set changes both:
+
+| build | edits | what |
+|---|---|---|
+| `NAV` | `0x02303378`, `0x0230338c`, `0x02303398`, `0x0230342c` | `HandleAudioAuxInputStatusChnged` calls `Get_AUX_signal_status` instead of `Get_aux_status`, and reads its `bool` result |
+| `NAV` | `0x02309628`–`0x02309648` (8 words) | `HandleDBUSMessage` gains a `0xcc` case going to the same handler; every other id is routed as before |
+
+The exact bytes are in [The AUX signal path](AUX_SIGNAL.md#candidate-designs-aux-signal-switch-emulated-not-flashed).
+
+!!! warning "Candidate — emulated, not flashed"
+
+    **Executed** under `tools/ppcemu.py` on the NAV image:
+    - the patched handler activates AUX when the signal appears and releases it when the
+      signal is lost;
+    - with `aux-boot-restore`, the activation passes `PrOnly` 0;
+    - with `aux-sticky`, the release is suppressed;
+    - the dispatch sends `0xcc` to the handler, and every other id where stock sends it.
+
+    **Not known:** whether the unit measures AUX while another source plays. If it does not,
+    this cannot switch from FM. `builds/aux-signal-switch.json` is the car build; the first
+    step of its test answers that question.
 
 ### `spy-dump-userdata` — SPYSTORE also backs up `/USER_DATA`
 

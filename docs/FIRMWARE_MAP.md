@@ -106,7 +106,7 @@ How closely each part has been examined, using the evidence tiers from
 | `C_HMI_SrcMgntBase` and every `ActivateSource(bool)` call site (17) | read | [How HMI apps request sources](HMI_SOURCES.md) |
 | the update flow: `C_BCM_UPGRADE` (353), `C_HMI_UPGRADE` (293), `C_HMI_UPG` (195) | about 30 functions read closely: plugin loading, the contract check, mount/probe, skin rewrite, result mapping; `HandlePrivateMessage` skimmed per case; the rest inferred from names. The contract layout was also executed (decrypted). Everything after `upgplugin_LaunchUpgrade` is outside the image. | [The update flow](UPGRADE_FLOW.md) |
 | cheat codes and the spy collectors: `C_BCM_SPY` (109), `C_BCM_Cheat_Code`, the 25 `libcheatcode_*` libraries | every code's `Activate` read from its relocations; the collect path read; one real `-USER` capture inspected (executed) | [Cheatcodes & spy](CHEATCODES.md) |
-| the AUX signal path: detection in the radio driver, `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED`, DBUS forwarding, every app's `0xcc` handling | read. Whether the detector measures AUX while another source plays is not known. The two candidate designs are unexecuted. | [The AUX signal path](AUX_SIGNAL.md) |
+| the AUX signal path: detection in the radio driver, `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED`, DBUS forwarding, every app's `0xcc` handling | read. Whether the detector measures AUX while another source plays is not known. The candidate designs ship as `aux-signal-switch` and are executed under emulation (handler and dispatch window); not flashed. | [The AUX signal path](AUX_SIGNAL.md) |
 | HMI framework: messages, event handler, menus | named from symbols, partly read | [Architecture](ARCHITECTURE.md) |
 | everything else | inventoried by the survey only | this page |
 

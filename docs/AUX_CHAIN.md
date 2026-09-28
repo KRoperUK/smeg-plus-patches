@@ -191,8 +191,8 @@ What follows:
   `0xcc` into the media app's AUX handler, and make that handler test `Get_AUX_signal_status`
   rather than `Get_aux_status`. Two constraints from the audio module apply: signal events are
   dropped until the radio has started (`+0x74` = 10), and AUX is kept muted while it is the
-  current source with no signal (`+0x168`). The whole signal path, and two concrete candidate edit groups
-  (unexecuted, unshipped), are in [The AUX signal path](AUX_SIGNAL.md).
+  current source with no signal (`+0x168`). The whole signal path, and two concrete candidate edit groups,
+  now `patches/aux-signal-switch.json` (emulated, not flashed), are in [The AUX signal path](AUX_SIGNAL.md).
 * **`aux-boot-restore` is unaffected at boot.** Its boot edit is on `InitApp`, which does not go
   through this handler. Its handler edit still covers the boot-time re-announcement and later
   setting changes. What changes is the expected *auto-switch*: see below.
