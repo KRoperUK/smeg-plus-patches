@@ -15,8 +15,8 @@ AUDIO_BT build will differ.
 | code symbols (`T`/`W` in `abs_symbols_base`) inside the image | **89 351** |
 | instructions spanned by those symbols | **≈ 7.99 million** (31.9 MB) |
 | families (class prefix, or library for free functions) | 1 030 |
-| functions with at least one `bl` caller, materialised reference or data pointer found | 79 480 |
-| functions with none found | 9 871 (≈ 624 000 instructions) |
+| functions with at least one `bl` caller, materialised reference or data pointer found | 79 462 |
+| functions with none found | 9 889 (≈ 625 000 instructions) |
 
 Reading every instruction by hand is not feasible, so the working unit is the **function**.
 Every function gets a row in the survey. Each subsystem that matters to a patch then gets a
@@ -86,7 +86,7 @@ symbol map, so it stays on your machine. Do not commit it; see `AGENTS.md`.
 
     An address built with `addis`+`lwz`, taken from a register computed at run time, or
     reached through a branch table is not counted. A function in `unreached.tsv` has no
-    reference *this scan recognises*; that does not prove it is dead. 4 095 of the 9 871
+    reference *this scan recognises*; that does not prove it is dead. 4 100 of the 9 889
     are Qt, where unused library code is expected.
 
 ## Coverage ledger

@@ -80,6 +80,35 @@ THIRD_PARTY = {
 }
 
 
+# volatile registers under the PowerPC EABI: a call may leave anything in them
+VOLATILE = (0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+# D-form opcodes whose result lands in bits 21-25 (loads, mulli, subfic, addic, addis)
+WRITES_RT = {7, 8, 12, 13, 15, 32, 33, 34, 35, 40, 41, 42, 43, 46}
+# D/M-form opcodes whose result lands in bits 16-20 (logical immediates, rotates)
+WRITES_RA = {20, 21, 23, 25, 26, 27, 28, 29}
+
+
+def clobber_volatile(lis):
+    for r in VOLATILE:
+        lis.pop(r, None)
+
+
+def written(w, op):
+    """GPRs an instruction may overwrite, erring towards too many.
+
+    Forgetting a `lis` too early only loses a reference; keeping one past an overwrite
+    invents a reference that is not there, which is the worse error for an inventory.
+    Opcode 31 is not decoded further, so both of its register fields count as written.
+    """
+    if op in WRITES_RT:
+        return ((w >> 21) & 31,)
+    if op in WRITES_RA:
+        return ((w >> 16) & 31,)
+    if op == 31:
+        return ((w >> 21) & 31, (w >> 16) & 31)
+    return ()
+
+
 def load_image(path):
     """The inflated image, from either an `f_BigQuick.bin` container or a raw image."""
     raw = Path(path).read_bytes()
@@ -176,11 +205,19 @@ def survey(img, typed, base=DEFAULT_BASE):
                 if t in fset:
                     callers[t].add(f)
                     callees[f].add(t)
+                clobber_volatile(lis)
+            elif op == 19 and w & 1:  # bctrl / blrl
+                clobber_volatile(lis)
             elif op == 15 and (w >> 16) & 31 == 0:  # lis rD,hi
                 lis[(w >> 21) & 31] = (w & 0xFFFF, i)
-            elif op in (14, 24):  # addi / ori rD,rA,lo
-                ra = (w >> 16) & 31
-                hit = lis.get(ra)
+            elif op in (14, 24):  # addi rD,rA,lo / ori rA,rS,lo
+                src, dst = (
+                    ((w >> 16) & 31, (w >> 21) & 31)
+                    if op == 14
+                    else ((w >> 21) & 31, (w >> 16) & 31)
+                )
+                hit = lis.get(src)
+                lis.pop(dst, None)
                 if hit and i - hit[1] <= LIS_WINDOW:
                     hi16 = hit[0] << 16
                     lo16 = w & 0xFFFF
@@ -195,6 +232,9 @@ def survey(img, typed, base=DEFAULT_BASE):
                         s = c_string(img, val - base)
                         if s and s not in strings[f]:
                             strings[f].append(s)
+            else:
+                for r in written(w, op):
+                    lis.pop(r, None)
 
     for i in range(n):
         if not in_code[i]:
