@@ -175,12 +175,15 @@ tuning, parking, failsoft, browser, connectivity.
   `ActivateSourceByID`, `ActivateSourceByType`, `ActivateNextSource`, …). See
   [The source scheduler](SCHEDULER.md) and [How HMI apps request sources](HMI_SOURCES.md).
 - **Audio module `C_MODULE_AUDIO`** — DSP/mixing/amplifier owner; source switching,
-  AUX status and gain, mute management. It executes source changes that arrive over DBUS
+  the saved AUX input setting and gain, mute management. It executes source changes that arrive over DBUS
   through `C_SRV_AUDIO`; it never calls `C_MGR_SRC` (read). See
   [The audio module](AUDIO_MODULE.md).
 - **Tuner `C_MODULE_TUNER`** + radio front-end `C_I2C_SMART_RADIO` (RDS/AF/DAB, and
   `Get_AUX_signal_status`). AUX signal detection lives here; see
-  [The AUX signal path](AUX_SIGNAL.md).
+  [The AUX signal path](AUX_SIGNAL.md). The media app's AUX handler reacts to the saved AUX
+  input setting (`AUDIO_AUX_INPUT_STATUS_CHANGED`, HMI message `0xcb`), not to the signal
+  (`AUDIO_AUX_SIGNAL_STATUS_CHANGED`, `0xcc`), which it does not handle; see
+  [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
 - **Key interface `C_BCM_KIM`** — turns front-panel/AVR key events into HMI keyboard
   messages and desktop destinations (`SendKeyEvent`, `RegisterAsDestination`).
 - **Desktop / shell `C_HMI_ClientDesktopFsm` + `C_BCM_DesktopServices`** — the
@@ -222,10 +225,7 @@ fonts and radio logos all live in the media partition and are described in
   application image).
 - Whether HMI apps are threads in one process or separate processes (the naming implies
   threads; no explicit task table was found).
-- Exact semantics of the `CheckType` byte (0–3) in the `*_ctrl.bin` manifests — see
-  [Boot & update chain](FLASH_CHAIN.md). Still open for the manifests, which `upgrade.out`
-  checks; answered for `contract.dat` in [The update flow](UPGRADE_FLOW.md#the-contract-check).
-- ~~The `AUDIO_AUX_SIGNAL_STATUS_CHANGED` vs `AUDIO_AUX_INPUT_STATUS_CHANGED` question~~ —
-  answered: the media app's AUX handler runs on the INPUT event (`0xcb`), which is raised
-  when the saved AUX input setting is written. See
-  [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
+- What `CheckType` 0 means in the `*_ctrl.bin` manifests. Type 2 (CRC32) and type 3 (CRC-16)
+  are reproduced from the stock files, and type 1 is the size (one record; *inferred* in
+  general): see [Boot & update chain](FLASH_CHAIN.md#_ctrlbin-format). The `contract.dat` types
+  are in [The update flow](UPGRADE_FLOW.md#the-contract-check).
