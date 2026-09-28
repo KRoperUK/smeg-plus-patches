@@ -1,6 +1,6 @@
 {
   "name": "aux-boot-restore",
-  "description": "CANDIDATE, NEVER FLASHED. Lets AUX's source request take part in C_MGR_SRC's boot restore, which it is otherwise excluded from. Pair with aux-boot-default. The restore happens in C_MGR_SRC::AddRequest: a type-5/6 request's (Sched_Pos, priority) is added to the ScheduledInit table and compared against (Last_Source, Last_Source_Priority) - but only when the request's PrOnly byte (+0x28) is clear. PrOnly is the bool argument of C_HMI_SrcMgntBase::ActivateSource, and C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged passes true for AUX (executed: 2026-09-14 spy request-list dump shows AUX's request with PrOnly true, priority 20). Edit 1 makes that one call pass false, so only AUX's request changes; edit 2 makes the restored Last_Source_Priority always 20, AUX's priority, so AUX's (7, 20) matches aux-boot-default's forced Last_Source 7. EFFECT BEYOND BOOT: once AUX is in the table, AUX becoming available again (the handler fires only on a change of aux status) is forced to the front via ForceSchedulerPosition - an auto-switch. See docs/AUX_CHAIN.md#how-the-boot-source-is-actually-chosen. NAV only.",
+  "description": "CANDIDATE. The two-edit version was flashed on 2026-09-28 and still booted to FM: AUX's boot request comes from InitApp, not the status handler, so it kept PrOnly. This version adds the InitApp edit; not yet flashed. Lets AUX's source request take part in C_MGR_SRC's boot restore, which it is otherwise excluded from. Pair with aux-boot-default. The restore happens in C_MGR_SRC::AddRequest: a type-5/6 request's (Sched_Pos, priority) is added to the ScheduledInit table and compared against (Last_Source, Last_Source_Priority) - but only when the request's PrOnly byte (+0x28) is clear. PrOnly is the bool argument of C_HMI_SrcMgntBase::ActivateSource, and C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged passes true for AUX (executed: 2026-09-14 spy request-list dump shows AUX's request with PrOnly true, priority 20). The AUX input handler and C_HMI_MEDIA_APP_BASE::InitApp both call ActivateSource(aux, true); edits 1 and 2 make both pass false, so only AUX's requests change; edit 3 makes the restored Last_Source_Priority always 20, AUX's priority, so AUX's (7, 20) matches aux-boot-default's forced Last_Source 7. EFFECT BEYOND BOOT: once AUX is in the table, AUX becoming available again (the handler fires only on a change of aux status) is forced to the front via ForceSchedulerPosition - an auto-switch. See docs/AUX_CHAIN.md#how-the-boot-source-is-actually-chosen. NAV only.",
   "variants": {
     "NAV": {
       "app_image": "NAV/AppBin/f_BigQuick.bin",
@@ -15,6 +15,12 @@
           "expect": "38800001",
           "bytes": "38800000",
           "why": "C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged: `li r4,1` is the PrOnly argument of C_HMI_SrcMgntBase::ActivateSource(aux, true) when the AUX input becomes available. Pass false, so AUX's request enters the ScheduledInit table and is compared against Last_Source. Scoped to AUX: the video app's own ActivateSource(true) calls are untouched."
+        },
+        {
+          "addr": "0x022c0678",
+          "expect": "38800001",
+          "bytes": "38800000",
+          "why": "C_HMI_MEDIA_APP_BASE::InitApp: `li r4,1` is the PrOnly argument of the boot-time ActivateSource(aux, true) - the AUX source opened with label user_HMI.AUX.Equalizer_aux, the only one of InitApp's six activations that passes true. This is the request the boot restore sees (executed: 2026-09-28 car test, AUX's request at 10109 ms still PrOnly true with the handler edit alone). Pass false."
         },
         {
           "addr": "0x01699444",

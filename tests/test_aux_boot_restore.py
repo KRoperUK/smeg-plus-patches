@@ -28,6 +28,7 @@ import helpers  # noqa: E402
 
 PATCH_FILE = os.path.join(ROOT, "patches", "aux-boot-restore.json")
 AUX_ACTIVATE = 0x02303474  # C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged
+AUX_BOOT_ACTIVATE = 0x022C0678  # C_HMI_MEDIA_APP_BASE::InitApp, the AUX source
 PRIORITY_LOAD = 0x01699444  # C_MGR_SRC::StartUp
 
 
@@ -43,6 +44,19 @@ def edits():
 def test_first_edit_makes_auxs_activate_call_pass_pronly_false():
     """`li r4, 1` (ActivateSource's PrOnly argument for AUX) becomes `li r4, 0`."""
     p = edits()[AUX_ACTIVATE]
+    for field, want in (("expect", 1), ("bytes", 0)):
+        w = word(p[field])
+        assert w >> 26 == 14 and (w >> 16) & 0x1F == 0, "li form: addi rD, 0, imm"
+        assert (w >> 21) & 0x1F == 4, "r4: the bool argument, after `this` in r3"
+        assert w & 0xFFFF == want
+
+
+def test_initapp_edit_makes_auxs_boot_activation_pass_pronly_false():
+    """The boot-time `ActivateSource(aux, true)` in InitApp - the request the restore sees.
+
+    The handler edit alone was flashed and AUX's boot request still arrived with PrOnly set.
+    """
+    p = edits()[AUX_BOOT_ACTIVATE]
     for field, want in (("expect", 1), ("bytes", 0)):
         w = word(p[field])
         assert w >> 26 == 14 and (w >> 16) & 0x1F == 0, "li form: addi rD, 0, imm"
