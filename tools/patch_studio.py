@@ -21,8 +21,10 @@ package and a media tree, and it writes a patched package: the application patch
 then the media partition rebuild (tar, gzip, `system_ctrl.bin`, `system.bin.inf`, the
 module manifest and the root manifest).
 
-Requirements:
+usage:
     .venv/bin/python tools/patch_studio.py          # PySide6 + ffmpeg already present
+    uv run tools/patch_studio.py                    # fetches PySide6
+    python3 tools/patch_studio.py --help            # this text; needs no PySide6
 """
 
 import json
@@ -31,6 +33,11 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# answered before the Qt import below, so `--help` works on a machine without PySide6 (#202)
+if __name__ == "__main__" and any(a in ("-h", "--help") for a in sys.argv[1:]):
+    print(__doc__)
+    sys.exit(0)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
