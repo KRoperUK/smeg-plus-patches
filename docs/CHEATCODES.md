@@ -93,16 +93,6 @@ Each library ships beside a `.out.inf` and a `.out.txt.gz` symbol map. A loader 
 "Symbols file of CCCOD [%s] is not aligned with application", suggests the map is checked
 against the application *(inferred from the string; not followed)*.
 
-!!! failure "Corrections to this page"
-
-    - **`SPYTAKE`** was described as an "audio long-event spy hook". It is the full user
-      collect followed by a reboot. The old description came from the name of its entry
-      function, `DirectCallAudioLongEvent`, not from following the call.
-    - **`CCOD_PATH`** was presented as where each library lives. The application never reads
-      it. The column was taken to be meaningful because it exists in the schema.
-    - **All 29 codes** were listed as usable. Only 25 libraries ship, and three of those are
-      empty stubs.
-
 ## How you get to the entry screen
 
 - The screen is `C_HMI_CONFIG_EngineModeCheatCode_VKB_Z1` (a virtual keyboard) plus
@@ -113,8 +103,8 @@ against the application *(inferred from the string; not followed)*.
 - The menu tree (`desktopServices.sqlite` -> `current_menu`) has item **22017
   'Cheat Code'**, but it is a *root* item (`parent_item_ID = 65535`) with
   `key_event_keycode = 0`, and it is **not** a child of **22000 'Config Sec View'**
-  (what the carrousel "Config" entry opens). So it never appears in Settings, and it
-  has no shortcut key.
+  (what the carrousel "Config" entry opens). So it never appears in Settings, and the menu
+  database assigns it no key.
 - The only hard-coded trigger is `C_HMI_CONFIG_APP_BASE::HandleKeyboardMessage`, which
   calls `StartCheatCodeSession()` on virtual key **`0x54`** while the Config app has
   focus. That constant is firmware-only; it maps to no DB entry.
@@ -124,11 +114,10 @@ against the application *(inferred from the string; not followed)*.
 
 !!! success "There is a way in — observed on a car, 2026-09-14"
 
-    **Holding the RADIO / MEDIA button opens the entry screen.** This section previously
-    concluded there was no user-facing route, and that was wrong. The hard-coded trigger is
+    **Holding the RADIO / MEDIA button opens the entry screen.** The hard-coded trigger is
     virtual key `0x54` while the Config app has focus, so the RADIO/MEDIA long-press is very
-    likely what that key is — which is direct evidence for issue **#23**, and means the codes
-    are reachable today without the #22 menu work.
+    likely what that key is *(inferred; issue #23)*. The codes are reachable without the #22
+    menu work.
 
     Practical consequence: `SPYSTORE` can be run without patching anything, and it copies the
     spy directory out to removable storage. What lands there is more than logs:
@@ -167,7 +156,7 @@ What `SPYSTORE` actually does:
 
 ```
 libcheatcode_SPYSTORE.out : Activate()
-  -> C_BCM_SPY::DirectCallCopy(std::string const&)     # "/bd0" (see note below)
+  -> C_BCM_SPY::DirectCallCopy(std::string const&)     # "/bd0"
      -> C_BCM_SPY::CallBackCopy(std::string const&)    # NAV 0x01273734
         -> C_FS_STORAGE_CTRL_PATH::GetUnknownDir()      # removable media target
         -> Mkdir + GetSpyFolderName                     # dest = <stick>/SPY/<timestamp>
@@ -183,9 +172,8 @@ same shape — a `Get<X>Dir` source getter, an optional `AddName` glob, then
 `C_FS_STORAGE_CTRL_IO::Xcopy(source, dest)` (`0x010554f4`) into the timestamped stick
 folder. Verified by disassembly (`tools/ppcdis.py`) against the 5.43.A.R2 NAV image.
 
-The argument used to be given here as "an empty string in practice". The close reading of
-the `SPYSTORE` library found it passing `"/bd0"` *(read)*. The destination comes from
-`GetUnknownDir()` either way, so the copy behaves as described.
+The `SPYSTORE` library passes `"/bd0"` to `DirectCallCopy` *(read)*; the destination comes from
+`GetUnknownDir()`.
 
 ### What a collect captures
 
@@ -281,7 +269,7 @@ and bytes are in [Patch reference](PATCHES.md).
 
 **Do not confuse this with** `C_BCM_SPY_System_Shot::SpyFiles()`. Despite the name, it copies
 `diag_zi.sqlite` from `USER_DATA` into a collect; it does not copy the debug spy logs, and it
-writes nothing back to `USER_DATA` *(read)*. It was ruled out as a hook.
+writes nothing back to `USER_DATA` *(read)*, so it is not a hook for this.
 
 ### A module dump reaches the spy, not the dead log sink
 
@@ -302,8 +290,8 @@ the only stubbed sink it touches, `0x010346d0`, is reached on its **error** path
 (`m_pListSpy isn't init`). Spy data therefore has its own route to `/SYSTEM_TMP_DATA/SPY/`, and
 observing a module dump does not depend on the log sink being given a destination.
 
-That dump now exists. The `25300` buffer in a `SPYTAKE` capture is exactly this output, and it
-is what settled how the boot source is chosen (see [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen)).
+The `25300` buffer in a `SPYTAKE` capture is this output (`tools/spy_read.py` reads it). It is
+the evidence for how the boot source is chosen (see [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen)).
 The same capture carries the media app's buffer (`06301`), which shows whether
 `HandleAudioAuxInputStatusChnged()` ran. It follows the saved AUX input setting, not the AUX
 signal; see [The AUX signal path](AUX_SIGNAL.md).
