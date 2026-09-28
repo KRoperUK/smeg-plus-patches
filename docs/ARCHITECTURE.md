@@ -216,7 +216,8 @@ fonts and radio logos all live in the media partition and are described in
 - Whether HMI apps are threads in one process or separate processes (the naming implies
   threads; no explicit task table was found).
 - Exact semantics of the `CheckType` byte (0–3) in the `*_ctrl.bin` manifests — see
-  [Boot & update chain](FLASH_CHAIN.md).
+  [Boot & update chain](FLASH_CHAIN.md). Still open for the manifests, which `upgrade.out`
+  checks; answered for `contract.dat` in [The update flow](UPGRADE_FLOW.md#the-contract-check).
 - ~~The `AUDIO_AUX_SIGNAL_STATUS_CHANGED` vs `AUDIO_AUX_INPUT_STATUS_CHANGED` question~~ —
   answered: the media app's AUX handler runs on the INPUT event (`0xcb`), which is raised
   when the saved AUX input setting is written. See

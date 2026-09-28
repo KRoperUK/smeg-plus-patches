@@ -289,6 +289,10 @@ and cannot be copied."* unless the contract is regenerated — the format is dec
 ## 6. Open questions
 
 - Exact field offsets inside `dbsystem.bin`.
-- `CheckType` semantics for values 0–3.
+- `CheckType` semantics for values 0–3 **in the `*_ctrl.bin` manifests**. For
+  **`contract.dat`** this is answered: 1 = size, 2 = CRC32, 3 = spot check, anything else
+  fails *(read, `RsaCheckDataBlock`; see [The update flow](UPGRADE_FLOW.md#the-contract-check))*.
+  The manifests are checked by `CheckEntryFile`, which is in `upgrade.out` and not in the
+  application image, so the application cannot answer it.
 - Which module a given unit selects at runtime (`AUDIO_BT` vs `_256` vs `NAV`) — read
   from the vehicle/hardware type, not traced.
