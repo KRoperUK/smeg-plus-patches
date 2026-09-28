@@ -174,7 +174,6 @@ Also published as a docs site: <https://smeg.kroper.uk/> (Zensical, built and de
 
 | doc | contents |
 |---|---|
-| [`docs/ANALYSIS.md`](docs/ANALYSIS.md) | **archive** — the original notes, superseded by the AUX chain and emulation pages |
 | [`docs/RUNNING.md`](docs/RUNNING.md) | how to run everything with `uv` / `uvx` |
 | [`docs/PATCHES.md`](docs/PATCHES.md) | exact addresses and bytes per build |
 | [`docs/FLASHING.md`](docs/FLASHING.md) | preparing the USB stick and flashing |

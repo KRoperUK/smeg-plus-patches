@@ -9,7 +9,7 @@ and has its own symbol map.
     Read-only analysis of the owner's own upgrade package: the shipped absolute
     symbol maps, string tables in the images, code disassembly (PowerPC, via
     capstone), and byte inspection of the manifests. Anything inferred rather than
-    observed is marked. See the [analysis notes](ANALYSIS.md) for the image format itself.
+    observed is marked. See [Patch definitions](PATCHES.md#the-application-image) for the image format itself.
 
 ## 1. System shape
 

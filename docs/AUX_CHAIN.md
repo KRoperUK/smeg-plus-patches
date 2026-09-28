@@ -146,7 +146,7 @@ constructor left. See [Emulating the firmware](EMULATION.md) for the full truth 
 
 !!! failure "Correction: the handler follows the AUX setting, not the AUX signal"
 
-    This page, [the archived analysis](ANALYSIS.md), the README and several patch
+    This page, the original analysis notes, the README and several patch
     descriptions described `HandleAudioAuxInputStatusChnged` as reacting to **an AUX signal
     appearing**. It does not. The claim came from reading the chain by function names and by
     what it was expected to do: the variable gate 2 tests was called `signal` on assumption,
