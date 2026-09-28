@@ -1,6 +1,8 @@
 {
-  "_comment": "The current car build (combined-aux-boot-ringtone) plus aux-boot-restore, the candidate fix for booting to FM. NOT tested on hardware; the restore path is verified only under emulation; the handler-only version was flashed 2026-09-28 and still booted to FM. LOCAL build manifest: edit the paths below before reusing.",
-  "_sources": ["builds/combined-aux-boot-ringtone.json"],
+  "_comment": "CONFIRMED ON HARDWARE 2026-09-28: this build (three-edit aux-boot-restore + aux-boot-default) booted to AUX three times; see docs/AUX_CHAIN.md#what-the-third-car-test-established. LOCAL build manifest: edit the paths below before reusing.",
+  "_sources": [
+    "builds/combined-aux-boot-ringtone.json"
+  ],
   "_pairs": {
     "aux-autoswitch": "AUX selectable and available",
     "aux-boot-default": "forces the restored Last_Source to 7; falsified on its own, needed as half of the pair",
@@ -27,7 +29,7 @@
       }
     },
     "names": {
-      "ring1": "Piano_riff"
+      "ring1": "Piano"
     }
   },
   "seal": true

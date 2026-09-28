@@ -236,6 +236,12 @@ being corrupted.
 After adding a set, or when a car test changes its status, run `python3 tools/patch_status.py`
 to regenerate the table above and the landing-page panel; a test fails while they are stale.
 
+### `data` — an edit that is not code
+
+Every edit is checked to decode as whole PowerPC instructions. An edit to a string or a table,
+such as the ring tone names `media.names` generates, sets `"data": true` to skip that check;
+`expect` is still verified first.
+
 ### `disasm` — pin the instructions, not just the bytes
 
 `disasm` is optional and asserts what the patched site must decode to. Without it the tool
@@ -289,8 +295,8 @@ edit the JSON, not this table.
 |---|---|---|
 | `patches/aux-always-available.json` | `IsAUXSRCAvailable()` true only — AUX stops greying out | **Confirmed**{ .pill .pill-ok } behavioural; no switching |
 | `patches/aux-autoswitch.json` | `IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out | **Flashed**{ .pill .pill-ok } the combined build — accepted by the contract check; first edit confirmed on hardware |
-| `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
-| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Candidate, not yet flashed**{ .pill .pill-wip } the three-edit version; the two-edit version was falsified on 2026-09-28 (still FM) |
+| `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Confirmed with aux-boot-restore**{ .pill .pill-ok } alone it still booted to FM (2026-09-27); paired with aux-boot-restore the unit boots to AUX (2026-09-28), and the capture shows its override winning over a saved Last_Source of 1 |
+| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Confirmed on hardware**{ .pill .pill-ok } with aux-boot-default: booted to AUX three times (2026-09-28, NAV); the spy capture shows AUX restored and acknowledged at request time, not the tuner on the 7.5 s timer |
 | `patches/aux-signal-switch.json` | the AUX handler reads the **signal** instead of the setting, and the media dispatch sends the signal event (`0xcc`) to it; pair with `aux-boot-restore` and `aux-sticky` | **Never flashed**{ .pill .pill-wip } both functions verified under emulation |
 | `patches/aux-sticky.json` | removes the bail-out **and** turns "AUX setting switched off" into a no-op (previously described as "signal absent") | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
@@ -547,8 +553,9 @@ Emulated on the NAV image (`tools/ppcemu.py`), with the saved value set to `1` (
 | stock | 1 | 1 | 1 |
 | patched | 7 | 7 | 7 |
 
-So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. Pair it with
-`aux-always-available` so AUX is a valid source — `builds/aux-boot.json` does both.
+So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. On its own that
+is not enough (falsified, below): it needs `aux-boot-restore` too. `builds/aux-boot.json` is the
+minimal confirmed build: `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore`.
 
 !!! warning "Sets the target, does not force the switch"
 
@@ -588,12 +595,13 @@ is the current car build with this added.
     from `InitApp`, not from the handler. The `InitApp` edit (`0x022c0678`) was added for
     that reason. See [the second car test](AUX_CHAIN.md#what-the-second-car-test-established).
 
-!!! warning "Candidate — the three-edit version is not yet flashed"
+!!! success "Confirmed on hardware — the three-edit version, with `aux-boot-default` (2026-09-28)"
 
-    Verified under emulation: `AddRequest` on the NAV image fills the `ScheduledInit` table,
-    sets the restore flag and cancels the init timer for AUX's request with `PrOnly` clear,
-    and does none of that with `PrOnly` set. Not verified: the two `ActivateSource` call sites and
-    `StartUp` (all checked by decoding only), anything after `ExecuteAllocation`, and the car.
+    The unit booted to AUX three times. The spy capture shows AUX's request with `PrOnly` false,
+    `POS_AUX` (7, 20) in `ScheduledInit`, and AUX acknowledged at request time while the saved
+    `Last_Source` was 1, so `aux-boot-default`'s override made the match. See
+    [the third car test](AUX_CHAIN.md#what-the-third-car-test-established). Under emulation,
+    `AddRequest` behaves the same way (`tests/test_firmware_nav.py`).
 
     **Do not expect an auto-switch on signal.** Once AUX is in the table, a second AUX request
     is **forced** to the front (`ForceSchedulerPosition`). But the handler sends that request

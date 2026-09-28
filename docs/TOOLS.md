@@ -54,7 +54,7 @@ Manifest (JSON — no extra dependency):
       "media": {
         "tones":  { "ring_tones/ring1RT.wav": "piano-riff.mp3" },
         "splash": { "peugeot": "snoopy.png" },
-        "names":  { "ring1": "Piano Riff" },
+        "names":  { "ring2": "Piano Riff" },
         "gui_ver": "32.01"
       },
       "seal": true
@@ -62,10 +62,11 @@ Manifest (JSON — no extra dependency):
 
 Every section is optional. `app.patches` names files in `patches/`; `media.tones` maps a
 partition-relative destination to a source audio file of any format ffmpeg reads;
-`media.splash` maps a marque to an image; `media.names` renames the ringtone entries the
-phone UI shows (on a real unit a renamed tone kept its stock name, 2026-09-27);
-`media.gui_ver` sets `GUI_VER` in the partition's `Data_base/smeg.inf`. That field is harmless,
-but it was not seen on the unit when changed (2026-09-27), so it is no build marker.
+`media.splash` maps a marque to an image; `media.names` renames ring1..ring5 in the phone's
+ringtone menu. Those names are literals in the application image (#190), so this becomes an
+application patch - NAV 5.43.A.R2 only, and each name has a fixed maximum length;
+`media.gui_ver` sets `GUI_VER` in the partition's `Data_base/smeg.inf`, which System
+Information shows on its GUI item's page (read, #191); the updater does not gate on it.
 
 usage:
     python3 tools/build_package.py --manifest build.json
@@ -766,7 +767,9 @@ One pass over the whole image produces, for each code symbol in the map:
     `callers.py` cannot see,
   * pointers to it stored in data (vtables, callback tables), and
   * the strings it materialises the address of - usually trace or log text naming what the
-    function does.
+    function does,
+  * the vtable slots it occupies, and
+  * the globals it reads and writes (`lis rX,hi` + a load or store at `lo(rX)`).
 
 The output is local analysis, written under `--out` and never into this repository: it is
 derived from the vendor's symbol map, which AGENTS.md keeps out of the tree.
@@ -775,17 +778,22 @@ derived from the vendor's symbol map, which AGENTS.md keeps out of the tree.
   families.tsv    one row per family: count, instructions, share of the image
   unreached.tsv   functions with no caller, reference or pointer found - dead code, or
                   reached some way this scan does not model (computed branch tables)
+  vtables.tsv     one row per vtable slot: class, slot offset, function
+  virtual_calls.tsv  call sites of the form `lwz vptr,0(obj); lwz rZ,off(vptr); mtctr rZ;
+                  bctrl`, with the slot offset they call. The receiver's class is not inferred,
+                  so a site is not attributed to one function
+  globals.tsv     data symbols with the functions that read and write them
 
 The reference counts are lower bounds. An address built with `addis`+`lwz`, or computed at
 run time, is not counted. A function with no references found is not proved unreachable.
 
 usage:
-    python3 tools/survey.py NAV.img abs_symbols_base.txt --out ~/smeg-survey
+    python3 tools/survey.py NAV.img abs_symbols_base.txt.gz --out ~/smeg-survey
     python3 tools/survey.py NAV/AppBin/f_BigQuick.bin abs_symbols_base.txt --out ~/smeg-survey
 
 positional arguments:
   image        f_BigQuick.bin or an already-inflated image
-  symbols      abs_symbols_base.txt (or the .gz, unpacked)
+  symbols      abs_symbols_base.txt, or the .gz as SPYSTORE copies it
 
 options:
   -h, --help   show this help message and exit

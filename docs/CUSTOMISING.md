@@ -33,11 +33,11 @@ The phone ring tones, and the call/status tones.
 | `okRT.wav` | confirmation tone | same |
 | `koRT.wav` | failure tone | same |
 
-The `RT` is part of the real filename. The names the **phone UI** shows are *not* here — they
-are rows in the seed `up_common.sqlite` (`UP_Keys`, section `phone`, `Ringing_List`). Replacing
-the audio works on the car; **a renamed tone kept its stock name** on a real unit *(observed,
-2026-09-27)*. The likely reason is that the unit reads its live copy in `/USER_DATA`
-*(inferred)*. See [Ring tones](RINGTONES.md#names).
+The `RT` is part of the real filename. The names the **phone UI** shows are *not* here: they
+are string literals in the application image *(read, #190)*, which `media.names` now patches
+in place, each with a fixed maximum length. Replacing the audio works on the car; a name
+changed the old way, in the seed database, kept its stock name *(observed, 2026-09-27)*. See
+[Ring tones](RINGTONES.md#names).
 
 ### Wait tones — `wait_tones/` (13)
 

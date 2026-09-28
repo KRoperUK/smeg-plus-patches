@@ -145,15 +145,16 @@ media check passed, the application image was written, and the unit came back up
   copied"*) never appeared, which was the blocker for the whole project.
 - [x] **`IsAUXSRCAvailable()`** — AUX no longer greys out without a signal, and it is back in
   the SRC cycle.
-- [x] **Custom ring tone** audio. A *renamed* tone still showed its stock name on the car
-  (2026-09-27), so names are not solved — see [Ring tones](RINGTONES.md#names).
+- [x] **Custom ring tone** audio. A *renamed* tone kept its stock name on the car
+  (2026-09-27): the names are literals in the application image, which `media.names` now
+  patches (not yet flashed) — see [Ring tones](RINGTONES.md#names).
 - [x] **`SPYSTORE` backs up `/USER_DATA`** — the `spy-dump-userdata` patch, confirmed on a car.
 - [ ] **The automatic AUX switch.** The original handler patch rested on a wrong premise: the
   handler follows the saved AUX *setting*. `aux-signal-switch` routes the real signal event
   instead — verified under emulation, not yet flashed. See [The AUX signal path](AUX_SIGNAL.md).
-- [ ] **Boot to AUX.** `aux-boot-default` alone is falsified on hardware; the three-edit
-  `aux-boot-restore` is the current candidate, not yet flashed. See
-  [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+- [x] **Boot to AUX.** `aux-boot-default` + the three-edit `aux-boot-restore` booted to AUX three
+  times, confirmed by the spy capture (2026-09-28). Neither works alone. See
+  [The AUX chain](AUX_CHAIN.md#what-the-third-car-test-established).
 
 ### Every patch set, by status
 
@@ -161,10 +162,9 @@ Generated from the `status` field of each `patches/*.json` by `tools/patch_statu
 cannot disagree with the patch reference.
 
 <!-- patch-status:panel -->
-- **Confirmed on hardware:** `aux-always-available`, `aux-autoswitch`, `spy-dump-userdata`
+- **Confirmed on hardware:** `aux-always-available`, `aux-autoswitch`, `aux-boot-default`, `aux-boot-restore`, `spy-dump-userdata`
 - **Flashed, effect not yet confirmed:** `spy-dump-userdata-partition`
-- **Candidates awaiting a car test:** `aux-boot-restore`, `aux-signal-switch`, `aux-sticky`
-- **Falsified on hardware:** `aux-boot-default`
+- **Candidates awaiting a car test:** `aux-signal-switch`, `aux-sticky`
 - **Diagnostic builds, not for driving:** `diagnostic-logging`, `diagnostic-logmask`, `diagnostic-logsink`
 
 Per-patch detail: [Patch reference](PATCHES.md#patch-sets-in-this-repository).

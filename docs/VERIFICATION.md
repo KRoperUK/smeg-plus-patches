@@ -161,9 +161,10 @@ that.
 |---|---|---|---|
 | 2026-09-27 | `aux-autoswitch` + `aux-boot-default` (+ `spy-dump-userdata-partition`, piano ring tone) | accepted and flashed; the custom tone played; **boots to FM** — `aux-boot-default` falsified; `GUI_VER` 32.01 not seen on the page looked at (the code shows it on the GUI item's page, #191); a renamed tone kept its stock name | [first car test](AUX_CHAIN.md#what-the-first-car-test-established) |
 | 2026-09-28 | the same + `aux-boot-restore`, handler edit only | **still FM**. The `SPYTAKE` trace: `Last_Source` 7 at 8847 ms, AUX's request with `PrOnly` true at 10109 ms, the tuner ACK at 16347 ms = 8847 + 7500 (the init timer) | [second car test](AUX_CHAIN.md#what-the-second-car-test-established) |
+| 2026-09-28 (later) | the same with the **three-edit** `aux-boot-restore` | **boots to AUX**, three times. The trace: saved `Last_Source` 1, AUX's request with `PrOnly` false at 10228 ms, `POS_AUX` (7, 20) in `ScheduledInit`, AUX acknowledged at once; no tuner ACK at 7.5 s | [third car test](AUX_CHAIN.md#what-the-third-car-test-established) |
 
-The three-edit `aux-boot-restore` build is on a stick and not yet flashed. `aux-signal-switch`
-is verified under emulation only. *(All outcomes above are executed on hardware; the causes
+`aux-boot-default` + `aux-boot-restore` are confirmed as a pair. `aux-signal-switch` is verified
+under emulation only. *(All outcomes above are executed on hardware; the causes
 given on the linked pages are read from the trace and the disassembly.)*
 
 ## Observed update sequence
