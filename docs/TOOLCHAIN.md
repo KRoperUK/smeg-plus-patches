@@ -187,10 +187,9 @@ rz-diff -t raw app_nav_542.bin app_nav_543.bin
 
 ## What is verified, and what is not
 
-The macOS side of the above was run end to end while adding this page: compiled a C function
-to PowerPC, linked it at `0x02247718`, emitted a flat binary, and disassembled the result.
-The bytes are `38 60 00 01 4e 80 00 20` — `li r3,1 ; blr`, the same four-word sequence the
-shipped patch carries, which is the whole point of doing it this way rather than by hand.
+The macOS commands above have been run end to end: a C function compiled to PowerPC, linked
+at `0x02247718`, emitted as a flat binary and disassembled gives `38 60 00 01 4e 80 00 20` —
+`li r3,1 ; blr`, the same sequence the shipped patch carries.
 
 The Windows instructions are written from the vendors' own installers and have **not** been
 run on a Windows machine here. Treat the paths as right and the tools as untested.

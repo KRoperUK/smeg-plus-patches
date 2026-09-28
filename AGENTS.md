@@ -1,22 +1,24 @@
 # AGENTS.md
 
 Guidance for AI coding agents (and the humans supervising them) working in this
-repository. Read this before making changes.
+repository. It is the single brief: `CLAUDE.md` and `.github/copilot-instructions.md` point
+here. Read it before making changes.
 
 ## What this project is
 
-Reverse-engineering notes and tooling for **PSA/Stellantis SMEG+** head units. The
-headline goal is an **AUX auto-switch**: an aftermarket CarPlay/Android-Auto piggyback
-feeds audio into the unit's AUX input, and the unit should select AUX by itself.
+Reverse-engineering notes and tooling for **PSA/Stellantis SMEG+** head units. The motivating
+problem: an aftermarket CarPlay/Android-Auto piggyback feeds audio into the unit's AUX input,
+and the unit kept starting on the radio. It now **boots to AUX** — `aux-autoswitch` +
+`aux-boot-default` + `aux-boot-restore`, confirmed on the NAV 5.43.A.R2 unit, built by
+`builds/aux-boot.json`. Switching to AUX when a signal appears is **not being pursued**;
+`aux-signal-switch` exists as an emulated candidate only.
 
-The work is split in two:
+Two things in a package are patchable, and both paths are implemented and used on the car:
 
 * **Application patches** — in-place edits to the PowerPC image inside
   `AppBin/f_BigQuick.bin`, applied and checksum-cascaded by `tools/patch_smeg.py`.
-  This is the shipped, tested path.
-* **Media-partition edits** — ringing tones, the cheatcode menu, version markers. These
-  need `system.bin` unpacked, edited and repacked. **This path is not finished** — see
-  issue #35 for the tool and #36 for the one open detail.
+* **Media-partition edits** — ring tones, logos, the seed settings database, rebuilt by
+  `tools/patch_media.py`. Files can be **replaced**, not added.
 
 ## Hard rules
 
@@ -33,13 +35,12 @@ The work is split in two:
    else → no release. See [docs/RELEASING.md](docs/RELEASING.md). Getting this wrong
    silently produces no release.
    **This is enforced** by `tools/check_commit_msg.py` in two places — a `commit-msg` hook
-   and a CI check on the PR title. If you are an agent, write the message in the right form
-   the first time; `--title` will tell you before you push:
-   `python3 tools/check_commit_msg.py --title "feat: ..."`.
+   and a CI check on the PR title. The description starts lower case. Check a title before
+   you push: `python3 tools/check_commit_msg.py --title "feat: ..."`.
 4. **Warn the user before anything that can destroy their settings.** Some changes are not
    recoverable by reflashing because they overwrite state the *car* owns rather than state
-   we ship. Shipping a `USER_DATA` payload is the current example: it replaces databases on
-   the unit's user partition, which hold paired phones, navigation destinations and presets.
+   we ship. Shipping a `USER_DATA` payload is the example: it replaces databases on the
+   unit's user partition, which hold paired phones, navigation destinations and presets.
    Say so plainly, in those terms, and wait to be told it is acceptable. Never treat a
    person's "I don't care about my settings" as covering a *different* person's car.
 
@@ -61,24 +62,51 @@ The work is split in two:
 
 ## How to run things
 
+The CLI tools need nothing but `uv`: every script declares its own dependencies in a PEP 723
+header.
+
 ```sh
-.venv/bin/python -m pytest tests -q        # the suite, no firmware required
-.venv/bin/python -m ruff check tools tests # lint (E9 + F)
-.venv/bin/python tools/patch_studio.py     # the GUI
-.venv/bin/zensical serve                   # live docs preview
+uv run tools/build_package.py --manifest builds/aux-boot.json
+uv run tools/patch_smeg.py --help
+uv run tools/patch_studio.py                  # the Qt GUI (fetches PySide6)
 ```
 
-`pre-commit install` wires the `pre-commit`, `commit-msg` **and** `pre-push` hooks in one
-go. The fast checks (lint, hygiene, no-firmware) run per commit; the slow ones (tests,
-strict docs build, `bandit`) run on push, so a push that would go red in CI fails locally
-first.
+For the tests, lint and docs, build the venv (Python 3.13, because Homebrew's `python3` is
+3.14, where `ensurepip` is broken and PySide6 has no wheels). `.venv/` is gitignored:
 
-`.venv/` is gitignored, so a fresh clone has none — build it first (Python 3.13, because
-Homebrew's `python3` is 3.14, where `ensurepip` is broken and PySide6 has no wheels):
-`uv venv --seed --python 3.13 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt -r requirements-docs.txt`.
-`unicorn` and `capstone` come from `requirements-dev.txt`; without them the emulator and
+```sh
+uv venv --seed --python 3.13 .venv
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt -r requirements-docs.txt
+```
+
+`requirements-dev.txt` brings `unicorn` and `capstone`. Without them the emulator and
 disassembler tests **skip** rather than fail, so a venv missing them looks green and is not
 what CI runs.
+
+```sh
+.venv/bin/python -m pytest tests -q                       # full suite, no firmware needed
+.venv/bin/python -m pytest tests/test_patch_smeg.py -q    # one file
+.venv/bin/python -m ruff check tools tests                # lint (E9 + F + SIM115)
+.venv/bin/python -m ruff format --check tools tests       # formatting, as CI checks it
+.venv/bin/python -m zensical build --strict               # docs; a broken anchor fails it
+.venv/bin/zensical serve                                  # live docs preview on :8000
+python3 tools/check_commit_msg.py --title "feat: ..."     # check a PR title
+```
+
+CI runs `ruff check`, `ruff format --check`, `pytest tests -q` and `zensical build --clean`.
+`pre-commit install` wires three hook stages:
+
+* **every commit:** whitespace/EOF/YAML hygiene, `ruff check --fix`, `ruff format`,
+  `tools/check_no_firmware.sh` and `tools/check_no_pii.py`;
+* **commit-msg:** `tools/check_commit_msg.py`;
+* **push:** `pytest`, `zensical build --strict` and `bandit`.
+
+So a push that would fail CI fails locally first. GUI tests skip without PySide6 and run
+headless via `QT_QPA_PLATFORM=offscreen`.
+
+Behavioural claims about the NAV image are tested against **your own** image, never in CI:
+`SMEG_NAV_IMAGE=<your f_BigQuick.bin> .venv/bin/python -m pytest -m firmware -q`
+(`tests/test_firmware_nav.py`; skipped when the variable is unset).
 
 ## Platforms: macOS and Windows
 
@@ -98,24 +126,61 @@ cannot reintroduce that. **Do not remove it.**
 | copy an overlay onto a package | `rsync -a overlay/ PKG_mod/` | `patch_smeg.py --copy-package`, or `robocopy` |
 | headless Qt | `QT_QPA_PLATFORM=offscreen` | `$env:QT_QPA_PLATFORM="offscreen"` |
 
-Pin **Python 3.13** on both. The reason above is macOS-specific — Homebrew's `python3` is
-3.14, where `ensurepip` is broken — but pinning the same version on Windows keeps the two
-machines identical, and `uv` will fetch 3.13 for you.
+Pin **Python 3.13** on both; `uv` fetches it.
 
 **Known Windows gap:** the two `pre-push` entries in `.pre-commit-config.yaml` hard-code
 `sh -c 'PY=.venv/bin/python; …'`. That assumes a POSIX `sh` *and* a Unix venv layout, so on
-Windows they do not run — Git Bash supplies the first, not the second.
+Windows they do not run — Git Bash supplies the first, not the second. Run those checks by
+hand.
+
+## How a package is put together
+
+A user-supplied upgrade package is `SMEG_PLUS_UPG/<module>/…`, where `<module>` is one of
+`NAV`, `AUDIO_BT`, `AUDIO_BT_256`. Two things inside it are patchable, in independent formats:
+
+* **the application** — `<module>/AppBin/f_BigQuick.bin`: a 0x800-byte header, a `0x08`
+  marker at 0x800, then a zlib stream from 0x801 inflating to a raw PowerPC image based at
+  `0x01000000`. Not encrypted. The shipped `abs_symbols_base.txt.gz` lines up exactly, so
+  patches are located by symbol, never by pattern.
+* **the media partition** — `<module>/system.bin`: a gzip'd tar extracted to a read-only
+  `/SYSTEM/` on the unit. Holds ring tones, the seed settings database, logo bundles. Adding
+  a file would need a new `system_ctrl.bin` record; the format is known, but no updater has
+  been handed a record count it did not ship with, so the tools refuse.
+
+Every edit walks a chain of checksums back to the root manifest:
+
+```
+f_BigQuick.bin -> f_BigQuick.bin.inf -> smeg.inf (BIGQUICK_CRC32) -> <module>_ctrl.bin -> ctrl.bin
+system.bin     -> system_ctrl.bin + system.bin.inf (CRC + SIZE/SIZE_n) -> <module>_ctrl.bin -> ctrl.bin
+```
+
+On top of that, `contract.dat` seals the package; a modified package that is not re-sealed is
+rejected on the unit with string 2099. **Ordering fails silently:** 1. application patches,
+2. media rebuild against the **already application-patched** package, 3. contract re-seal
+**last**. `tools/build_package.py` owns that ordering — prefer it over running the tools by
+hand.
+
+Data-driven layers:
+
+* `patches/*.json` — one patch set per behaviour, keyed by `variants.<module>`: the file paths
+  its cascade touches, the firmware version it was derived from, and a list of
+  `{addr, expect, bytes}` (plus `"data": true` for a non-code edit such as a string). Each set
+  carries `summary` and `status` (`confirmed` / `flashed` / `never-flashed` / `falsified` /
+  `diagnostic`); the status tables in `docs/PATCHES.md` and `docs/index.md` are generated from
+  them by `tools/patch_status.py`. **A new `patches/*.json` beats new Python.**
+* `builds/*.json` — whole-build manifests for `build_package.py`: package, module, patch sets,
+  media tones/names/settings, `seal`, and optionally `user_data`.
 
 ## The reverse-engineering toolchain
 
-The analysis half of the project needs more than `uv`. Per-platform setup is in
-[docs/TOOLCHAIN.md](docs/TOOLCHAIN.md); what matters when writing code here is:
+Per-platform setup is in [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md); none of it is needed to run
+the tools or the tests. What matters when writing code here:
 
-- **`clang` can target PowerPC**, so a patch's `bytes` can come from source instead of from
-  memory — `clang --target=powerpc-unknown-none-eabi -mbig-endian -O2 -ffreestanding -c`
-  works, because the e300 is plain big-endian PowerPC.
-  **On macOS the `clang` on `PATH` is Apple's and has no PowerPC backend**; use
-  `$(brew --prefix llvm)/bin/clang`. On Windows the LLVM installer's `clang` is fine.
+- **`clang` can target PowerPC**, so a patch's `bytes` can come from source —
+  `clang --target=powerpc-unknown-none-eabi -mbig-endian -O2 -ffreestanding -c` works, because
+  the e300 is plain big-endian PowerPC. **On macOS the `clang` on `PATH` is Apple's and has no
+  PowerPC backend**; use `$(brew --prefix llvm)/bin/clang`. On Windows the LLVM installer's
+  `clang` is fine.
 - **`ld.lld -m elf32ppc -Ttext=<addr>`** places that code at a patch address, and needs an
   explicit **`--image-base=0`** or it rejects any address below its `0x10000000` default.
   `llvm-objcopy -O binary --only-section=.text` then emits the injectable bytes.
@@ -126,17 +191,14 @@ The analysis half of the project needs more than `uv`. Per-platform setup is in
   with LLVM instead.
 - **Ghidra** is the decompiler. Import `tools/mkelf.py`'s ELF with language
   **`PowerPC:BE:32:default`** — there is no `e300` language ID, and the core has no vendor
-  extensions. `capstone` and `unicorn` come from the `dev` extra.
+  extensions.
 
-The toolchain produces **bytes**. Injecting a routine *larger* than the site it replaces is
-still **not solved**, but the blocker is now characterised rather than vague: there is no
-usable code cave in `.text` — every large run of zeros in the image is `.rodata` (sqlite3 and
-utf8proc tables), so it is live data and unsafe to execute. A trampoline would therefore have
-to live *past the end of the image*, which is mechanically expressible: the container header
-carries the **inflated size at offset `0x04`** (`0x02604450` on the NAV image, verified) and
-no compressed size, because the zlib stream is self-delimiting. So the image can be grown and
-that field updated. What remains unverified is whether the loader maps the appended region
-**executable**. Do not claim a trampoline works until that is settled on hardware.
+A routine *larger* than the site it replaces is not solved. There is no usable code cave in
+`.text` — every large run of zeros is `.rodata` (sqlite3 and utf8proc tables), so live data.
+A trampoline would have to live *past the end of the image*: the container header carries the
+**inflated size at offset `0x04`** (`0x02604450` on the NAV image) and no compressed size, so
+the image can be grown and that field updated, but whether the loader maps the appended region
+**executable** is untested. Do not claim a trampoline works until that is settled on hardware.
 
 ## Analysis workflow
 
@@ -145,117 +207,113 @@ that field updated. What remains unverified is whether the loader maps the appen
   higher tier in a doc, a patch `description` or a PR.
 - **Most calls are indirect.** The compiler materialises an address (`lis`/`addi`) and calls
   through `mtctr`/`bctrl`; `callers.py` sees only `bl`. `tools/survey.py` inventories every
-  function with all three reference kinds. Its output derives from the vendor symbol map, so
-  it stays **outside** the repository (see [docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md)).
+  function with direct callers, materialised references, data pointers, vtable slots, virtual
+  call sites and global reads/writes. Its output derives from the vendor symbol map, so it
+  stays **outside** the repository (see [docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md)).
 - **Ghidra is one shared server.** `.mcp.json` points at `http://127.0.0.1:8000/mcp`. Start
   one pyghidra-mcp server over HTTP ([docs/TOOLCHAIN.md](docs/TOOLCHAIN.md)); a per-session
   stdio copy fails with `LockException`, because Ghidra lets one process hold a project.
 - **Behaviour is checked by execution before a car.** `tools/ppcemu.py` runs one function
   with its callees stubbed. A stub's return value is an assumption, so say what was stubbed.
+  Put a lasting behavioural claim in `tests/test_firmware_nav.py`.
 - **Runtime evidence comes from the spy collect.** `SPYTAKE` (the unit collects, then
   reboots), then `SPYSTORE` with a stick in. The trace buffers are in
   `SPY/<stamp>/TAR/*-USER.tar.gz` → `RAMDISK_SPY/<buffer>/*.bin`, plain `<ms>::<event>` text
-  (`25300` = `C_MGR_SRC`, `06301` = the media app); `tools/spy_read.py` reads them in one command. `traces.bin` is only the VxWorks
-  exception log. See [docs/FLASHING.md](docs/FLASHING.md#the-test-loop-end-to-end). A
-  capture holds the **VIN and personal data**: never commit it, quote it or attach it to an
-  issue.
+  (`25300` = `C_MGR_SRC`, `06301` = the media app); `tools/spy_read.py` reads them in one
+  command. `traces.bin` is only the VxWorks exception log. See
+  [docs/FLASHING.md](docs/FLASHING.md#the-test-loop-end-to-end). A capture holds the **VIN
+  and personal data**: never commit it, quote it or attach it to an issue.
 - **The AUX input handler follows the saved AUX setting, not the signal**
-  ([docs/AUX_CHAIN.md](docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to),
-  [docs/AUX_SIGNAL.md](docs/AUX_SIGNAL.md)). Anything built on "the handler fires when a
+  ([docs/AUX_SIGNAL.md](docs/AUX_SIGNAL.md)). Anything built on "the handler fires when a
   signal appears" is wrong.
 
 ## Testing without firmware
 
-`tests/helpers.py` builds a **synthetic package from scratch** — header + zlib container,
-`.inf`, `smeg.inf`, module and root manifests — so the whole patch/repack path is
-exercisable without any vendor file. Use it. Adding a fixture is cheap; adding a binary
-is not allowed.
-
-Building those tests immediately caught two fixture bugs, so it is worth the effort.
+`tests/helpers.py` and `tests/media_helpers.py` build a **synthetic package from scratch** —
+header + zlib container, `.inf`, `smeg.inf`, tar, module and root manifests — so the whole
+patch/repack path is exercisable without any vendor file. Use them. Adding a fixture is cheap;
+adding a binary is not allowed.
 
 ## Areas and their traps
 
+Every tool, with its `--help`, is on the generated [docs/TOOLS.md](docs/TOOLS.md) page. The
+traps:
+
 | area | notes |
 |---|---|
-| `tools/patch_smeg.py` | Checks `expect` bytes before writing, then rebuilds the whole CRC cascade. Prefer adding a `patches/*.json` entry over new code. Refuses a build the image is not — see `tools/fingerprint.py`. |
-| `tools/fingerprint.py` | Identifies which build an image is from the recorded `expect` bytes, and exits non-zero when it is ambiguous or unknown. It **reports ambiguity rather than choosing**: `AUDIO_BT` and `AUDIO_BT_256` declare the same addresses and the same bytes, so they cannot be told apart. |
-| `tools/ringtones.py` | Needs ffmpeg for non-WAV input, but degrades gracefully. Slot formats matter: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones 16-bit **stereo 8 kHz**. |
-| `tools/patch_studio.py` | Qt GUI. Set `QT_QPA_PLATFORM=offscreen` to test it headlessly. |
-| `tools/elfsyms.py` | The package's `*.out` updater binaries are unstripped PowerPC ELFs. Before reverse-engineering anything in the flash chain, check whether it already has a name. |
-| `tools/ppcemu.py` | Executes one function at a time on an emulated PowerPC core (Unicorn). Reachability is proof; stub return values are assumptions. Prefer it over reasoning about a branch by eye — it has already overturned one conclusion. Behavioural claims about the NAV image live in `tests/test_firmware_nav.py`, run with `SMEG_NAV_IMAGE=<your f_BigQuick.bin> pytest -m firmware`; they skip in CI. Add a test there for any new claim. |
-| `tools/appimage.py` | The container format (`f_BigQuick.bin` → raw PPC image) and `crc32_file`, shared. It exists as a leaf module because `patch_smeg` and `fingerprint` importing each other for it was a real cycle, not a style question. |
-| `tools/symbols.py` | The symbol-map reader, shared by `ppcdis`, `xref`, `callers` and `symdiff`. **Last name wins at a duplicate address** — the four copies had drifted (`setdefault` in one), and two tools disagreeing about what an address is called is silent. Pin it with a test if you touch it. |
-| `tools/verify_package.py` | Audits a package's whole checksum cascade before it is flashed. Deliberately does **not** parse the `*_ctrl.bin` record layout, although it is now known (`docs/FLASH_CHAIN.md`); it looks for each CRC as a value, which stays correct if a manifest's layout differs. Patched `ctrl` files carry a recomputed trailing CRC32 since #159. |
-| `tools/prepare_usb.py` | Copies a package to a stick and re-reads every file back to prove the copy landed. **Refuses to write into a package already on the stick** — that merges two and the result still passes its own checksums. Junk (`._*`) is a failure, not a warning. Probing is macOS-only and reports "unknown" rather than guessing. |
-| `tools/symdiff.py` | Symbol-level diff between two releases, and locates a patch site in one nobody has analysed. Reports the **displacement** the images differ by, which a byte comparison buries under ~80% noise. A derived address is a **candidate**, never a patch. |
-| `tools/crc_recover.py` | Recovers CRC parameters from `(message, checksum)` samples. Checked against published variants, because a recovery tool that fails quietly reports "not a CRC" — and that is how its negative result on the map checksums is trustworthy. |
-| `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. `ppcdis` needs `capstone`. Covered by `tests/test_analysis_tools.py` on a hand-encoded image (`unpack.py` is not). **`callers.py` finds only direct `bl` calls.** Most calls in this firmware go through `lis`/`addi` + `mtctr`/`bctrl`, so "0 callers" usually means "called indirectly"; use `survey.py` or `xref.py` for those. |
-| `tools/survey.py` | Whole-image function inventory, including the `lis`/`addi` references `callers.py` misses. Tested with a synthetic image. Its output is derived from the vendor symbol map, so it is never committed. |
-| `tools/spy_read.py` | Reads a SPY capture (`SPY/<stamp>`, the `-USER.tar.gz`, or an extracted tree) in memory: the boot-source report from `25300` (requests with PrOnly, ScheduledInit, first acknowledgement, the 7.5 s fallback), `--aux`, `--list`, `--show ID`. Redacts the VIN, device addresses and long numbers by default. Tested with a synthetic capture; never commit a real one. |
-| `tools/tool_reference.py` | Generates `docs/TOOLS.md` from each tool's docstring and `--help`. Every CLI tool must be in its `GROUPS`; `--check` (run by a test) fails on a missing tool or a changed summary. Re-run it after adding a tool or changing a docstring's first line. |
-| `tools/patch_status.py` | Generates the patch-status table (`docs/PATCHES.md`) and landing-page panel (`docs/index.md`) from each `patches/*.json` `status`; `--check` fails when they are stale (a test runs it). |
-| `tools/preflight.py` | Validates a built package offline before it goes on a stick, and reports unknowns as loudly as knowns. `build_package.py` runs it last. |
+| `tools/build_package.py` | Manifest → finished package, in the right order, ending with `preflight.py`. Paths in a manifest expand `~` and are relative to the manifest. `media.names` becomes a generated application patch (the tone names are image literals). |
+| `tools/patch_smeg.py` | Checks `expect` bytes before writing, then rebuilds the whole CRC cascade, including each `ctrl` file's trailing CRC32. Every edit must decode as whole PowerPC instructions unless it sets `"data": true`. Refuses a build the image is not — see `tools/fingerprint.py`. |
 | `tools/patch_media.py`, `tools/assets.py` | The media partition (`list`/`extract`/`restore`/`apply`), and human-readable names for its replaceable files. Replacing files only; adding one is refused. |
 | `tools/patch_contract.py` | Re-seals `contract.dat` with key material extracted at runtime from the user's own image. It must never ship key material. |
+| `tools/preflight.py` | Validates a built package offline before it goes on a stick, and reports unknowns as loudly as knowns. |
+| `tools/verify_package.py` | Audits a package's whole checksum cascade. It looks for each CRC as a value rather than parsing the `ctrl` record layout, and warns (without failing) about a stale trailing CRC32. |
+| `tools/prepare_usb.py` | Copies a package to a stick and re-reads every file back. **Refuses to write into a package already on the stick** — that merges two and the result still passes its own checksums. Junk (`._*`) is a failure, not a warning. On macOS it stops Spotlight indexing the stick and `--eject` retries while the volume is busy. |
+| `tools/spy_read.py` | Reads a SPY capture in memory: the boot-source report from `25300`, `--aux`, `--list`, `--show ID`. Redacts the VIN, device addresses and long numbers by default. Tested with a synthetic capture; never commit a real one. |
+| `tools/fingerprint.py` | Identifies which build an image is from the recorded `expect` bytes, and exits non-zero when it is ambiguous or unknown. It **reports ambiguity rather than choosing**: `AUDIO_BT` and `AUDIO_BT_256` declare the same addresses and the same bytes, so they cannot be told apart. |
+| `tools/ringtones.py` | Needs ffmpeg for non-WAV input, but degrades gracefully. Slot formats matter: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones 16-bit **stereo 8 kHz**. Its `names`/`rename` edit the seed database list, which the unit does not display. |
+| `tools/patch_studio.py` | Qt GUI. Set `QT_QPA_PLATFORM=offscreen` to test it headlessly. |
+| `tools/ppcemu.py` | Executes one function at a time on an emulated PowerPC core (Unicorn). Reachability is proof; stub return values are assumptions. Prefer it over reasoning about a branch by eye. |
+| `tools/survey.py` | Whole-image function inventory, including the references `callers.py` misses. Tested with a synthetic image. Its output is never committed. |
+| `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. `ppcdis` needs `capstone`. Covered by `tests/test_analysis_tools.py`. **`callers.py` finds only direct `bl` calls**, so "0 callers" usually means "called indirectly"; use `survey.py` or `xref.py`. |
+| `tools/elfsyms.py` | The package's `*.out` updater binaries are unstripped PowerPC ELFs. Before reverse-engineering anything in the flash chain, check whether it already has a name. |
+| `tools/symdiff.py` | Symbol-level diff between two releases, and locates a patch site in one nobody has analysed. Reports the **displacement** the images differ by. A derived address is a **candidate**, never a patch. |
+| `tools/crc_recover.py` | Recovers CRC parameters from `(message, checksum)` samples; checked against published variants, so a negative result is trustworthy. |
+| `tools/appimage.py`, `symbols.py`, `smeglib.py` | Shared leaf modules: the app container, the symbol-map reader (**last name wins** at a duplicate address; reads `.gz` maps), and the CRC/`.inf`/`ctrl` helpers (`swap_crc` replaces **exactly one** occurrence or refuses). |
+| `tools/patch_status.py`, `tool_reference.py` | Generate the patch-status tables and `docs/TOOLS.md`; `--check` (run by the tests) fails when they are stale. A new tool must be added to `tool_reference.GROUPS`. |
 | `tools/splash.py`, `tools/cartography.py` | The marque logo bundles (**not** the boot splash), and the map metadata that is understood. |
-| `tools/fix_userdata_case.py` | Verifies or fixes the FAT long-filename entry a lowercase `sqlite` payload directory needs; takes positional arguments only. |
-| `tools/smeglib.py` | Shared CRC and `.inf` helpers. `swap_crc` replaces **exactly one** occurrence of a CRC value or refuses. |
+| `tools/fix_userdata_case.py` | Verifies or fixes the FAT long-filename entry a lowercase `sqlite` payload directory needs. |
 | `tools/check_commit_msg.py`, `check_no_firmware.sh`, `check_no_pii.py` | The three enforcement hooks: conventional titles, no vendor files, no personal data. |
-| the toolchain | Per-machine, not bundled: `clang`/`ld.lld`/`llvm-mc`/`rizin`/Ghidra. On macOS only `lld` lands on `PATH`, and Apple's `clang` cannot target PowerPC. See [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md). |
-| `docs/` | Published with Zensical to <https://smeg.kroper.uk/>. A broken anchor fails the build; run `zensical build` before pushing docs. |
+| `docs/` | Published with Zensical to <https://smeg.kroper.uk/>. A broken anchor fails the build. State the current understanding; test history belongs in `docs/VERIFICATION.md`. |
 
 ## Firmware knowledge that is easy to get wrong
 
-- The application image is **not** encrypted: `f_BigQuick.bin` is a 0x800-byte header, a
-  `0x08` marker at 0x800, then a **zlib stream** from 0x801, inflating to a raw PPC image
-  at `0x01000000`. The shipped `abs_symbols_base.txt.gz` lines up with it exactly, so
-  patch by symbol, not by pattern.
 - Addresses are **per build**. `AUDIO_BT` and `AUDIO_BT_256` usually match each other;
   the NAV build is offset. Never copy an address between builds without checking.
-  `tools/fingerprint.py` identifies the build from the recorded `expect` bytes, and
-  `patch_smeg.py` calls it — but it **cannot separate `AUDIO_BT` from `AUDIO_BT_256`**,
-  because those two variants declare the same addresses *and* the same bytes. It reports
-  that as ambiguous and exits non-zero rather than picking one; do not paper over it by
-  having it guess.
+  `patch_smeg.py` runs `tools/fingerprint.py`, which cannot separate `AUDIO_BT` from
+  `AUDIO_BT_256` and says so rather than guessing; do not paper over that.
 - Addresses are also **per firmware version**. The NAV image from `SMEG_5.42.B.R4` is the
   5.43 one displaced by 152 bytes, so every address in `patches/*.json` is wrong on it —
   and the AUX handler differs by more than the shift. Every variant declares the version it
   came from (`"firmware": "5.43.A.R2"`) and `patch_smeg.py` refuses any other image; the
   `expect` bytes alone are **not** a sufficient guard (two entries match at the same address
   on 5.42). Do not defeat either check. See [docs/PATCHES.md](docs/PATCHES.md).
-- The media partition is a gzip'd **tar**, and `system_ctrl.bin` holds a per-file CRC for
-  everything inside it. `SIZE`/`SIZE_n` in `system.bin.inf` are computable — `SIZE` is the
+- **`system.bin` settings are not the live settings.** It extracts to a read-only `/SYSTEM/`;
+  the unit reads its settings from the `USER_DATA` partition, and seed edits do not reach it.
+- The media partition is a gzip'd **tar**, and `system_ctrl.bin` holds a per-file check value
+  for everything inside it. `SIZE`/`SIZE_n` in `system.bin.inf` are computable — `SIZE` is the
   sum of the file sizes in the tar, `SIZE_n` the same rounded up per file to *n* KiB.
-- **Version strings are not a safe marker yet.** System Information shows the main software
-  version and date from the **application image** (a literal and the `g_MBSW_*` globals, which
-  also reach the CAN version frame — never patch them), `cd` from the media partition's
-  `Data_base/media.inf` (editing `media.inf` can block the update outright), and `GUI_VER` on
-  the GUI item's page. `GUI_VER` 32.01 was not seen on the one page looked at (2026-09-27), so
-  no visible marker is confirmed. See `docs/VERSION_STRINGS.md` (#191).
+- **Version strings are not a confirmed build marker.** System Information shows the main
+  software version and date from the **application image** (a literal and the `g_MBSW_*`
+  globals, which also reach the CAN version frame — never patch them), `cd` from the media
+  partition's `Data_base/media.inf` (editing `media.inf` can block the update outright), and
+  `GUI_VER` on the GUI item's page *(read)*. See `docs/VERSION_STRINGS.md`. Judge a flash by
+  behaviour, a replaced ring tone, or a `SPYTAKE` capture.
 - The **updater reboots** the unit during the BootROM and Renesas steps. Never propose
   updating while driving.
 - **A modified package must be re-sealed** before flashing, or the unit rejects it with
-  string 2099. Always run `tools/patch_contract.py` after any change that alters a file
-  the contract covers. See `docs/MEDIA_PROTECTION.md`.
+  string 2099. See `docs/MEDIA_PROTECTION.md`.
 - The contract's RSA key material lives in the firmware image and must **never** be
   committed or reproduced in docs. `patch_contract.py` extracts it from the user's own
   package at runtime; keep it that way.
+- Tone slot formats differ: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones
+  16-bit **stereo 8 kHz**.
 
 ## Working style
 
-- Prefer **data-driven** changes: a new `patches/*.json` beats new Python. Each carries `summary` and `status` (state `confirmed` / `flashed` / `never-flashed` / `falsified` / `diagnostic`); the status tables in `docs/PATCHES.md` and `docs/index.md` are generated from them by `tools/patch_status.py`, so update the JSON after a car test and re-run it.
-- The patches are **not validated on hardware** by the maintainer. Say so plainly; do not
-  claim a patch "works". Report what was verified statically and what needs a car test.
-- Add a regression test for any bug fixed, and a synthetic fixture for any new file
-  format.
-- Keep docs current in the same PR — the user-facing pages are the product here.
+- Prefer **data-driven** changes: a new `patches/*.json` beats new Python. After a car test,
+  update the set's `status` and re-run `tools/patch_status.py`.
+- Each patch set's hardware status is in its JSON and `docs/PATCHES.md`. Do not claim a patch
+  "works" beyond that; report what was verified statically and what needs a car test.
+- Add a regression test for any bug fixed, and a synthetic fixture for any new file format.
+- Keep docs current in the same PR — the user-facing pages are the product here. Write them as
+  the current understanding, not as a log of corrections.
 
 ## Related documents
 
-- [README.md](README.md) — overview and tool table
+- [README.md](README.md) — overview and quick start
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the human-facing version of the rules above
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the whole firmware fits together
 - [docs/FLASH_CHAIN.md](docs/FLASH_CHAIN.md) — the boot and update chain
-- [docs/PATCHES.md](docs/PATCHES.md) — exact addresses and bytes
-- [docs/AUX_CHAIN.md](docs/AUX_CHAIN.md) — the AUX auto-switch gate by gate, and which claims are executed rather than read
-- [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md) — the cross-platform analysis toolchain: compiling, linking and diffing PowerPC
+- [docs/PATCHES.md](docs/PATCHES.md) — exact addresses and bytes, and each set's status
+- [docs/AUX_CHAIN.md](docs/AUX_CHAIN.md) — how the boot source is chosen, and what the AUX handler does
+- [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md) — the cross-platform analysis toolchain
