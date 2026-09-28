@@ -154,6 +154,15 @@ blr               # 0x4e800020
 
 ## 2. `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged()` — remove early exit
 
+!!! failure "The handler does not react to the AUX signal"
+
+    This patch set was written to make the unit select AUX when its signal appears, on the
+    premise that this handler reacts to the signal. **It reacts to the saved AUX input
+    setting** (`Auxiliary_Status`, set in the media options menu), read from disassembly; see
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
+    So even a working edit here could not produce a switch on signal. The first edit,
+    `IsAUXSRCAvailable()`, is unaffected and confirmed on hardware.
+
 At `handler + 0x10c` the function bails out when `GetMediaDevice(AUX)` fails, before it
 reaches `ActivateSource()`. Replace the conditional branch with `nop` so execution
 continues into the `SetMediaDeviceState` / `ActivateSource` path.
@@ -266,7 +275,7 @@ invisible to them. That is the gap this closes.
 |---|---|---|
 | `patches/aux-autoswitch.json` | `IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out | **Flashed**{ .pill .pill-ok } the combined build — accepted by the contract check; first edit confirmed on hardware |
 | `patches/aux-always-available.json` | `IsAUXSRCAvailable()` true only — AUX stops greying out | **Confirmed**{ .pill .pill-ok } behavioural; no switching |
-| `patches/aux-sticky.json` | removes the bail-out **and** turns "signal absent" into a no-op | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
+| `patches/aux-sticky.json` | removes the bail-out **and** turns "AUX setting switched off" into a no-op (previously described as "signal absent") | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
 | `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
 | `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Two-edit version falsified**{ .pill .pill-no } still FM on 2026-09-28; the three-edit version is not yet flashed |
 | `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
@@ -277,8 +286,10 @@ invisible to them. That is the gap this closes.
 
     The combined build has been flashed to a real unit and accepted by the media contract
     check. The `IsAUXSRCAvailable()` change is confirmed working: AUX no longer greys out
-    and is back in the SRC cycle. The **auto-switch has not been observed working yet** —
-    see [Hardware verification](VERIFICATION.md).
+    and is back in the SRC cycle. The **auto-switch has not been observed working**, and the
+    handler it relies on reacts to the AUX input setting rather than the signal — see
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to)
+    and [Hardware verification](VERIFICATION.md).
 
 ### `diagnostic-logmask` — half of what a diagnostic build needs
 
@@ -435,7 +446,16 @@ Two edits in `HandleAudioAuxInputStatusChnged()`:
 | offset | original | patched | effect |
 |---|---|---|---|
 | `+0x10c` (AUDIO_BT `0x023032e8`, NAV `0x02303428`) | `beq` | `nop` | drop the `GetMediaDevice` early exit — **inert**, see [Emulating the firmware](EMULATION.md) |
-| `+0x118` (AUDIO_BT `0x023032f4`, NAV `0x02303434`) | `beq cr7,+0x58` | `beq cr7,+0x140` | when the AUX signal is absent, branch to the return path instead of the release branch |
+| `+0x118` (AUDIO_BT `0x023032f4`, NAV `0x02303434`) | `beq cr7,+0x58` | `beq cr7,+0x140` | when the AUX input setting is zero, branch to the return path instead of the release branch |
+
+!!! note "Setting, not signal"
+
+    This section was written as if the branch tested the AUX **signal**. It tests the saved
+    AUX input **setting**; see
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
+    The emulation below fed the setting query a value; its columns are relabelled to match.
+    The CarPlay use case described next is therefore **not** served by this patch as written
+    (*inferred*).
 
 The second edit means that once AUX has been activated it **stays** selected until the
 user changes source — for intermittent CarPlay audio that otherwise flaps between AUX
@@ -454,7 +474,7 @@ Both offsets were verified against all three images (`AUDIO_BT`, `AUDIO_BT_256`,
     `lis`/`addi` pairs rather than hard-coded, so the same run covers `NAV`,
     `AUDIO_BT` and `AUDIO_BT_256`:
 
-    | bytes at the branch | signal appears | signal vanishes |
+    | bytes at the branch | setting becomes non-zero | setting becomes zero |
     |---|---|---|
     | `419e0058` stock | activates | releases |
     | `48000140` as shipped | **nothing** | nothing |
@@ -528,7 +548,9 @@ So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. P
 flag (request byte `+0x28`) that makes `C_MGR_SRC::AddRequest` skip the restore block entirely,
 so the target is never compared against. The flag is the `bool` argument of
 `C_HMI_SrcMgntBase::ActivateSource`. Two places pass `true` for AUX: `InitApp`, whose request is
-the one the boot restore sees, and the AUX input handler, which runs when AUX appears later.
+the one the boot restore sees, and the AUX input handler, which runs when the AUX input
+setting changes (not when a signal appears; see
+[What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to)).
 This set makes both pass `false`, and so lets AUX's requests take part:
 
 | build | address | original | patched |
@@ -555,10 +577,14 @@ is the current car build with this added.
     and does none of that with `PrOnly` set. Not verified: the two `ActivateSource` call sites and
     `StartUp` (all checked by decoding only), anything after `ExecuteAllocation`, and the car.
 
-    **Expect an auto-switch as well.** Once AUX is in the table, AUX becoming available again
-    is **forced** to the front (`ForceSchedulerPosition`). The handler fires only when the aux
-    status changes, so this happens when AUX appears, not continuously. That is what
-    `PrOnly = true` was there to prevent: a device that appears should not take the audio. See [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+    **Do not expect an auto-switch on signal.** Once AUX is in the table, a second AUX request
+    is **forced** to the front (`ForceSchedulerPosition`). But the handler sends that request
+    only when the AUX input *setting* goes from zero to non-zero, not when a signal appears.
+    An earlier version of this box promised a switch "when AUX appears"; that is withdrawn.
+
+    One more AUX activation path exists outside this patch: `HandleMediaStateReady`, with a
+    computed `PrOnly` at `0x02306a18`. Whether it ever runs for AUX is not known; see
+    [How HMI apps request sources](HMI_SOURCES.md). See [How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
 
 ### `spy-dump-userdata` — SPYSTORE also backs up `/USER_DATA`
 

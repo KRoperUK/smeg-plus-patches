@@ -102,6 +102,9 @@ How closely each part has been examined, using the evidence tiers from
 | `C_HMI_MEDIA_APP_BASE::InitApp` and `HandleAudioAuxInputStatusChnged` (`ActivateSource` call sites) | read | [The AUX chain](AUX_CHAIN.md) |
 | `C_BCM_SPY` (`SPYTAKE`/`SPYSTORE` collection) | read, and executed on the car | [Cheatcodes & spy](CHEATCODES.md) |
 | the upgrade container, manifests and `contract.dat` checks | read, and executed on the car (packages flash) | [Boot & update chain](FLASH_CHAIN.md), [Media protection](MEDIA_PROTECTION.md) |
+| `C_MGR_SRC`, the source scheduler: all 71 functions | read, every function; `AddRequest` also executed under emulation | [The source scheduler](SCHEDULER.md) |
+| `C_MODULE_AUDIO`, the audio module: 273 functions | 25 read closely (the AUX path, lifecycle, event dispatch, mute); 248 inferred from names, strings and a decompile digest | [The audio module](AUDIO_MODULE.md) |
+| `C_HMI_SrcMgntBase` and every `ActivateSource(bool)` call site (17) | read | [How HMI apps request sources](HMI_SOURCES.md) |
 | HMI framework: messages, event handler, menus | named from symbols, partly read | [Architecture](ARCHITECTURE.md) |
 | everything else | inventoried by the survey only | this page |
 

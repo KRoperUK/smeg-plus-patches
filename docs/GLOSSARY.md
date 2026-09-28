@@ -85,8 +85,9 @@ CRC cascade
     AUX no longer greys out without a signal. **Confirmed on hardware.**
 
 `HandleAudioAuxInputStatusChnged()`
-:   The handler that reacts to AUX signal-status changes — the gate chain the
-    automatic-switch work targets. See [The AUX chain](AUX_CHAIN.md).
+:   The handler that reacts to changes of the saved AUX input **setting** (not the AUX
+    signal) — the gate chain the automatic-switch work targets. See
+    [The AUX chain](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
 
 `C_MGR_SRC`
 :   The source manager. Owns the key/value mechanism and the request scheduler

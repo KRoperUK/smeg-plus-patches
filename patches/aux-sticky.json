@@ -1,6 +1,6 @@
 {
   "name": "aux-sticky",
-  "description": "Auto-switch variant that also stops the unit releasing AUX when the signal disappears, so once AUX has been activated it stays selected until the user changes source. Useful if CarPlay audio is intermittent and the unit otherwise flaps between AUX and radio. TWO EDITS, AND ONLY THE SECOND DOES ANYTHING: the +0x10c edit removes the GetMediaDevice bail-out, which is inert - that branch is never taken, because the AUX media device is registered unconditionally (see docs/AUX_CHAIN.md). It is kept so this set stays a superset of aux-autoswitch. The +0x118 edit is the real one. NOT VALIDATED ON HARDWARE, but the control flow is verified under emulation on ALL THREE images - activates when the signal appears, does not release when it goes away. The bug this set shipped with, an unconditional branch in place of the conditional one, broke activation on all three identically.",
+  "description": "Auto-switch variant that also stops the unit releasing AUX when the AUX input setting goes to zero, so once AUX has been activated it stays selected until the user changes source. CORRECTED: this was written as if the handler tracked the AUX signal; it tracks the saved AUX input setting (Auxiliary_Status), so it does not address intermittent CarPlay audio (see docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to). TWO EDITS, AND ONLY THE SECOND DOES ANYTHING: the +0x10c edit removes the GetMediaDevice bail-out, which is inert - that branch is never taken, because the AUX media device is registered unconditionally (see docs/AUX_CHAIN.md). It is kept so this set stays a superset of aux-autoswitch. The +0x118 edit is the real one. NOT VALIDATED ON HARDWARE, but the control flow is verified under emulation on ALL THREE images - activates when the setting query turns non-zero, does not release when it returns to zero. The bug this set shipped with, an unconditional branch in place of the conditional one, broke activation on all three identically.",
   "variants": {
     "AUDIO_BT": {
       "app_image": "AUDIO_BT/AppBin/f_BigQuick.bin",
@@ -20,7 +20,7 @@
           "addr": "0x023032f4",
           "expect": "419e0058",
           "bytes": "419e0140",
-          "why": "handler +0x118: when the AUX signal is absent, branch to the shared return path instead of the release branch, so an activated AUX stays selected. The condition is KEPT and only the target changes: the original is `beq cr7,+0x58` (the release path) and this is `beq cr7,+0x140` (the return path at handler+0x258). Writing `b +0x140` here instead - which this patch did until it was executed under tools/ppcemu.py - makes the branch unconditional, so the activate path below it becomes unreachable and the handler can never select AUX at all."
+          "why": "handler +0x118: when the AUX input setting is zero (originally described as 'AUX signal absent'), branch to the shared return path instead of the release branch, so an activated AUX stays selected. The condition is KEPT and only the target changes: the original is `beq cr7,+0x58` (the release path) and this is `beq cr7,+0x140` (the return path at handler+0x258). Writing `b +0x140` here instead - which this patch did until it was executed under tools/ppcemu.py - makes the branch unconditional, so the activate path below it becomes unreachable and the handler can never select AUX at all."
         }
       ]
     },
@@ -42,7 +42,7 @@
           "addr": "0x023032f4",
           "expect": "419e0058",
           "bytes": "419e0140",
-          "why": "handler +0x118: when the AUX signal is absent, branch to the shared return path instead of the release branch, so an activated AUX stays selected. The condition is KEPT and only the target changes: the original is `beq cr7,+0x58` (the release path) and this is `beq cr7,+0x140` (the return path at handler+0x258). Writing `b +0x140` here instead - which this patch did until it was executed under tools/ppcemu.py - makes the branch unconditional, so the activate path below it becomes unreachable and the handler can never select AUX at all."
+          "why": "handler +0x118: when the AUX input setting is zero (originally described as 'AUX signal absent'), branch to the shared return path instead of the release branch, so an activated AUX stays selected. The condition is KEPT and only the target changes: the original is `beq cr7,+0x58` (the release path) and this is `beq cr7,+0x140` (the return path at handler+0x258). Writing `b +0x140` here instead - which this patch did until it was executed under tools/ppcemu.py - makes the branch unconditional, so the activate path below it becomes unreachable and the handler can never select AUX at all."
         }
       ]
     },
@@ -64,7 +64,7 @@
           "addr": "0x02303434",
           "expect": "419e0058",
           "bytes": "419e0140",
-          "why": "handler +0x118: when the AUX signal is absent, branch to the shared return path instead of the release branch, so an activated AUX stays selected. The condition is KEPT and only the target changes: the original is `beq cr7,+0x58` (the release path) and this is `beq cr7,+0x140` (the return path at handler+0x258). Writing `b +0x140` here instead - which this patch did until it was executed under tools/ppcemu.py - makes the branch unconditional, so the activate path below it becomes unreachable and the handler can never select AUX at all."
+          "why": "handler +0x118: when the AUX input setting is zero (originally described as 'AUX signal absent'), branch to the shared return path instead of the release branch, so an activated AUX stays selected. The condition is KEPT and only the target changes: the original is `beq cr7,+0x58` (the release path) and this is `beq cr7,+0x140` (the return path at handler+0x258). Writing `b +0x140` here instead - which this patch did until it was executed under tools/ppcemu.py - makes the branch unconditional, so the activate path below it becomes unreachable and the handler can never select AUX at all."
         }
       ]
     }

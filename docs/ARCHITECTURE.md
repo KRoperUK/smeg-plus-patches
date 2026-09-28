@@ -217,5 +217,7 @@ fonts and radio logos all live in the media partition and are described in
   threads; no explicit task table was found).
 - Exact semantics of the `CheckType` byte (0–3) in the `*_ctrl.bin` manifests — see
   [Boot & update chain](FLASH_CHAIN.md).
-- The `AUDIO_AUX_SIGNAL_STATUS_CHANGED` vs `AUDIO_AUX_INPUT_STATUS_CHANGED` question —
-  see [The AUX chain](AUX_CHAIN.md).
+- ~~The `AUDIO_AUX_SIGNAL_STATUS_CHANGED` vs `AUDIO_AUX_INPUT_STATUS_CHANGED` question~~ —
+  answered: the media app's AUX handler runs on the INPUT event (`0xcb`), which is raised
+  when the saved AUX input setting is written. See
+  [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).

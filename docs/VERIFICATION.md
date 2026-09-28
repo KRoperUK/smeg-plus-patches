@@ -272,10 +272,12 @@ figures change as partitions are rewritten:
 
     This does not mean the car test was wasted — it confirmed the re-seal, the flash and
     `IsAUXSRCAvailable()`. It means the remaining question is upstream of the handler:
-    **is the handler entered at all, and does the AUX status query return a signal?** Note
+    **is the handler entered at all, and does the AUX status query return non-zero?** Note
     that the handler discards that query's return value, so a failed query is
-    indistinguishable from "no signal" and lands in the change-detector as "nothing
-    changed". Settle it with the diagnostic build before flashing anything else.
+    indistinguishable from "setting 0" and lands in the change-detector as "nothing
+    changed". *Later correction:* that query returns the saved AUX input **setting**, not
+    the signal — see
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to). Settle it with the diagnostic build before flashing anything else.
 
     The handler logs its own name on **every** exit — `HandleAudioAuxInputStatusChnged() -`,
     at level 1, on the shared return path. That would settle "is it entered at all?" in one
