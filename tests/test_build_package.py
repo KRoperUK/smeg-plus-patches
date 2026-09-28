@@ -341,7 +341,7 @@ def test_committed_schemes_dry_run_where_the_package_exists():
 
 
 def test_tone_sources_resolve_like_the_package_path(tmp_path, fake_pkg, monkeypatch):
-    """`~` expands and a relative tone is relative to the manifest (#161).
+    """`~` expands and a relative tone is relative to the manifest (#180).
 
     Before, tone sources were used verbatim, so a `~/x.mp3` tone was not found and the
     manifests in builds/ fell back on absolute home-directory paths.

@@ -315,7 +315,7 @@ def main():
 
     app = cfg.get("app") or {}
     media = cfg.get("media") or {}
-    # sources go through the same resolve() as package and out: before #161 a tone given as
+    # sources go through the same resolve() as package and out: before #180 a tone given as
     # `~/x.mp3` or `tones/x.mp3` was used verbatim, so manifests fell back on absolute paths
     tone_map = {
         dest: resolve(spec) if isinstance(spec, str) else dict(spec, source=resolve(spec["source"]))
