@@ -338,3 +338,40 @@ def test_committed_schemes_dry_run_where_the_package_exists():
         import pytest
 
         pytest.skip("no scheme's package is present on this machine")
+
+
+def test_tone_sources_resolve_like_the_package_path(tmp_path, fake_pkg, monkeypatch):
+    """`~` expands and a relative tone is relative to the manifest (#180).
+
+    Before, tone sources were used verbatim, so a `~/x.mp3` tone was not found and the
+    manifests in builds/ fell back on absolute home-directory paths.
+    """
+    home = tmp_path / "home"
+    (home / "tones").mkdir(parents=True)
+    (home / "tones" / "a.wav").write_bytes(b"x")
+    monkeypatch.setenv("HOME", str(home))
+    m = manifest(
+        tmp_path,
+        package=str(fake_pkg),
+        out=str(tmp_path / "o"),
+        media={
+            "tones": {
+                "ring_tones/ring1RT.wav": "~/tones/a.wav",
+                "ring_tones/ring2RT.wav": {"source": "rel/b.wav", "gain_db": 1},
+            }
+        },
+    )
+    r = run_cli(m, "--dry-run")
+    assert r.returncode == 0, r.stderr
+    r = run_cli(m)
+    assert r.returncode != 0
+    assert "media source(s) not found" in r.stderr
+    assert os.path.join(str(tmp_path), "rel", "b.wav") in r.stderr, "relative to the manifest"
+    assert "~" not in r.stderr and str(home / "tones" / "a.wav") not in r.stderr, "~ expanded"
+    assert not (tmp_path / "o").exists(), "a missing source must stop the build before any work"
+
+
+def test_shipped_build_manifests_carry_no_home_directory_paths():
+    for path in sorted(pathlib.Path(ROOT, "builds").glob("*.json")):
+        text = path.read_text()
+        assert "/Users/" not in text and "C:\\\\Users" not in text, path.name

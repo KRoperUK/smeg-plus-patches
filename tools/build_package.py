@@ -315,8 +315,21 @@ def main():
 
     app = cfg.get("app") or {}
     media = cfg.get("media") or {}
-    tone_map = media.get("tones") or {}
-    splash_map = media.get("splash") or {}
+    # sources go through the same resolve() as package and out: before #180 a tone given as
+    # `~/x.mp3` or `tones/x.mp3` was used verbatim, so manifests fell back on absolute paths
+    tone_map = {
+        dest: resolve(spec) if isinstance(spec, str) else dict(spec, source=resolve(spec["source"]))
+        for dest, spec in (media.get("tones") or {}).items()
+    }
+    splash_map = {m: resolve(img) for m, img in (media.get("splash") or {}).items()}
+    missing = [
+        src
+        for src in [v if isinstance(v, str) else v["source"] for v in tone_map.values()]
+        + list(splash_map.values())
+        if not os.path.exists(src)
+    ]
+    if missing and not args.dry_run:  # fail before any patch work, not halfway through it
+        sys.exit("media source(s) not found: %s" % ", ".join(missing))
     name_map = media.get("names") or {}
     settings = media.get("settings") or {}
     gui_ver = media.get("gui_ver")

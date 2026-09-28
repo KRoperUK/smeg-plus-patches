@@ -8,8 +8,8 @@
   },
   "_beacon": "gui_ver 32.01 is the visible did-it-apply signal, and ring1 renamed to Piano_riff",
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
-  "package": "/Users/kieran/Downloads/SMEG_PLUS_UPG",
-  "out": "/Users/kieran/Downloads/stick_combined/SMEG_PLUS_UPG",
+  "package": "~/Downloads/SMEG_PLUS_UPG",
+  "out": "~/Downloads/stick_combined/SMEG_PLUS_UPG",
   "module": "NAV",
   "app": {
     "patches": [
@@ -21,7 +21,7 @@
   "media": {
     "tones": {
       "ring_tones/ring1RT.wav": {
-        "source": "/Users/kieran/Downloads/piano-riff.mp3",
+        "source": "~/Downloads/piano-riff.mp3",
         "gain_db": 7.4
       }
     },

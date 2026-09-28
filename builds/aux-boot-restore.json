@@ -22,7 +22,7 @@
   "media": {
     "tones": {
       "ring_tones/ring1RT.wav": {
-        "source": "/Users/kieran/Downloads/piano-riff.mp3",
+        "source": "~/Downloads/piano-riff.mp3",
         "gain_db": 7.4
       }
     },
