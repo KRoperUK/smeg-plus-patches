@@ -266,3 +266,44 @@ def test_the_media_app_drops_the_signal_event_on_stock(image):
 def test_signal_switch_routes_only_0xcc_differently(image, mid):
     assert dispatch(image, mid, patched=True) == dispatch(image, mid, patched=False)
     assert dispatch(image, 0xCC, patched=True) == HANDLER_CASE
+
+
+# -------------------- C_MGR_SRC::ChangeToNextSchedulerPosition (#188, docs/SCHEDULER.md)
+
+NEXT_POS = 0x01697A70
+LOCK, UNLOCK = 0x00583FE0, 0x00584134
+
+
+def change_to_next(image, nodes, current, clear=False, by_type=False, cur_type=2):
+    """ChangeToNextSchedulerPosition over a list of (Sched_Pos, Sched_Typ) request nodes.
+
+    Stubbed: the lock and unlock, and ExecuteAllocation. The nodes are scratch memory holding
+    only +0x18, +0x1c and the +0x3c link.
+    """
+    ppcemu, e = emulator(image)
+    this, nodes_at = ppcemu.SCRATCH, ppcemu.SCRATCH + 0x1000
+    e.write(this, b"\0" * 0x400)
+    e.write_u32(this + 0x80, 0x1234)
+    e.write_u32(this + 0xB4, current)
+    e.write_u32(this + 0xB0, cur_type)
+    for i, (pos, typ) in enumerate(nodes):
+        n = nodes_at + 0x40 * i
+        e.write_u32(n + 0x18, pos)
+        e.write_u32(n + 0x1C, typ)
+        e.write_u32(n + 0x3C, n + 0x40 if i + 1 < len(nodes) else 0)
+    e.write_u32(this + 0xD4, nodes_at if nodes else 0)
+    for addr in (EXEC_ALLOC, LOCK, UNLOCK):
+        e.stub(addr, 0)
+    r3 = e.call(NEXT_POS, [this, int(clear), int(by_type)])
+    assert e.error is None, e.error
+    return r3, e.read_u32(this + 0xB4), e.read_u32(this + 0xE4)
+
+
+def test_next_position_is_always_one_whatever_is_queued(image):
+    """The boot-timer case: current 7, requests at 9, 10, 8, 4, 1 -> stores 1, previous 7."""
+    assert change_to_next(image, [(9, 0), (10, 0), (8, 0), (4, 0), (1, 1)], 7)[1:] == (1, 7)
+
+
+def test_next_position_with_nothing_schedulable_changes_nothing(image):
+    r3, pos, _ = change_to_next(image, [(0xFF, 2)], 7)
+    assert (r3 & 0xFFFFFFFF, pos) == (0xFFFFFFFF, 7)

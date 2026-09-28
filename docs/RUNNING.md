@@ -182,11 +182,11 @@ them as an experiment, not a lever:
 "settings": { "supervisor.Last_Source": 7 }
 ```
 
-`media.gui_ver` edits `GUI_VER` in the partition's `Data_base/smeg.inf`. It is harmless, but
-it is **not visible** on the unit: set to `32.01` on a real flash, it was not seen, and the
-Display-version screen read `cd 26482` from `media.inf` (observed, 2026-09-27). It is kept only
-for compatibility; there is no known safe on-screen build marker. See
-[Version strings](VERSION_STRINGS.md).
+`media.gui_ver` edits `GUI_VER` in the partition's `Data_base/smeg.inf`. It is harmless. The
+code shows it on the GUI item's page of System Information *(read)*, but set to `32.01` on a
+real flash it was not seen on the page looked at (2026-09-27), so it is not yet a confirmed
+marker. See [Version strings](VERSION_STRINGS.md#is-gui_ver-visible) for the car check that
+settles it.
 
 !!! warning "Patch sets accumulate, in order"
 

@@ -182,11 +182,12 @@ synthetic fixture here, never a binary.
   database alone changes nothing on the car (confirmed on hardware). Shipping a `USER_DATA`
   payload does work, but overwrites state the car owns — paired phones, destinations, presets —
   and `build_package.py` refuses it without `accept_data_loss: true`.
-* **Version strings are not a safe marker.** The Display-version screen reads `media.inf`
-  (observed on the car, 2026-09-27: it showed `cd 26482`), and editing `media.inf` can block
-  the update outright. `GUI_VER` was set on a real flash and was not seen on the unit, so
-  there is **no known safe visible build marker** — judge a flash by behaviour, a replaced
-  ring tone, or a `SPYTAKE` capture.
+* **Version strings are not a safe marker yet.** System Information's `cd` value is the media
+  partition's `media.inf` (observed: `cd 26482`), and editing `media.inf` can block the update
+  outright. The main software version is an application-image literal. `GUI_VER` is shown on
+  the GUI item's page by the code but was not seen on the one page looked at, so **no visible
+  build marker is confirmed** (docs/VERSION_STRINGS.md) — judge a flash by behaviour, a
+  replaced ring tone, or a `SPYTAKE` capture.
 * **The updater reboots the unit** mid-update. Never propose updating while driving.
 * Tone slot formats differ: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones
   16-bit **stereo 8 kHz**.

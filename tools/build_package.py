@@ -40,8 +40,8 @@ partition-relative destination to a source audio file of any format ffmpeg reads
 `media.splash` maps a marque to an image; `media.names` renames ring1..ring5 in the phone's
 ringtone menu. Those names are literals in the application image (#190), so this becomes an
 application patch - NAV 5.43.A.R2 only, and each name has a fixed maximum length;
-`media.gui_ver` sets `GUI_VER` in the partition's `Data_base/smeg.inf`. That field is harmless,
-but it was not seen on the unit when changed (2026-09-27), so it is no build marker.
+`media.gui_ver` sets `GUI_VER` in the partition's `Data_base/smeg.inf`, which System
+Information shows on its GUI item's page (read, #191); the updater does not gate on it.
 
 usage:
     python3 tools/build_package.py --manifest build.json
@@ -179,10 +179,10 @@ def set_gui_ver(tree, value):
     """Set `GUI_VER` in the media partition's `Data_base/smeg.inf`.
 
     This edits the copy inside `system.bin`, not the module-level `NAV/smeg.inf` beside it.
-    `GUI_VER` is not gated on by the updater, so changing it is harmless; but set to `32.01` on a
-    real flash it was not seen on the unit, whose Display-version screen reads `media.inf`
-    (observed, 2026-09-27). It is kept for compatibility, not as a build marker. `VER:` and
-    `media.inf` drive update decisions and must be left alone.
+    `GUI_VER` is not gated on by the updater, so changing it is harmless. System Information
+    shows it on the GUI item's page (read, #191); set to `32.01` on a real flash it was not
+    seen on the page looked at (2026-09-27), so it is not yet a confirmed build marker.
+    `VER:` and `media.inf` drive update decisions and must be left alone.
     """
     path = os.path.join(tree, "Data_base", "smeg.inf")
     if not os.path.exists(path):
@@ -476,7 +476,10 @@ def main():
                 print("==> %s = %s  (%d row%s)" % (dotted, value, n, "" if n == 1 else "s"))
             if gui_ver is not None:
                 set_gui_ver(tree, gui_ver)
-                print("==> GUI_VER = %s  (Data_base/smeg.inf - not shown on the unit)" % gui_ver)
+                print(
+                    "==> GUI_VER = %s  (Data_base/smeg.inf - System Information, GUI item)"
+                    % gui_ver
+                )
 
         # 4. rebuild the partition and the checksum cascade
         o2 = os.path.join(work, "media-overlay")

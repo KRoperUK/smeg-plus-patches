@@ -205,9 +205,9 @@ This is the same as [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually
    - So either another class writes it, or mode 4 is unreachable.
    - **Status:** read (the scan). Who sets it is **not known**; this family was the only range scanned.
 2. **"Next" always means position 1.**
-   - `ChangeToNextSchedulerPosition` walks the permanent list and computes the next-higher `Sched_Pos` into `r7`. It then discards it and stores `li r0,1` (`0x01697b44`).
+   - `ChangeToNextSchedulerPosition` walks the permanent list and computes the **highest** `Sched_Pos` above the current one into `r7` (not the next-higher one, as this finding first said). It then discards it and stores `li r0,1` (`0x01697b44`).
    - Its only success condition is that some permanent request has `Sched_Pos ≠ 0xff` (and, with `byType`, the right `Sched_Typ`).
-   - **Status:** read (disassembly). If `C_SRV_AUDIO::bcm_ActivateNextSource` reaches it with no other step, "next source" would always land on the tuner. That effect is **inferred**, not tested.
+   - **Status:** read (disassembly), then executed under emulation. The full picture, its four callers and why no patch is recommended are in [the section below](#changetonextschedulerposition-in-full).
    - This strengthens [The AUX chain](AUX_CHAIN.md)'s warning not to patch that literal.
 3. **The source is saved only on a change, and never for the first two ACKs after boot.**
    - `ExecuteAllocation` calls `ImmediateSourceSave` only when the permanent winner's position differs from the previous pass *and* `m_Mgr_src_RequestCounter` (`+0xe8`) is above 2. `Init` sets `+0xe8` to 1, and each `ACK` increments it.
@@ -229,6 +229,100 @@ This is the same as [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually
    **Status:** read. Whether the enum is simply misnamed is **not known**.
 
 `AddRequest` also materialises the string `R_TP_FLAG_CHANGED`, which the decompiled body does not show being used. **Not known.**
+
+## `ChangeToNextSchedulerPosition`, in full
+
+Spike #188. Stock NAV `SMEG5.43.A.R2`. The function was disassembled, every caller found
+(4 materialised sites, no `bl`), and the function itself run under `tools/ppcemu.py` with the
+lock, unlock and `ExecuteAllocation` stubbed.
+
+**In short**
+
+- **The computed value is never used** *(read, then executed)*. It is not "the next position"
+  either: the loop computes the **highest** scheduled position above the current one. The
+  stored value is always 1.
+- **In normal mode, position 1 means "the tuner, or no permanent source"** *(read)*.
+  `ExecuteAllocationFirstRound` picks the permanent winner only among requests whose
+  `Sched_Pos` **equals** `+0xb4`; nothing falls through to the next available position.
+- **Whether the 1 is deliberate is not known.** The dead computation suggests a vestigial or
+  disabled "next" algorithm *(inferred)*. The rest of the class treats position 1 as the
+  canonical fallback: `ChangeToFirstSchedulerPosition` forces it, and so does the timer.
+- **Returning to the previous source already exists natively** *(read)*. See
+  [below](#return-to-the-previous-source).
+
+### What it does (`0x01697a70`, 99 instructions)
+
+`ChangeToNextSchedulerPosition(bool clear, bool byType)`:
+
+1. Locks the mutex at `+0x80`, then walks the permanent list from `+0xd4` (following `+0x3c`),
+   with `r5 = r7 = +0xb4` (the current position) and `r6 = 0` *(read)*.
+2. **Per node:** `Sched_Pos` (`+0x18`) of `0xff` is skipped. With `byType`, the node counts
+   only if `Sched_Typ` (`+0x1c`) equals `+0xb0`. A counting node sets `r6 = 1` ("something
+   schedulable exists"), and if its position is above `r7`, `r7` takes it, so `r7` ends as the
+   maximum *(read; executed)*.
+3. **If `r6 == 0`:** unlocks and returns −1, storing nothing *(executed)*.
+4. **Otherwise:** saves the old position to `+0xe4` ("previous"); `li r0,1` at `0x01697b44`
+   (`38000001`) then `stw r0,0xb4` sets the current position to **1**; with `clear`, stores 0
+   to the no-source byte `+0x7c`; calls `ExecuteAllocation`; unlocks and returns 0
+   *(read; executed)*. `r7` is not read after the loop *(read)*.
+
+**Emulation, stock image** *(executed)*. The request nodes are scratch memory holding only
+`+0x18`, `+0x1c` and `+0x3c`.
+
+| state | returns | computed `r7` | stored `+0xb4` | `+0xe4` | `+0x7c` |
+|---|---|---|---|---|---|
+| boot-timer case: current 7; requests 9, 10, 8, 4, 1 | 0 | 10 | **1** | 7 | unchanged |
+| current 9; requests 1, 7, 9 | 0 | 9 | **1** | 9 | unchanged |
+| current 1; requests 1, 7, 9, 10 | 0 | 10 | **1** | 1 | unchanged |
+| only `0xff` requests | −1 | – | 7 (untouched) | – | unchanged |
+| empty list | −1 | – | 7 (untouched) | – | unchanged |
+| `clear=true`; requests 1, 7 | 0 | 7 | **1** | 1 | **0** |
+| `byType`, type 0; requests 1 (type 1), 7 (type 0), 9 (type 0) | 0 | 9 | **1** | 1 | unchanged |
+| `byType`, type 0; only a type-1 request | −1 | – | 7 (untouched) | – | unchanged |
+
+`tests/test_firmware_nav.py` carries two of these rows as tests against your own image.
+
+### Every caller *(read)*
+
+| call site | caller | arguments | when | effect of "always 1" |
+|---|---|---|---|---|
+| `0x01697c0c` | `SchedulerInitTimeout` | `(false, false)` | the 7.5 s init watchdog fires because no boot restore matched | **FM at boot.** Observed on the car: the tuner is acknowledged at `Last_Source` + 7500 ms (2026-09-28) *(executed)* |
+| `0x01698620` | `AddRequest`, restore-match branch | `(false, false)` | a request matched (`+0xb4`, `+0xac`) and the timer was cancelled, but `IsRequestAtCurrentPosition()` found no permanent request at `+0xb4` | the tuner. Should be rare: the matching request is itself at `+0xb4` unless it is on a temporary list *(inferred)* |
+| `0x01697d2c` | `ChangeToFirstSchedulerPosition(clear)` | `(clear, false)` | `ForceSchedulerPosition(1, …)` failed, so nothing is at position 1; it sets `+0xb4 = 1` itself and calls this | stays at 1, so no permanent source *(inferred)* |
+| `0x016bc0d4` | `C_SRV_AUDIO::bcm_ActivateNextSource(bool const&)` | `(true, *arg)` | the DBUS `ActivateNextSource`, from the HMI's `SwitchNextSource` → `AllocateNextSource` → `C_BCM_HMI_AUDIO_CLIENT::ActivateNextSource` | "next source" goes to the tuner. `SwitchNextSource` is reached only through a data pointer (`0x03428974`), so **what triggers it is not known**. The SRC key's cycling works on the car, including reaching AUX, so it probably does not use this path *(inferred)* |
+
+### Return to the previous source
+
+`ChangeToFirstSchedulerPosition` has one caller, **`RemoveRequest`** (`0x016980cc`). When the
+current permanent source is released, it first calls `ForceSchedulerPosition(+0xe4, 0, 1)`,
+which returns to the **previous** position. Only if that fails does it call
+`ChangeToFirst…`, and then `ChangeToNext…`, ending at 1 *(read, `0x016980a0`–`0x016980dc`)*.
+
+So returning to the previous source when AUX drops (the request tracked as issue #4) may need
+no patch at all: if AUX's release reaches `RemoveRequest` while the previous source's request
+is still queued, the manager goes back to `+0xe4` *(read)*. Whether that request is still
+queued at that moment is **not known**. A car test of `aux-signal-switch` *without*
+`aux-sticky` would settle it.
+
+### Why no patch is recommended
+
+**A. `0x01697b44` `38000001` (`li r0,1`) → `7ce03b78` (`mr r0,r7`).** CANDIDATE, *executed
+under emulation for this function only*. It stores the *highest* scheduled position above the
+current one (current 7 with requests 8, 9, 10 stores 10), not the next or the previous one.
+Per caller *(inferred)*: the boot timer would jump to the highest queued source (iPod or USB),
+not FM or AUX; `bcm_ActivateNextSource` would always land on the top position and never wrap;
+`ChangeToFirst…` would land on the highest position instead of staying at 1. **Worse than
+stock.**
+
+**B. A true "next-higher, wrap to lowest"** would mean rewriting about six words of the loop
+at `0x01697ad4`–`0x01697b1c` (initialise `r7` to a sentinel, take a node when
+`current < pos < r7`, wrap to the lowest if none). It is expressible in place, but it changes
+all four callers at once, and only `bcm_ActivateNextSource`'s callers plausibly want it. **Not
+designed further** until what triggers `SwitchNextSource` is known and "next source" is a real
+problem on the car.
+
+**For boot-to-AUX, patching this literal is the wrong lever.** `aux-boot-restore` avoids the
+timer altogether by making AUX match the restore, which cancels the timer.
 
 ## Every function
 
