@@ -20,16 +20,11 @@ the requests is in [How HMI apps request sources](HMI_SOURCES.md).
   - Where a field name is matched to an offset by print order, not by a traced load, it is marked *inferred*.
 - **Evidence tiers:**
   - **read** means the decompiled or disassembled code was followed;
-  - **executed** means run under `ppcemu` or observed on the car. Only `AddRequest` and the boot restore reach that tier; see [The AUX chain](AUX_CHAIN.md).
+  - **executed** means run under `ppcemu` or observed on the car. `AddRequest`,
+    `ChangeToNextSchedulerPosition` and the boot restore reach that tier.
 
-Nothing here contradicts [The AUX chain](AUX_CHAIN.md). Four things are new beyond it:
-
-- what `+0x7c` is;
-- that "next position" always means position 1;
-- when the source is *saved*;
-- a missing NULL check.
-
-All four are under [New findings](#new-findings).
+The less obvious behaviour (what `+0x7c` is, why "next position" is always 1, when the source
+is saved, a missing NULL check) is collected under [Notable behaviour](#notable-behaviour).
 
 ## The object (`0x3f4` bytes, one instance)
 
@@ -189,6 +184,9 @@ This is the same as [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually
    - loads the Radio/Media slot positions and priorities from `supervisor.Src_*`. Their defaults are position 1 and priority 250 when a key is missing.
 2. **`StartUp`:**
    - sets `+0xb4 = 0`, then restores `Last_Source → +0xb4` (and `+0xe4`) and `Last_Source_Priority → +0xac`;
+   - logs the saved `Last_Source` to the spy (`WriteMgrSrcSpy` at `0x01699488`, from `lwz r5,8(r1)`)
+     **before** storing it at `0x0169948c`. So the spy's `Last_Source` line always shows the
+     saved value, not the one `aux-boot-default` substitutes at `0x0169948c` *(read)*;
    - subscribes to diag event `0x3dbb`;
    - arms **both** watchdogs for **7.5 s** (`0x1d4c`).
 3. **Init timer fires:** `SchedulerInitTimeout` sets `+0x3c0` and calls `ChangeToNextSchedulerPosition(false, false)`.
@@ -198,21 +196,21 @@ This is the same as [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually
 
 **read**
 
-## New findings
+## Notable behaviour
 
 1. **`+0x7c` is the "no source" status, and nothing in this class sets it.**
    - The byte that switches the manager into mode 4 (`MGR_SRC_NOSRC`, priority field `NoSr`) is only ever cleared inside `C_MGR_SRC`. A scan of the family's 71 functions finds five `stb …,0x7c`, all storing 0.
    - So either another class writes it, or mode 4 is unreachable.
    - **Status:** read (the scan). Who sets it is **not known**; this family was the only range scanned.
 2. **"Next" always means position 1.**
-   - `ChangeToNextSchedulerPosition` walks the permanent list and computes the **highest** `Sched_Pos` above the current one into `r7` (not the next-higher one, as this finding first said). It then discards it and stores `li r0,1` (`0x01697b44`).
+   - `ChangeToNextSchedulerPosition` walks the permanent list and computes the **highest** `Sched_Pos` above the current one into `r7`. It then discards it and stores `li r0,1` (`0x01697b44`).
    - Its only success condition is that some permanent request has `Sched_Pos ≠ 0xff` (and, with `byType`, the right `Sched_Typ`).
    - **Status:** read (disassembly), then executed under emulation. The full picture, its four callers and why no patch is recommended are in [the section below](#changetonextschedulerposition-in-full).
-   - This strengthens [The AUX chain](AUX_CHAIN.md)'s warning not to patch that literal.
+   - Patching that literal is the wrong lever for boot-to-AUX; see [below](#why-no-patch-is-recommended).
 3. **The source is saved only on a change, and never for the first two ACKs after boot.**
    - `ExecuteAllocation` calls `ImmediateSourceSave` only when the permanent winner's position differs from the previous pass *and* `m_Mgr_src_RequestCounter` (`+0xe8`) is above 2. `Init` sets `+0xe8` to 1, and each `ACK` increments it.
    - `ImmediateSourceSave` writes all six `supervisor` keys at once through `UP_MOD::SetCommonKeysImmediate`.
-   - **Status:** read. Consequence (**inferred**): a boot that settles on its first or second ACK does not rewrite `Last_Source`. So the saved value survives a boot where FM won quickly, which is consistent with test 1's trace still reading `Last_Source = 7`.
+   - **Status:** read. Consequence (**inferred**): a boot that settles on its first or second ACK does not rewrite `Last_Source`, so the saved value can survive a boot where another source won. Why the saved value is sometimes 1 after AUX boots is **not known**.
 4. **`ExecuteAllocation` dereferences the NotMixable winner without a NULL check.**
    - When a permanent winner exists, `0x016974ec` loads `+0x3e0` and reads `+0x1c` from it unconditionally. With no NotMixable winner, that is a read from address `0x1c`.
    - **Status:** read (disassembly). Harmless on VxWorks with page 0 mapped (**inferred**). It matters only to anyone emulating `ExecuteAllocation`: map low memory, or the emulator will fault there.
@@ -232,7 +230,7 @@ This is the same as [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually
 
 ## `ChangeToNextSchedulerPosition`, in full
 
-Spike #188. Stock NAV `SMEG5.43.A.R2`. The function was disassembled, every caller found
+Stock NAV `SMEG5.43.A.R2`. The function was disassembled, every caller found
 (4 materialised sites, no `bl`), and the function itself run under `tools/ppcemu.py` with the
 lock, unlock and `ExecuteAllocation` stubbed.
 
@@ -280,13 +278,14 @@ lock, unlock and `ExecuteAllocation` stubbed.
 | `byType`, type 0; requests 1 (type 1), 7 (type 0), 9 (type 0) | 0 | 9 | **1** | 1 | unchanged |
 | `byType`, type 0; only a type-1 request | −1 | – | 7 (untouched) | – | unchanged |
 
-`tests/test_firmware_nav.py` carries two of these rows as tests against your own image.
+`tests/test_firmware_nav.py` carries two of these rows as tests that run against your own
+image.
 
 ### Every caller *(read)*
 
 | call site | caller | arguments | when | effect of "always 1" |
 |---|---|---|---|---|
-| `0x01697c0c` | `SchedulerInitTimeout` | `(false, false)` | the 7.5 s init watchdog fires because no boot restore matched | **FM at boot.** Observed on the car: the tuner is acknowledged at `Last_Source` + 7500 ms (2026-09-28) *(executed)* |
+| `0x01697c0c` | `SchedulerInitTimeout` | `(false, false)` | the 7.5 s init watchdog fires because no boot restore matched | **FM at boot**: the tuner is acknowledged 7500 ms after `Last_Source` is read *(executed on the car; [Verification](VERIFICATION.md#log))* |
 | `0x01698620` | `AddRequest`, restore-match branch | `(false, false)` | a request matched (`+0xb4`, `+0xac`) and the timer was cancelled, but `IsRequestAtCurrentPosition()` found no permanent request at `+0xb4` | the tuner. Should be rare: the matching request is itself at `+0xb4` unless it is on a temporary list *(inferred)* |
 | `0x01697d2c` | `ChangeToFirstSchedulerPosition(clear)` | `(clear, false)` | `ForceSchedulerPosition(1, …)` failed, so nothing is at position 1; it sets `+0xb4 = 1` itself and calls this | stays at 1, so no permanent source *(inferred)* |
 | `0x016bc0d4` | `C_SRV_AUDIO::bcm_ActivateNextSource(bool const&)` | `(true, *arg)` | the DBUS `ActivateNextSource`, from the HMI's `SwitchNextSource` → `AllocateNextSource` → `C_BCM_HMI_AUDIO_CLIENT::ActivateNextSource` | "next source" goes to the tuner. `SwitchNextSource` is reached only through a data pointer (`0x03428974`), so **what triggers it is not known**. The SRC key's cycling works on the car, including reaching AUX, so it probably does not use this path *(inferred)* |
@@ -321,8 +320,9 @@ all four callers at once, and only `bcm_ActivateNextSource`'s callers plausibly 
 designed further** until what triggers `SwitchNextSource` is known and "next source" is a real
 problem on the car.
 
-**For boot-to-AUX, patching this literal is the wrong lever.** `aux-boot-restore` avoids the
-timer altogether by making AUX match the restore, which cancels the timer.
+**For boot-to-AUX, patching this literal is the wrong lever.** `aux-boot-restore` (with
+`aux-boot-default`) avoids the timer altogether by making AUX match the restore, which cancels
+it; that pair boots to AUX on the car *(executed; [Verification](VERIFICATION.md#log))*.
 
 ## Every function
 
@@ -346,7 +346,7 @@ Every row below is **read** or better; no function in the family was left unread
 | `016956c8` | `UpdateTypePermSource()` | 27 | mat×1 | Copies the active permanent request into the Radio or Media slot by its `Sched_Typ`; sets `+0xb0` | `+0x3c4`, `+0x94…+0xb0` | read |
 | `01695734` | `CheckAfterFirstRound()` | 46 | mat×1 | Arbitrates between the temporary winners: drops the NotMixable winner unless it beats Mixable, else drops Mixed/Mixable | `+0x3d8…+0x3e0` | read |
 | `016957ec` | `ExecuteAllocationFirstRound()` | 260 | mat×1 | Picks the winner per list by the mode rules; priority ≥ 250 ineligible; the permanent list is position-gated in modes 1/3 | `+0xd4…`, `+0x3c0`, `+0xb4`, `+0x3d4…` | read |
-| `01695bfc` | `GetLastSourceType(pos)` | 13 | mat×1 | pos 1 → 1; pos 2–5, 7–10 → 0; else 2 (finding 6) | — | read |
+| `01695bfc` | `GetLastSourceType(pos)` | 13 | mat×1 | pos 1 → 1; pos 2–5, 7–10 → 0; else 2 ([notable behaviour](#notable-behaviour), item 6) | — | read |
 | `01695c30` | `WriteMgrSrcSpy(CMMString const&)` | 44 | mat×2 | Writes a string to the spy channel `0x62d4` via `C_BCM_SPY::WriteData` | — | read |
 | `01695ce0` | `WriteMgrSrcSpy(char const*)` | 34 | mat×4 | Wraps a C string and calls the above | — | read |
 | `01695d68` | `ImmediateSourceSave()` | 199 | mat×1 | Writes `supervisor.{Last_Source, Last_Source_Priority, Src_Radio/Media_SchedPos, Src_Radio/Media_Priority}` now | reads `+0xb4 +0xac +0x9c +0xa8 +0x98 +0xa4` | read |
@@ -369,7 +369,7 @@ Every row below is **read** or better; no function in the family was left unread
 | `016977d0` | `ForceSchedulerPosition(pos, clearNoSrc, alloc)` | 39 | mat×6 | If a permanent request has that position: `+0xe4 := +0xb4`, `+0xb4 := pos`, optionally clears `+0x7c` and allocates | `+0xb4 +0xe4 +0x7c` | read |
 | `0169786c` | `ForceSchedulerPositionByType(t, clear)` | 59 | mat×2 | Forces the Radio (0) or Media (1) slot's position unless it is already current | `+0x94…`, `+0xb4` | read |
 | `01697958` | `ActivateSourceID(src)` | 70 | mat×1 | Finds the permanent request with that SrcId and forces its position (clear `+0x7c`, allocate) | `+0xd4` | read |
-| `01697a70` | `ChangeToNextSchedulerPosition(clear, byType)` | 99 | mat×4 | Succeeds if any schedulable permanent request exists, then **always** sets position 1 and allocates (finding 2) | `+0xb4 +0xe4 +0x7c` | read |
+| `01697a70` | `ChangeToNextSchedulerPosition(clear, byType)` | 99 | mat×4 | Succeeds if any schedulable permanent request exists, then **always** sets position 1 and allocates ([in full](#changetonextschedulerposition-in-full)) | `+0xb4 +0xe4 +0x7c` | read; executed (emulation) |
 | `01697bfc` | `SchedulerInitTimeout()` | 53 | mat×1 | Sets `+0x3c0`, calls the above; on failure re-arms 5 s and clears `+0x3c0` | `+0x3c0`, `+0x84` | read |
 | `01697cd0` | `ChangeToFirstSchedulerPosition(clear)` | 36 | mat×1 | Forces position 1; if nothing is there, sets it anyway and calls `ChangeToNext…` | `+0xb4 +0xe4` | read |
 | `01697d60` | `RemoveRequest(req)` | 255 | mat×1 | Release by (MsgSrc, SrcId, Type); re-selects the permanent source if it was current; clears slots | see lifecycle 6 | read |
@@ -378,7 +378,7 @@ Every row below is **read** or better; no function in the family was left unread
 | `01698a9c` | `ReadSupervisorData()` | 220 | mat×1 | Loads the `Src_Radio/Media_{SchedPos,Priority}` keys (defaults 1 / 250) | `+0x98 +0x9c +0xa4 +0xa8` | read |
 | `01698e0c` | `HandleMessage(…)` | 25 | ptr×1 | Routes message id `0x62d5` to `HandlePrivateMessage` | — | read |
 | `01698e70` | `End(int)` | 146 | ptr×1 | Resets the VAN source-order counter, removes the spy, cancels the timers, deletes the mutex and the context data, unsubscribes | `+0x80…+0x88` | read |
-| `016990b8` | `StartUp()` | 251 | ptr×1 | Restores `Last_Source`/`Last_Source_Priority`, subscribes to diag, arms both timers for 7.5 s | `+0xb4 +0xac +0xe4` | read; restore observed on the car |
+| `016990b8` | `StartUp()` | 251 | ptr×1 | Restores `Last_Source`/`Last_Source_Priority` (logging the saved value first), subscribes to diag, arms both timers for 7.5 s | `+0xb4 +0xac +0xe4` | read; the restore executed on the car ([Verification](VERIFICATION.md#log)) |
 | `016994a4` | `Init()` | 193 | ptr×1 | Creates the mutex and spy; resets all state; reads supervisor data; creates the context-data entries | nearly all | read |
 | `016997a8` | `~C_MGR_SRC()` (D1) | 97 | ptr×1 | Deletes both watchdogs, clears `m_Instance`, then runs the base dtor | `+0x84 +0x88` | read |
 | `0169992c` | `~C_MGR_SRC()` (D0) | 102 | ptr×1 | Same, and frees | — | read |
@@ -392,7 +392,7 @@ Every row below is **read** or better; no function in the family was left unread
 | `0169c124` | `Mgr_src_SCHED_TYPE_TIMEOUT()` | 43 | mat×2 | Watchdog callback: posts kind 4 | — | read |
 | `0169c1d0` | `Mgr_src_SCHED_INIT_TIMEOUT()` | 43 | mat×3 | Watchdog callback: posts kind 3 | — | read |
 | `0169c27c` | `SetCurrentDiagTestStatus()` | 63 | mat×1 | Reads diag status from context `0x3dbb`; if set, posts kind 2 | diag globals | read |
-| `0169c378` | `SetCurrentDiagTestSource()` | 73 | mat×2 | Event `0x3dbb` handler: maps the diag byte to a position (finding 5) | `m_mgr_src_diag_test_source` | read |
+| `0169c378` | `SetCurrentDiagTestSource()` | 73 | mat×2 | Event `0x3dbb` handler: maps the diag byte to a position ([notable behaviour](#notable-behaviour), item 5) | `m_mgr_src_diag_test_source` | read |
 | `0169c49c` | `UnSubscribeByMGRSRC()` | 15 | mat×2 | Unsubscribes from event `0x3dbb` | — | read |
 | `0169c4d8` | `SubscribeByMGRSRC()` | 17 | mat×1 | Subscribes to event `0x3dbb` | — | read |
 | `0169c51c` | `HandlePrivateMessage(msg)` | 124 | mat×1 | Takes the mutex and dispatches kinds 0–4 | — | read |

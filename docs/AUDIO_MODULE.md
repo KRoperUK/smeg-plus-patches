@@ -15,7 +15,8 @@ the family in the stock NAV `SMEG5.43.A.R2` image.
 - **248 are inferred**: classified from their names, strings and a machine digest of
   the decompile (calls, fields, `Call_action` ids), not read line by line. They are
   [summarised by purpose](#the-rest-by-purpose), not listed one by one.
-- Nothing on this page was executed.
+- The only executed result is the media app's dispatch of `0xcc` (below), emulated on the stock
+  image.
 
 ## What matters for AUX
 
@@ -32,19 +33,20 @@ the family in the stock NAV `SMEG5.43.A.R2` image.
    `AUDIO_AUX_INPUT_STATUS_CHANGED` is raised when the setting is written (`setAUXGain`, and the
    diagnostic `Set_diag_aux`). `AUDIO_AUX_SIGNAL_STATUS_CHANGED` is raised on a signal change.
    `C_BCM_HMI_AUDIO_CLIENT` turns the first into HMI message `0xcb` and the second into `0xcc`
-   (confirmed: `li r4,0xcb` at `0x025cdf1c`, `li r4,0xcc` at `0x025cded0`). The media app's AUX
-   handler runs on `0xcb`. The close reading found no `0xcc` case in
-   `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage`; the audio app uses `0xcc` only to refresh its
-   menu (read in the close reading, not re-checked independently). So **no stock code path
-   activates AUX because a signal appeared.**
+   (`li r4,0xcb` at `0x025cdf1c`, `li r4,0xcc` at `0x025cded0`). The media app's AUX handler
+   runs on `0xcb`. `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage` has no `0xcc` case: its dispatch
+   sends `0xcc` to the default branch *(executed: the dispatch window emulated on the stock
+   image, `tests/test_firmware_nav.py`)*. The audio app uses `0xcc` only to refresh its menu
+   *(read)*. So **no stock code path activates AUX because a signal appeared.**
 3. **Every successful boot re-announces the setting once.** *Read.* `ElabRADIO_READY_FOR_INIT_0`
    ends with `setAUXGain(+0x8c, 1)`, which raises `AUDIO_AUX_INPUT_STATUS_CHANGED`. Whether the
    media app is listening by then is **not known**.
 4. **Signal changes before the radio has started are dropped**, and AUX is kept muted while it
    is the current source with no signal (`+0x168`). *Read.*
 
-What this means for the patches is written up in
-[The AUX chain](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
+What this means for the patches is in
+[The AUX chain](AUX_CHAIN.md#what-the-handler-actually-reacts-to) and
+[Bearing on the AUX patches](#bearing-on-the-aux-patches) below.
 
 ## The module
 
@@ -181,17 +183,16 @@ Everything in this section is **inferred** from the reading above.
 
   Both matter if AUX is selected with no signal.
 
-  Both changes are now `patches/aux-signal-switch.json`, **executed** under emulation and not
-  flashed; see [The AUX signal path](AUX_SIGNAL.md#emulation-results). The two constraints still
-  apply: a detection before `st_audio` = 10 is lost, and `aux-sticky` is paired with it so
-  silence does not release AUX.
-- **Boot-to-AUX.** The boot-time `AUDIO_AUX_INPUT_STATUS_CHANGED` from
-  `ElabRADIO_READY_FOR_INIT_0` means `HandleAudioAuxInputStatusChnged` may run at boot. The
-  `aux-boot-restore` edit at `0x02303474` (PrOnly false in that handler) therefore also covers
-  this path. Whether the boot request seen at 10109 ms came from `InitApp` or from this path is
-  not known. The SPY trace's request source field, if it has one, would say.
-- **Unchanged.** Whether the media app's listener (Link A) is registered before the init-0
-  signal is still not known.
+  Both changes are `patches/aux-signal-switch.json`: **executed** under emulation, not
+  flashed; see [The AUX signal path](AUX_SIGNAL.md#emulation-results). A detection before
+  `st_audio` = 10 is still lost, and `aux-sticky` is paired with it so silence does not
+  release AUX.
+- **Boot to AUX.** The boot-time `AUDIO_AUX_INPUT_STATUS_CHANGED` from
+  `ElabRADIO_READY_FOR_INIT_0` means `HandleAudioAuxInputStatusChnged` may also run at boot.
+  `aux-boot-restore` clears `PrOnly` both there (`0x02303474`) and in `InitApp`
+  (`0x022c0678`). The request the boot restore sees comes from `InitApp`: clearing it there is
+  what made AUX match, and the pair with `aux-boot-default` boots to AUX on the car
+  *(executed; [Verification](VERIFICATION.md#log))*.
 
 
 ## Functions read closely
@@ -253,9 +254,9 @@ The remaining 248 functions were classified, not read. Tier: **inferred** for ev
 
 - Which radio I2C message sets event `0x3d`, and its debounce (`DecodeMsgXXX`), belongs to the
   `C_I2C_SMART_RADIO` reading.
-- Whether the HMI listener (`C_BCM_AUDIO_CLIENT+0x50`) exists when `ElabRADIO_READY_FOR_INIT_0`
-  announces the AUX setting at boot. This needs a spy trace with DBUS logging, or emulation of
-  the HMI start-up order.
+- Whether the HMI listener (`C_BCM_AUDIO_CLIENT+0x50`, Link A) exists when
+  `ElabRADIO_READY_FOR_INIT_0` announces the AUX setting at boot. This needs a spy trace with
+  DBUS logging, or emulation of the HMI start-up order.
 - The meaning of `TYPE_AUDIO_AUX_STATUS` values 1 and 3 in the vendor UI; the menu offers three
   positions, mapped to 0/1/3.
 - Callers of `Set_diag_aux`, `Get_diag_aux` and the other `*_diag_*` setters with "(none found)".

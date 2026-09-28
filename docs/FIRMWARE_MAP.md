@@ -55,8 +55,8 @@ library version has been checked against its upstream source.
 | everything else | | ≈ 1.2 M | ≈ 15% | FreeType, libpng, libjpeg, HarfBuzz, expat, a Bluetooth stack, codecs, and ~900 small vendor families |
 
 The layer that decides behaviour is small. `C_MGR_SRC` is **71 functions and ≈ 7 600
-instructions** out of eight million. Every AUX patch so far edits `C_MGR_SRC`,
-`C_MODULE_AUDIO` or the `C_HMI_MEDIA` app.
+instructions** out of eight million. Every AUX patch edits `C_MGR_SRC`,
+`C_HMI_AUDIO_APP_BASE` or `C_HMI_MEDIA_APP_BASE`.
 
 ## Producing the inventory
 
@@ -99,9 +99,9 @@ vendor's symbol map, so it stays on your machine. Do not commit it; see `AGENTS.
 
     An address taken from a register computed at run time, reached through a branch table,
     or built further than 30 instructions from its `lis` is not counted. Nor is a virtual
-    call whose vtable pointer passes through a stack slot or another register first. A function in `unreached.tsv` has no
-    reference *this scan recognises*; that does not prove it is dead. 4 100 of the 9 889
-    are Qt, where unused library code is expected.
+    call whose vtable pointer passes through a stack slot or another register first. A
+    function in `unreached.tsv` has no reference *this scan recognises*; that does not prove
+    it is dead. 4 100 of the 9 889 are Qt, where unused library code is expected.
 
 ## Coverage ledger
 
@@ -111,15 +111,19 @@ How closely each part has been examined, using the evidence tiers from
 
 | area | depth | where |
 |---|---|---|
-| `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable` and the handler's gates | read; the gates executed under emulation; the `IsAUXSRCAvailable` edit confirmed on hardware | [The AUX chain](AUX_CHAIN.md), [Patches](PATCHES.md) |
-| `C_HMI_MEDIA_APP_BASE::InitApp` and `HandleAudioAuxInputStatusChnged` (`ActivateSource` call sites) | read; `HandleAudioAuxInputStatusChnged` also **executed** under emulation (gates 1–4, and the `aux-signal-switch` runs) | [The AUX chain](AUX_CHAIN.md), [Emulation](EMULATION.md), [AUX signal path](AUX_SIGNAL.md#emulation-results) |
-| the upgrade container, manifests and `contract.dat` format | read, and executed on the car (packages flash) | [Boot & update chain](FLASH_CHAIN.md), [Media protection](MEDIA_PROTECTION.md) |
-| `C_MGR_SRC`, the source scheduler: all 71 functions | read, every function; `AddRequest` also executed under emulation; the boot-to-FM outcome observed on the car | [The source scheduler](SCHEDULER.md), [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen) |
-| `C_MODULE_AUDIO`, the audio module: 273 functions | 25 read closely (the AUX path, lifecycle, event dispatch, mute); 248 inferred from names, strings and a decompile digest | [The audio module](AUDIO_MODULE.md) |
-| `C_HMI_SrcMgntBase` and every `ActivateSource(bool)` call site (17) | read | [How HMI apps request sources](HMI_SOURCES.md) |
-| the update flow: `C_BCM_UPGRADE` (353), `C_HMI_UPGRADE` (293), `C_HMI_UPG` (195) | about 30 functions read closely: plugin loading, the contract check, mount/probe, skin rewrite, result mapping; `HandlePrivateMessage` skimmed per case; the rest inferred from names. The contract layout was also executed (decrypted). Everything after `upgplugin_LaunchUpgrade` is outside the image. | [The update flow](UPGRADE_FLOW.md) |
-| cheat codes and the spy collectors: `C_BCM_SPY` (109), `C_BCM_Cheat_Code`, the 25 `libcheatcode_*` libraries | every code's `Activate` read from its relocations; the collect path read; one real `-USER` capture inspected (executed) | [Cheatcodes & spy](CHEATCODES.md) |
-| the AUX signal path: detection in the radio driver, `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED`, DBUS forwarding, every app's `0xcc` handling | read. Whether the detector measures AUX while another source plays is not known. The candidate designs ship as `aux-signal-switch` and are executed under emulation (handler and dispatch window); not flashed. | [The AUX signal path](AUX_SIGNAL.md) |
+| the whole image: every function, vtable slot, virtual call site and global | inventoried by `tools/survey.py` (executed); not read | this page |
+| `C_MGR_SRC`, the source scheduler: all 71 functions | every function read; `AddRequest` and `ChangeToNextSchedulerPosition` executed under emulation; the boot restore executed on the car (FM without the AUX patches, AUX with them) | [The source scheduler](SCHEDULER.md), [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen) |
+| `C_MODULE_AUDIO`, the audio module: 273 functions | 25 read (the AUX path, lifecycle, event dispatch, mute); 248 inferred from names, strings and a decompile digest | [The audio module](AUDIO_MODULE.md) |
+| `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable` | read; the patched version executed under emulation and on the car | [The AUX chain](AUX_CHAIN.md), [Patches](PATCHES.md) |
+| `C_HMI_SrcMgntBase` and every `ActivateSource(bool)` call site (17) | read; the `InitApp` and handler `PrOnly` edits executed on the car (boot to AUX) | [How HMI apps request sources](HMI_SOURCES.md) |
+| `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged` and its `HandleDBUSMessage` dispatch | read; both executed under emulation, stock and with `aux-signal-switch` | [The AUX chain](AUX_CHAIN.md), [The AUX signal path](AUX_SIGNAL.md#emulation-results) |
+| the AUX signal path: detection in the radio driver, `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED`, DBUS forwarding, every app's `0xcc` handling | read. Whether the detector measures AUX while another source plays is not known | [The AUX signal path](AUX_SIGNAL.md) |
+| ring tone names: `C_SRV_RING_TOUCH::SetRingFilePath` and the name literals | read; the in-place name patch executed on a real build (not yet on the car) | [Ring tones](RINGTONES.md#names) |
+| the System Information version screen: `C_BCM_VERSION` and the `C_HMI_CONFIG` pages | read | [Version strings](VERSION_STRINGS.md) |
+| the update flow: `C_BCM_UPGRADE` (353), `C_HMI_UPGRADE` (293), `C_HMI_UPG` (195) | about 30 functions read: plugin loading, the contract check, mount/probe, skin rewrite, result mapping; `HandlePrivateMessage` skimmed per case; the rest inferred from names. Everything after `upgplugin_LaunchUpgrade` is outside the image | [The update flow](UPGRADE_FLOW.md) |
+| the package: container, manifests, `contract.dat` | read; the contract decrypted and re-sealed (executed); packages flash on the car | [Boot & update chain](FLASH_CHAIN.md), [Media protection](MEDIA_PROTECTION.md) |
+| the `*_ctrl.bin` manifests, including the CheckType-3 CRC-16 | layout and all three value types reproduced from the stock files (executed); `upgrade.out`'s `CheckEntryFile` and the kernel's `ComputeCrc` read | [Boot & update chain](FLASH_CHAIN.md#_ctrlbin-format) |
+| cheat codes and the spy collectors: `C_BCM_SPY` (109), `C_BCM_Cheat_Code`, the 25 `libcheatcode_*` libraries | every code's `Activate` read from its relocations; the collect path read; real `-USER` captures read with `tools/spy_read.py` (executed) | [Cheatcodes & spy](CHEATCODES.md) |
 | HMI framework: messages, event handler, menus | named from symbols, partly read | [Architecture](ARCHITECTURE.md) |
 | everything else | inventoried by the survey only | this page |
 

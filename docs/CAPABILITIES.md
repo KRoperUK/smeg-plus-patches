@@ -1,16 +1,16 @@
 # What is reachable, and what is not
 
-This project has spent real time on things that turned out to be impossible, and the reasons
-are worth writing down so nobody repeats them. Every claim here is grounded in the firmware
+What can be changed on these units, what cannot, and why, so nobody spends time on the
+impossible ones. Every claim here is grounded in the firmware
 or in a hardware observation — the evidence is named so it can be checked.
 
 !!! abstract "The short answer"
 
     Every "can it do X?" question resolves to one of three outcomes:
 
-    1. **The code is already there** → it is a patch or a setting. (AUX availability, ZA files,
-       BT PAN. A switch to AUX on signal needs one dropped event re-routed — see
-       [The AUX signal path](AUX_SIGNAL.md).)
+    1. **The code is already there** → it is a patch or a setting. (AUX availability and boot
+       to AUX, both confirmed on the car; ZA files; BT PAN. A switch to AUX on signal needs one
+       dropped event re-routed — see [The AUX signal path](AUX_SIGNAL.md).)
     2. **It is a hardware capability** → it needs an external box. (CarPlay, WiFi.)
     3. **It is data we do not have and cannot generate** → out of reach. (Maps.)
 
@@ -66,14 +66,8 @@ an external box.
 
 ### Maps, beyond the last official release
 
-!!! warning "An earlier version of this section was wrong"
-
-    It said PSA had stopped shipping SMEG+ maps "years ago, so there is no feed to convert
-    *from*", and that because the data sits on internal storage "we cannot even inspect it
-    without opening the unit". **A 2023 package disproves both.** The correction matters,
-    because it was the reason this was parked.
-
-**The last release is Q1 2023, and it exists.** The package identifies itself in plain text:
+**The last release is Q1 2023.** Map packages kept shipping after the head unit's firmware
+did, and the package can be inspected offline. It identifies itself in plain text:
 
 ```
 MAP.inf          VER:Q1_23_120.0   SUBVER:1.1.31
@@ -116,7 +110,7 @@ Also per part: `001_PHONEMES.BIN` (a 122 MB tar of TTS phonemes) and `001_ZTL.BI
 (restricted-traffic zones). `CD_VER.LA.INF` is plain text — `CID:001 / VERSION:120 /
 CD_NAME:ITALY` — so the parts are per-country and self-describing.
 
-**What that leaves.** The blockers are now two *research* problems, not availability
+**What that leaves.** The blockers are two *research* problems, not availability
 problems:
 
 1. **The tile formats.** Roughly 15 distinct extensions with undocumented binary layouts, and
@@ -163,7 +157,7 @@ native import route already in the firmware), while the geometry and routing —
 and the 232 MB `DET.DRS` — remain the hard core, because that is what the engine's routing has
 to agree with.
 
-!!! success "The engine ships unstripped — the subsystem is now mapped"
+!!! success "The engine ships unstripped, and the subsystem is mapped"
 
     The packages contain **`db_dwnl_ppc.out`** (map package) and **`db_dwnl_gl.out`** (the
     firmware's `NAV/DB_DWNL/`), the cartography module for each build, and neither is
@@ -171,7 +165,7 @@ to agree with.
     turns "can we build our own maps" from an unknown into a bounded engineering problem —
     every filename template, the tile model, the LZW layer and the loaders are all named.
 
-    It is a project, not a patch, but it is now legible. See **[Cartography](CARTOGRAPHY.md)**.
+    It is a project, not a patch, but it is legible. See **[Cartography](CARTOGRAPHY.md)**.
 
 The on-unit copy is still behind the updater, so this does **not** make the *live* map data
 readable — it makes the shipped cartography readable.
@@ -251,7 +245,7 @@ Three things follow:
   supported modification, not a hack.
 
 **What is still unknown:** the POI *record* layout — the bytes inside a POI file. The
-surrounding structure is now mapped from the application image:
+surrounding structure is mapped from the application image:
 
 - **On the USB stick**, parts are numbered: `%s/DATA/MAPPE/%03d/%s`, with `CD_VER.NAV.inf`
   per part — the parts run `001`–`039` and they are the *cartography* numbering, so a POI
@@ -333,8 +327,7 @@ So a given car runs **one** of these while the others sit unused in the unit. Ea
 
 This also explains the marque logo packages. `BigHarm3` is labelled *ESSENTIEL (DS)* — DS
 branding is a **skin variant**, which is why `Data_base/graphics/logo/` holds `peugeot.pkg`,
-`citroen.pkg` **and** `ds.pkg`. Those are the skin's brand artwork, not the boot splash. The
-loop closes: we decoded them, they do nothing at boot, and now we know what does read them.
+`citroen.pkg` **and** `ds.pkg`. Those are the skin's brand artwork, not the boot splash.
 
 ### Custom artwork: no
 

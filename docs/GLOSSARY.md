@@ -51,8 +51,8 @@ Renesas MCU
 
 `smeg.inf`
 :   The version-marker file **inside** the media partition. It holds `GUI_VER`,
-    which System Information shows on the GUI item's page (read); `32.01` was not seen on
-    the one page looked at (2026-09-27). See [Version strings](VERSION_STRINGS.md).
+    which System Information shows on the GUI item's page *(read)*. See
+    [Version strings](VERSION_STRINGS.md).
 
 `UpgPlugin.out`
 :   The updater plugin on the stick. The unit loads and calls it **before** it
@@ -77,9 +77,10 @@ Renesas MCU
     string 2099.
 
 `CheckType`
-:   A contract record's check kind: 1 size, 2 CRC32, 3 spot check; any other value
-    fails. What it means in the `*_ctrl.bin` manifests is still open. See
-    [Media protection](MEDIA_PROTECTION.md).
+:   The check kind of a record. In `contract.dat`: 1 size, 2 CRC32, 3 spot check; any
+    other value fails ([Media protection](MEDIA_PROTECTION.md)). In the `*_ctrl.bin`
+    manifests: 1 size, 2 CRC32, 3 a CRC-16 of the file; type 0 is not known
+    ([Boot & update chain](FLASH_CHAIN.md#_ctrlbin-format)).
 
 String 2099
 :   The on-screen error *"the update file is protected and cannot be copied"* —
@@ -102,8 +103,8 @@ CRC cascade
 
 `HandleAudioAuxInputStatusChnged()`
 :   The media app's AUX handler. It reacts to changes of the saved AUX input
-    **setting**, not the AUX signal. `aux-signal-switch` (a candidate) makes it
-    follow the signal instead. See
+    **setting**, not the AUX signal. `aux-signal-switch` (emulated, not flashed) makes
+    it follow the signal instead. See
     [The AUX chain](AUX_CHAIN.md#what-the-handler-actually-reacts-to).
 
 `Auxiliary_Status`
@@ -129,7 +130,9 @@ CRC cascade
 
 `Last_Source` / `Last_Source_Priority`
 :   The saved scheduler position and priority (`C_MGR_SRC+0xb4`, `+0xac`),
-    restored by `StartUp` at boot. AUX is (7, 20).
+    restored by `StartUp` at boot. AUX is (7, 20). The spy's `Last_Source` line shows
+    the saved value, logged before any patch substitutes its own. See
+    [The source scheduler](SCHEDULER.md).
 
 `Sched_Pos`
 :   A request's scheduler position: `POS_TUNER` 1, `POS_AUX` 7.
@@ -141,8 +144,16 @@ CRC cascade
 
 `PrOnly`
 :   Request byte `+0x28`, set from `ActivateSource`'s `bool` argument. A request
-    with it set skips the boot restore, which is why stock AUX never resumes. See
+    with it set skips the boot restore, which is why stock AUX never resumes.
+    `aux-boot-restore` clears it for AUX's requests. See
     [How HMI apps request sources](HMI_SOURCES.md).
+
+Boot to AUX
+:   `aux-boot-default` (forces the restore target to AUX) plus `aux-boot-restore`
+    (lets AUX's request take part in the restore), with `aux-autoswitch` keeping AUX
+    available. Confirmed on the car; neither boot patch works alone.
+    `builds/aux-boot.json` is the minimal build. See
+    [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
 
 `ActivateSource(bool)` / `ForceSchedulerPosition`
 :   The HMI's source request (its `bool` becomes `PrOnly`), and the scheduler call
@@ -162,13 +173,14 @@ Cheatcode
 `C_BCM_SPY` / `SPYSTORE`
 :   The on-unit diagnostics/spy subsystem and the action that dumps its data to
     a USB stick. The `spy-dump-userdata` patch repurposes part of its copy loop
-    to also back up `/USER_DATA`.
+    to also back up `/USER_DATA/user_data`.
 
 `SPYTAKE` / `RAMDISK_SPY`
 :   The full user collect: every trace buffer (71 on the car), written to
     `SPY/<stamp>/TAR/*-USER.tar.gz`, then a reboot. Inside, `RAMDISK_SPY/<id>/`
     holds one buffer per module as `<ms>::<event>` text — `25300` is `C_MGR_SRC`,
-    `06301` the media app. It holds the VIN and personal data. See
+    `06301` the media app. It holds the VIN and personal data. `tools/spy_read.py`
+    reads one, redacting that by default. See
     [The test loop](FLASHING.md#the-test-loop-end-to-end).
 
 `HARMONY`
@@ -189,6 +201,10 @@ Materialised reference
 :   A `lis` + `addi`/`ori` pair that builds an address. It is how most calls here
     are made (through `mtctr`/`bctrl`), and what `callers.py` misses.
 
+Virtual call site
+:   `lwz vptr,0(obj)` → `lwz rZ,off(vptr)` → `mtctr rZ` → `bctrl`: a call through a
+    vtable slot. `tools/survey.py` records the slot offset, not the target class.
+
 Survey / family
 :   `tools/survey.py`'s per-function inventory of an image; a family is the class
     prefix, e.g. `C_MGR_SRC`. See [Firmware map](FIRMWARE_MAP.md).
@@ -200,10 +216,10 @@ Evidence tiers
 ## Project process
 
 `GUI_VER`
-:   A version field in the partition's `smeg.inf`. Harmless to change, but it was
-    shown on the GUI item's page of System Information by the code *(read)*, but `32.01`
-    was not seen on the page looked at (2026-09-27), so it is not yet a confirmed build
-    marker. See [Version strings](VERSION_STRINGS.md#is-gui_ver-visible).
+:   A version field in the partition's `smeg.inf`, harmless to change. The code shows
+    it on the GUI item's page of System Information *(read)*; that it is visible there
+    has not been confirmed on the car, so it is not yet a build marker. See
+    [Version strings](VERSION_STRINGS.md#is-gui_ver-visible).
 
 Release Please
 :   The automation that turns Conventional Commit titles on `main` into releases.

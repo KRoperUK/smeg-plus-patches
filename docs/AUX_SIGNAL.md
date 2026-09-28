@@ -1,32 +1,32 @@
 # The AUX signal path
 
-How the unit detects that audio is arriving on the AUX input, and where that knowledge goes.
-This is the groundwork for a real switch-on-signal patch.
-[What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to)
-explains why the existing AUX handler cannot do this job: it follows the saved AUX input
-*setting*, not the signal.
+How the unit detects that audio is arriving on the AUX input, where that knowledge goes, and
+the `aux-signal-switch` design that would make the unit switch to AUX on it. The existing AUX
+handler cannot do this: it follows the saved AUX input *setting*, not the signal
+([What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to)).
 
-This is a close reading of the stock **NAV `SMEG5.43.A.R2`** image, at base `0x01000000`,
-through Ghidra decompiles and `tools/ppcdis.py`. Evidence tiers are as in
+This is a reading of the stock **NAV `SMEG5.43.A.R2`** image, at base `0x01000000`, through
+Ghidra decompiles and `tools/ppcdis.py`. Evidence tiers are as in
 [Verification](VERIFICATION.md).
 
-!!! warning "Emulated, not flashed"
+!!! warning "Emulated, not flashed, not pursued"
 
-    The detection and routing below are **read**. The two patch designs at the end ship as
-    `patches/aux-signal-switch.json`. Each was **executed** under `tools/ppcemu.py`, on its own
-    function, with its callees stubbed. Neither has been flashed.
+    The detection and routing below are **read**. The patch designs ship as
+    `patches/aux-signal-switch.json`; each was **executed** under `tools/ppcemu.py`, on its own
+    function, with its callees stubbed. It has **not** been flashed, and the owner is not
+    pursuing it: [boot to AUX](AUX_CHAIN.md) is the confirmed feature.
 
 ## In short
 
 - **The signal is measured all the time, from boot** *(read)*. No check of the current source
   gates the polling or the event.
-- **Its change event already reaches the media app, which drops it** *(read)*. The media
-  app's DBUS dispatch has a case for the setting event (`0xcb`) and none for the signal
-  event (`0xcc`).
-- **A switch-on-signal patch therefore looks feasible** *(inferred)*: route `0xcc` into the
-  existing AUX handler, and make that handler read the signal instead of the setting.
-- **Not known:** whether the detector measures the AUX input while another source is
-  playing. There is a cheap car check for this, [below](#is-the-signal-measured-while-another-source-plays).
+- **Its change event already reaches the media app, which drops it** *(read)*. The media app's
+  DBUS dispatch has a case for the setting event (`0xcb`) and none for the signal event (`0xcc`).
+- **A switch-on-signal patch is feasible** *(inferred)*: route `0xcc` into the existing AUX
+  handler, and make that handler read the signal instead of the setting. Both halves are
+  emulated.
+- **Not known:** whether the detector measures the AUX input while another source is playing
+  ([below](#is-the-signal-measured-while-another-source-plays)).
 
 ## 1. Detection *(read)*
 
@@ -54,12 +54,12 @@ CheckAuxiliaryDetection (0x01324a80):
 
 - **Signal presence is the global byte `0x0362d8ec`.** Its only writer is
   `CheckAuxiliaryDetection`, and `Get_Current_Aux_STATUS` (`0x01320064`) returns it *(read)*.
-- **The threshold defaults to `0x2000`.** `ChangeAux_Min_Input_value` can change it
-  *(read)*. Whether anything calls that at run time is not known.
+- **The threshold defaults to `0x2000`.** `ChangeAux_Min_Input_value` can change it *(read)*;
+  whether anything calls that at run time is not known.
 - **Timing** *(inferred)*. Detection takes 11 consecutive samples above the threshold, 5 ticks
-  apart. Loss takes 20 samples below it, 250 ticks apart. The tick rate was not read, so
-  wall-clock times are **not known**. At 100 Hz that would be about 2.5 s to detect and about
-  50 s of silence to drop; at 1 kHz, about 0.3 s and 5 s.
+  apart; loss takes 20 samples below it, 250 ticks apart. The tick rate was not read, so
+  wall-clock times are **not known**: at 100 Hz about 2.5 s to detect and about 50 s of silence
+  to drop; at 1 kHz, about 0.3 s and 5 s.
 - **The loop never stops in normal running** *(read)*. The watchdog is cancelled only when
   `Audio_task` exits.
 
@@ -77,8 +77,8 @@ CallBackDirana(0x12)
 ```
 
 - A second raiser of `0x3d`, in `DecodeMsgXXX`, was not mapped *(not known)*.
-- **Early boot.** A detection that completes before the radio has started is dropped. It
-  is not re-sent while the signal stays present *(read)*.
+- **Early boot.** A detection that completes before the radio has started is dropped, and is
+  not re-sent while the signal stays present *(read)*.
 
 ## 3. From DBUS to the apps *(read)*
 
@@ -96,9 +96,9 @@ CallBackDirana(0x12)
 | `C_HMI_AUDIO_APP_BASE` (`0x02270f60`) | none | refreshes the audio menu |
 | every other app | none | none |
 
-The media dispatch at `0x02309628`–`0x0230964c` reloads the message id, compares it with
-`0xcb` (branching to the handler at `0x02309fbc`), then with `0xd7`, and otherwise returns.
-Both the original bytes and the disassembly were checked.
+The media dispatch at `0x02309628`–`0x0230964c` reloads the message id, compares it with `0xcb`
+(branching to the handler at `0x02309fbc`), then with `0xd7`, and otherwise returns. The stock
+routing of `0xcc` to the default case is also **executed** ([Emulation results](#emulation-results)).
 
 ## Is the signal measured while another source plays?
 
@@ -110,26 +110,19 @@ Both the original bytes and the disassembly were checked.
   - Stock `IsAUXSRCAvailable()` lets AUX be selected only when the setting is non-zero *and*
     `Get_AUX_signal_status` reports a signal *(read)*. For AUX ever to have been selectable
     from another source, the detector must have seen the signal while that source played.
-- **What is not known:** whether the detector at `0xd00e5` taps the AUX input directly or
-  the routed audio path. A dedicated detector is set up once in `SetCfgAuxPrimary`, rather
-  than on each source switch, which suggests a direct tap *(inferred)*.
+- **What is not known:** whether the detector at `0xd00e5` taps the AUX input directly or the
+  routed audio path. A dedicated detector is set up once in `SetCfgAuxPrimary`, rather than on
+  each source switch, which suggests a direct tap *(inferred)*.
 
-**The cheap car check.** You need a build **without** the `IsAUXSRCAvailable` edit (stock,
-or one without `aux-autoswitch` / `aux-always-available`), because that edit forces the AUX
-tile available.
-
-1. Stay on FM.
-2. Start playback into AUX.
-3. See whether the AUX tile ungreys. If it does, detection runs while AUX is not the current
-   source.
+A car check needs a build **without** the `IsAUXSRCAvailable` edit (stock, or one without
+`aux-autoswitch` / `aux-always-available`), because that edit forces the AUX tile available: stay
+on FM, start playback into AUX, and see whether the AUX tile ungreys.
 
 ## Candidate designs: `aux-signal-switch` *(emulated, not flashed)*
 
-Every **original** word below was read from the stock image and re-checked against it while
-writing this page, for both A and B. Replacements were assembled with `llvm-mc` or encoded by
-hand for the branches. Each replacement was then decoded with capstone at its own address,
-and it decodes to the instruction in the table *(executed)*. Being well-formed says nothing
-about whether the patched code behaves correctly.
+Every **original** word below was read from the stock image and checked against it. Replacements
+were assembled with `llvm-mc`, or encoded by hand for the branches, and each decodes with capstone
+at its own address to the instruction in the table *(executed)*.
 
 ### A. The handler reads the signal instead of the setting
 
@@ -142,26 +135,20 @@ In `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged`:
 | `0x02303398` | `801f0010` `lwz r0,0x10(r31)` | `881f0010` `lbz r0,0x10(r31)` | the signal query writes a `bool`, not a `long` |
 | `0x0230342c` | `801f0010` `lwz r0,0x10(r31)` | `881f0010` `lbz r0,0x10(r31)` | the same, at the activate/release decision |
 
-!!! note "The dropped store to `+8` is dead *(read)*"
-
-    The first edit replaces the stock zeroing of `8(r31)`. `r31` is the frame pointer here, so
-    `+8` is a stack local: the handler's "state" byte. Both branches after the query overwrite
-    it, at `0x023033a8` (`0`) and `0x023033b4` (`1`), before its only read at `0x023033c8`.
-    The result byte at `+0x10` is also a stack local, the query's out-parameter.
+The first edit replaces the stock zeroing of `8(r31)`, which is dead *(read)*: `r31` is the frame
+pointer, so `+8` is a stack local, the handler's "state" byte, and both branches after the query
+overwrite it (`0x023033a8` stores 0, `0x023033b4` stores 1) before its only read at `0x023033c8`.
+The result byte at `+0x10` is also a stack local, the query's out-parameter.
 
 With A applied, the handler's cached state follows the signal *(executed; see
-[Emulation results](#emulation-results))*:
-
-- **Signal appears:** it activates AUX. `aux-boot-restore`'s `0x02303474` edit already makes
-  that request's `PrOnly` 0.
-- **Signal is lost:** it releases AUX if AUX is active.
-
-The saved AUX menu setting would then no longer drive this handler.
+[Emulation results](#emulation-results))*: when the signal appears it activates AUX (with
+`aux-boot-restore`'s `0x02303474` edit, with `PrOnly` 0); when the signal is lost it releases AUX
+if AUX is active. The saved AUX menu setting no longer drives this handler.
 
 ### B. The media dispatch also sends `0xcc` to the handler
 
-In `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage`. This drops the redundant reloads of
-`0x220(r31)`, which frees two slots for a `0xcc` case. `0xcb` and `0xd7` behave as before.
+In `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage`. This drops the redundant reloads of `0x220(r31)`,
+which frees two slots for a `0xcc` case; `0xcb` and `0xd7` behave as before.
 
 | addr | original | replacement |
 |---|---|---|
@@ -175,33 +162,31 @@ In `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage`. This drops the redundant reloads o
 | `0x02309644` | `2f8000d7` `cmpwi cr7,r0,0xd7` | `419e0b4c` `beq cr7,0x0230a190` |
 | `0x02309648` | `419e0b48` `beq cr7,0x0230a190` | `4800101c` `b 0x0230a664` |
 
-- `r0` still holds the message id loaded at `0x0230961c`; nothing in between writes it
-  *(read)*.
+- `r0` still holds the message id loaded at `0x0230961c`; nothing in between writes it *(read)*.
 - The only branch in the function that lands inside this window is the `bgt` being moved
   *(read, by a scan of every relative branch in the function)*.
 - `0x0230964c` (`b 0x0230a664`) becomes unreachable and is left alone.
 
 ### Risks *(inferred unless marked)*
 
-- **Silence drops AUX.** After the loss count, the handler releases AUX. The scheduler's
-  "next" position is then a literal 1, the tuner ([The source scheduler](SCHEDULER.md)), so
-  pausing the phone for longer than the loss time would switch to FM. `aux-sticky`'s edit
-  at `0x02303434` redirects exactly that release branch, and combining the two would keep AUX
-  selected. Neither design overlaps it.
+- **Silence drops AUX.** After the loss count the handler releases AUX, and the scheduler's
+  fallback is position 1, the tuner ([The source scheduler](SCHEDULER.md)), so pausing the phone
+  for longer than the loss time would switch to FM. `aux-sticky`'s edit at `0x02303434` redirects
+  exactly that release branch; combining the two keeps AUX selected *(executed)*.
 - **Early boot.** A detection dropped before the radio has started is not re-sent while the
   signal stays present. The once-per-boot setting event (`0xcb`) would still run the patched
   handler, which then reads the signal. Whether detection has finished by then is not known.
-- **A failed DBUS query** leaves the byte at 0, which reads as "no signal". Stock code has
-  the same weakness with the setting.
+- **A failed DBUS query** leaves the byte at 0, which reads as "no signal". Stock code has the
+  same weakness with the setting.
 - **No address overlap** with `aux-autoswitch` (`0x02303428`), `aux-sticky` (`0x02303434`) or
   `aux-boot-restore` (`0x02303474`, `0x022c0678`, `0x01699444`) *(read)*.
 
 ### Emulation results
 
-**Handler** (`0x0230331c`), run on the stock NAV image with A applied. Every callee is
-stubbed: the audio client pointer, both queries (each writing the value under test),
-`GetMediaDevice` (returning 0 with a fake source), `SetMediaDeviceState`, `ActivateSource`
-and `ReleaseSource`. `this+0x51449` is the cached state *(executed)*.
+**Handler** (`0x0230331c`), run on the stock NAV image with A applied. Every callee is stubbed:
+the audio client pointer, both queries (each writing the value under test), `GetMediaDevice`
+(returning 0 with a fake source), `SetMediaDeviceState`, `ActivateSource` and `ReleaseSource`.
+`this+0x51449` is the cached state *(executed)*.
 
 | image | setting | signal | cached | query called | outcome |
 |---|---|---|---|---|---|
@@ -226,23 +211,23 @@ address outside the window *(executed)*:
 | `0xca`, `0xd8`, `0x10` | default | same |
 | `0xda`, `0x385` | the `> 0xd9` chain (`0x02309650`) | same |
 
-`tests/test_aux_signal_switch.py` replays the dispatch window on a synthetic image, so CI
-checks it without firmware. Breaking the `0xcc` compare fails the test.
+`tests/test_aux_signal_switch.py` replays the dispatch window on a synthetic image, so CI checks
+it without firmware; breaking the `0xcc` compare fails the test. `tests/test_firmware_nav.py`
+runs the main cases of both tables against your own image.
 
 **Not executed:** anything outside those two functions, the DBUS round trip of
 `Get_AUX_signal_status`, and the car.
 
 ### What the car test answers
 
-`builds/aux-signal-switch.json` combines this with the boot-restore build: `aux-always-available`,
-`aux-sticky`, `aux-boot-default`, `aux-boot-restore`, `aux-signal-switch` and
-`spy-dump-userdata-partition`. Flash it only after the `aux-boot-restore` test has been read.
+Not run: the design is not being pursued. `builds/aux-signal-switch.json` combines it with the
+boot-to-AUX sets: `aux-always-available`, `aux-sticky`, `aux-boot-default`, `aux-boot-restore`,
+`aux-signal-switch` and `spy-dump-userdata-partition`. A test would be:
 
-1. **On FM, start playback into AUX.** If the unit switches to AUX, the detector runs while
-   AUX is not selected. This also answers the open question
-   [above](#is-the-signal-measured-while-another-source-plays).
+1. **On FM, start playback into AUX.** If the unit switches to AUX, the detector runs while AUX
+   is not selected, which also answers [the open question above](#is-the-signal-measured-while-another-source-plays).
 2. **Pause the phone for a minute.** With `aux-sticky`, AUX should stay selected.
-3. **Change source manually, then restart playback.** Nothing should switch: the handler
-   acts on a *change* of signal, and the signal did not change.
-4. **Take a `SPYTAKE`, then `SPYSTORE`.** The `06301` buffer (the media app) and the
-   `25300` buffer (`C_MGR_SRC`) show whether `0xcc` arrived and what was requested.
+3. **Change source manually, then restart playback.** Nothing should switch: the handler acts on
+   a *change* of signal, and the signal did not change.
+4. **Take a `SPYTAKE`, then `SPYSTORE`.** The `06301` buffer (the media app) and the `25300`
+   buffer (`C_MGR_SRC`) show whether `0xcc` arrived and what was requested.

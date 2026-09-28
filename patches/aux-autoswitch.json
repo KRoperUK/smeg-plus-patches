@@ -1,11 +1,11 @@
 {
   "name": "aux-autoswitch",
-  "description": "Force the SMEG+ AUX source available and remove the early exit in the AUX status-changed handler. Written to make the unit auto-select AUX when its signal appears, but that premise is wrong: the handler reacts to the saved AUX input setting (Auxiliary_Status), not the signal, and the removed exit never fires (executed). Only the IsAUXSRCAvailable edit has an effect (confirmed on hardware). See docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to.",
-  "summary": "`IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out",
+  "description": "Force the SMEG+ AUX source available (C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> true, confirmed on hardware) and nop the GetMediaDevice early exit at HandleAudioAuxInputStatusChnged +0x10c. The second edit has no effect: that branch is never taken, because the AUX media device is registered unconditionally (executed under emulation; see docs/EMULATION.md). The set is kept as is because it is the exact set flashed in the confirmed boot-to-AUX build (builds/aux-boot.json). It does not make the unit switch to AUX by itself: the handler reacts to the saved AUX input setting (Auxiliary_Status), not to a signal.",
+  "summary": "`IsAUXSRCAvailable()` true **and** the inert `GetMediaDevice` bail-out nop",
   "status": {
     "state": "confirmed",
-    "label": "Flashed",
-    "note": "the combined build — accepted by the contract check; first edit confirmed on hardware"
+    "label": "Confirmed",
+    "note": "the first edit on hardware; part of the confirmed boot-to-AUX build (the second edit is inert)"
   },
   "variants": {
     "AUDIO_BT": {

@@ -139,9 +139,8 @@ from the messages that set each value):
 
 ## The contract check
 
-`CheckTrustedSource` is at `0x018778b4` in NAV. [Media protection](MEDIA_PROTECTION.md)
-quotes `0x0187775c`, which is most likely the AUDIO_BT address *(inferred)*. The check
-runs as follows *(read)*:
+`CheckTrustedSource` is at `0x018778b4` in NAV (`0x0187775c` is most likely the AUDIO_BT
+address, *inferred*). The check runs as follows *(read)*:
 
 1. **Open the contract.** It opens `<mount>/SMEG_PLUS_UPG/contract.dat`. If that fails, the
    result is `ILLEGAL_MEDIA`.

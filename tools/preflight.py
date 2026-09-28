@@ -41,7 +41,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MODULES = ("NAV", "AUDIO_BT", "AUDIO_BT_256")
 
 # Recovered from C_HMI_AUDIO_APP_BASE's per-source OnEventSelect* handlers - the value each
-# passes to CreateNotificationCommand. See docs/ANALYSIS.md.
+# passes to CreateNotificationCommand. See docs/AUX_CHAIN.md.
 AUDIO_SOURCES = {
     1: "FM",
     2: "AM",

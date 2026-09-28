@@ -1,5 +1,5 @@
 {
-  "_comment": "Diagnostic scheme - INCOMPLETE, do not expect output. It ships `diagnostic-logmask` alone, which forces the trace mask gating `Log_msg` so the ~5900 sites that go through it run to completion. They then call 0x010346d0, which the vendor shipped as `li r3,0 ; blr` - the sink is a no-op, so the message is discarded. Adding `diagnostic-logging` does not help and actively hurts: it repoints that same sink at `Log_msg`, so the two call each other. This scheme is kept because the mask half is correct and will be needed once a real sink is found; see docs/PATCHES.md. Do not drive on it, and do not expect it to answer the AUX question yet.",
+  "_comment": "Diagnostic scheme - INCOMPLETE, it produces no output. It ships `diagnostic-logmask` alone, which forces the trace mask gating `Log_msg` so the ~5900 sites that go through it run to completion; they then call 0x010346d0, the sink, which the vendor shipped as `li r3,0 ; blr`, so the message is discarded. builds/diagnostic-logging.json adds the sink half. Do not add `diagnostic-logging`: it repoints the same sink at `Log_msg`, so the two call each other. Do not drive on it.",
   "package": "~/Downloads/SMEG_PLUS_UPG",
   "out": "~/Downloads/SMEG_PLUS_UPG_diag",
   "module": "NAV",

@@ -81,7 +81,7 @@ console script; run them from a checkout.
 
 ```sh
 uv venv --seed --python 3.13 .venv
-uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt -r requirements-docs.txt
 ```
 
 `requirements-dev.txt` brings `unicorn` and `capstone`; without them the emulator tests skip
@@ -151,7 +151,7 @@ and re-run:
   "media": {
     "tones":  { "ring_tones/ring1RT.wav": { "source": "tone.mp3", "gain_db": 7.4 } },
     "splash": { "peugeot": "logo.png" },
-    "names":  { "ring1": "Piano Riff" }
+    "names":  { "ring1": "Piano" }
   },
   "seal": true
 }
@@ -175,49 +175,48 @@ uv run tools/build_package.py --manifest build.json --dry-run   # show the steps
 
 `media.settings` writes integers into the **seed** settings database inside `system.bin`
 (`Data_base/sqlite/up_common.sqlite`), as `Section.Name`. The unit reads its live settings from
-`/USER_DATA`, so on hardware these edits have not reached the running unit (observed) — treat
-them as an experiment, not a lever:
+`/USER_DATA`, and seed edits do not reach the running unit *(observed)*:
 
 ```json
 "settings": { "supervisor.Last_Source": 7 }
 ```
 
-`media.gui_ver` edits `GUI_VER` in the partition's `Data_base/smeg.inf`. It is harmless. The
-code shows it on the GUI item's page of System Information *(read)*, but set to `32.01` on a
-real flash it was not seen on the page looked at (2026-09-27), so it is not yet a confirmed
-marker. See [Version strings](VERSION_STRINGS.md#is-gui_ver-visible) for the car check that
-settles it.
+`media.gui_ver` edits `GUI_VER` in the partition's `Data_base/smeg.inf`. It is harmless, and
+the code shows it on the GUI item's page of System Information *(read)*; it is not confirmed as
+a visible marker on a car. See [Version strings](VERSION_STRINGS.md#is-gui_ver-visible).
+
+`media.names` renames ring1..ring5 in the phone's ringtone menu. The names are literals in the
+application image, so this becomes an application patch with a fixed maximum length per slot
+(NAV 5.43.A.R2 only); see [Ring tones](RINGTONES.md#names).
 
 !!! warning "Patch sets accumulate, in order"
 
     Listing several sets in `app.patches` applies each one to the package built so far, so a
-    build asking for `["aux-always-available", "aux-boot-default"]` carries both edits. (Up
-    to and including v0.6.0 each set was applied to the *stock* source, so all but the last
-    were silently reverted — if you built a multi-set package before that, rebuild it.)
+    build asking for `["aux-autoswitch", "aux-boot-default"]` carries both edits.
 
 Ready-made **schemes** live in `builds/`. Each is a whole build, so a scheme is one command:
 
 | scheme | what it does | needs |
 |---|---|---|
-| `builds/aux-only.json` | the AUX patches and nothing else — the closest thing to stock that still enables AUX, and the baseline to reach for when something behaves unexpectedly | nothing |
-| `builds/aux-boot.json` | **boot to AUX, the minimal build**: `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore`, nothing else. The same image the car confirmed (2026-09-28) minus the spy-dump extra; start here | nothing |
-| `builds/combined-aux-boot-ringtone.json` | `aux-only` + `aux-boot` + the ring-tone scheme in one package (the updater finds only one `SMEG_PLUS_UPG`). Its boot-to-AUX part is **falsified** (2026-09-27); kept for history | a tone file |
-| `builds/aux-boot-restore.json` | boot to AUX: `aux-boot-default` + the three-edit `aux-boot-restore`. **Confirmed on hardware** (2026-09-28, three boots) | a tone file |
-| `builds/aux-signal-switch.json` | **candidate** switch-on-signal build: adds `aux-sticky` and `aux-signal-switch`. Emulated only; flash it after the `aux-boot-restore` test has been read | a tone file |
-| `builds/alien-piano-riff.json` | replaces the stock `Alien` ring tone and renames it (the rename did not show on the car) | a tone file |
-| `builds/diagnostic.json` | trace mask only — **incomplete, emits nothing** on its own | nothing |
-| `builds/diagnostic-logging.json` | the diagnostic build that should emit (mask + sink); where the output surfaces is issue #94 | nothing |
-| `builds/force-aux-default.json` | the `USER_DATA` `Last_Source` experiment — the route **did not change the boot source** on hardware ([Verification](VERIFICATION.md)) | a tone file, and the `/USER_DATA` acknowledgement |
-| `builds/aux-default-retry.json` | the retry of that experiment, flashed 2026-09-14: the payload **did not apply** and the unit still booted to FM ([Verification](VERIFICATION.md#second-flash-the-user_data-retry-2026-09-14)) | the `/USER_DATA` acknowledgement |
+| `builds/aux-boot.json` | **boot to AUX, the recommended build**: `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore`, nothing else. Confirmed on hardware | nothing |
+| `builds/aux-boot-restore.json` | the same three sets plus a custom ring tone and `spy-dump-userdata-partition` | a tone file |
+| `builds/aux-only.json` | AUX always available (`aux-autoswitch`) and nothing else — the closest thing to stock that still enables AUX | nothing |
+| `builds/alien-piano-riff.json` | replaces the stock `Alien` ring tone and renames it `Piano` (the name patch is not yet confirmed on a car), plus `spy-dump-userdata-partition` | a tone file |
+| `builds/aux-signal-switch.json` | candidate switch-on-signal build: boot to AUX plus `aux-sticky` and `aux-signal-switch` (`aux-always-available` + `aux-sticky` carry `aux-autoswitch`'s edits). Emulated only, never flashed | a tone file |
+| `builds/combined-aux-boot-ringtone.json` | `aux-autoswitch` + `aux-boot-default` + `spy-dump-userdata-partition` + a ring tone. `aux-boot-default` without `aux-boot-restore` does **not** boot to AUX; use `aux-boot.json` | a tone file |
+| `builds/diagnostic.json` | trace mask only — **emits nothing** on its own | nothing |
+| `builds/diagnostic-logging.json` | the diagnostic build that should emit (mask + sink); where the output surfaces is issue #94. Not for driving | nothing |
+| `builds/force-aux-default.json` | a `USER_DATA` `Last_Source` payload. It **does not change the boot source** ([Verification](VERIFICATION.md)); overwrites the car's own settings | a tone file, and the `/USER_DATA` acknowledgement |
+| `builds/aux-default-retry.json` | the same `USER_DATA` payload, laid out for the lowercase `sqlite` directory. It **does not apply** ([Verification](VERIFICATION.md#second-flash-the-user_data-retry-2026-09-14)) | the `/USER_DATA` acknowledgement |
 
-Each manifest's own `_comment` gives its status in full, and its `package`/`out` paths are the
-author's — edit them before use.
+Each manifest's own `_comment` gives its status in full; edit its `package`/`out` paths before
+use.
 
 ```sh
-uv run tools/build_package.py --manifest builds/aux-only.json
+uv run tools/build_package.py --manifest builds/aux-boot.json
 ```
 
-### A note on the schemes as committed
+### Paths in a manifest
 
 Every path in a manifest (`package`, `out`, tone and splash sources) expands `~` and is read
 relative to the manifest file when it is not absolute. The schemes in `builds/` use
@@ -243,13 +242,9 @@ It checks the things that have actually gone wrong, rather than what looks impre
 - **the contract** — will the unit accept it, or answer with string 2099?
 - **the CRC cascade** — image, `.inf`, `smeg.inf`
 - **which patches are present**, by reading the bytes at each known address
-- **settings values against what the unit accepts** — `supervisor.Last_Source = 4` did not
-  start the unit on AUX, and nothing said why. That cost a car trip. The first explanation
-  was a `USER_DATA` payload in a folder not named `SMEG_PLUS_UPG`, which is skipped silently
-  and looks identical — pre-flight now fails on that — but a later flash was laid out
-  correctly and **still** did not apply its payload, so that was not the whole story. See
-  [Hardware verification](VERIFICATION.md), and [The AUX chain](AUX_CHAIN.md) for the
-  candidate numberings.
+- **settings values against what the unit accepts** — a value the unit does not recognise is
+  ignored silently (a `Last_Source` of 4 does not start it on AUX). See
+  [The AUX chain](AUX_CHAIN.md) for the source numbering.
 - **the firmware version** — every patch address belongs to one version, so it says which one
   this package carries (`firmware 5.43.A.R2`) before anyone decides whether the patches apply.
   Two entries in `patches/` match at the same address on the wrong version, so the bytes alone
@@ -259,12 +254,12 @@ It checks the things that have actually gone wrong, rather than what looks impre
   silently fails to arrive. The updater reads it from the **hard-coded**
   `/bd0/SMEG_PLUS_UPG/NAV/USER_DATA`, so a package folder under any other name, or a payload
   for another module, is skipped while the update otherwise succeeds; pre-flight **fails** on
-  both. It also warns about the casing trap that made three flashes do nothing: the payload's
-  `sqlite` directory only reaches the unit as lowercase if it carries a long-filename entry.
+  both. It also warns about the casing trap: the payload's `sqlite` directory only reaches the
+  unit as lowercase if it carries a long-filename entry.
   See [Flashing](FLASHING.md#working-around-it-give-the-directory-a-long-filename-entry).
 
-And it prints what it **does not know** as prominently as what it does. The unknowns are
-where the car trips went.
+And it prints what it **does not know** as prominently as what it does: an unknown is a reason
+to check before going to the car.
 
 ## Cheat sheet
 
@@ -300,6 +295,13 @@ uv run tools/splash.py --tree media selftest     # proves the container model
 
 # ALWAYS last, whatever else you changed
 uv run tools/patch_contract.py --package SMEG_PLUS_UPG_mod
+
+# onto a stick, verified, then ejected
+uv run tools/prepare_usb.py --package SMEG_PLUS_UPG_mod --target /Volumes/USB --eject
+
+# after SPYTAKE + SPYSTORE: how the boot source was chosen, and the AUX events
+uv run tools/spy_read.py /Volumes/USB/SPY/<stamp>
+uv run tools/spy_read.py /Volumes/USB/SPY/<stamp> --aux
 ```
 
 !!! warning "These tools write overlays, not packages"

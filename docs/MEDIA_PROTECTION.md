@@ -1,6 +1,6 @@
 # Media protection: the contract, and how to re-seal a modified package
 
-!!! success "Solved — a patched package can be re-sealed"
+!!! success "A patched package can be re-sealed"
 
     The unit refuses modified firmware because it validates the media against a signed
     contract. That contract is **fully decoded**, and
@@ -61,8 +61,10 @@ the plugin's media check. [The update flow](UPGRADE_FLOW.md) has the whole seque
 ## Where the check lives
 
 ```
-C_BCM_UPGRADE::CheckTrustedSource(C_BCM_UPGRADE*)      @ 0x0187775c
+C_BCM_UPGRADE::CheckTrustedSource(C_BCM_UPGRADE*)      @ 0x018778b4   (NAV 5.43.A.R2)
 ```
+
+`0x0187775c` is most likely the same function in the AUDIO_BT image *(inferred)*.
 
 The messages it logs name the mechanism:
 
@@ -96,17 +98,8 @@ and every path taken while it is set ends in `MSG_BCM_UPGRADE_ILLEGAL_MEDIA`. It
 unconditionally when the stick is removed, and on a backup-state message. See
 [The update flow](UPGRADE_FLOW.md#what-matters-for-package-safety).
 
-!!! failure "Correction"
-
-    This paragraph used to say the flag skipped the check and the media was treated as
-    trusted, and that it was gated on phase state (`0x4651`). That was a reading of the
-    strings and the call site, not of `CheckTrustedSource`'s control flow. The phase-state
-    gate belongs to `UnLoadUpgradePlugin` in the same `HandlePrivateMessage` case. A
-    decompile of the whole check shows the reverse.
-
-The page gives the NAV address above as `0x0187775c`. The close reading found
-`CheckTrustedSource` at `0x018778b4` in NAV `5.43.A.R2`, so `0x0187775c` is most likely the
-AUDIO_BT address *(inferred)*. Note also that `UpgPlugin.out` from the stick is loaded and
+The phase-state gate on `0x4651` in the same `HandlePrivateMessage` case belongs to
+`UnLoadUpgradePlugin`, not to this check *(read)*. `UpgPlugin.out` from the stick is loaded and
 called **before** this check runs *(read)*; see [The update flow](UPGRADE_FLOW.md).
 
 ## The format
@@ -130,20 +123,11 @@ blocks 1..N    one 212-byte record per checked file
                  [72..]    payload
 ```
 
-!!! failure "Correction: the header offsets were two bytes out"
-
-    This block used to give "constant `0x7335cf08`" at `[46..49]` and the magic at
-    `[50..57]`. That layout was read off a hex dump by eye, and it straddles the
-    **record count**, a u32 at `[44..47]` that `CheckTrustedSource` reads into
-    `this+0x258` and loops on *(read)*. Decrypting the stock contract with
-    `patch_contract.py`'s own functions gives count 115 at `[44..47]`, then `0x35cf08ae`, then
-    the magic at `[52..59]` *(executed)*. The date, version and magic are never compared.
-    `CheckType` is likewise read as a u32 at `+0x3c`, not a byte at `[63]`. For the values
-    shipped this is the same thing, but it means a path must fit in 60 bytes.
-
-    Re-sealing was never affected. `patch_contract.py` re-encrypts the original header
-    unchanged (`tools/patch_contract.py`, `encrypt_block(header, key)`) and writes one record
-    per original record, so the count stays correct.
+The layout above comes from decrypting the stock contract with `patch_contract.py`'s own
+functions *(executed)*. `CheckTrustedSource` reads the record count into `this+0x258` and loops
+on it; the date, version and magic are never compared *(read)*. `CheckType` is read as a u32 at
+`+0x3c`, so a path must fit in 60 bytes. `patch_contract.py` re-encrypts the original header
+unchanged and writes one record per original record, so the count always stays correct.
 
 ```mermaid
 flowchart LR

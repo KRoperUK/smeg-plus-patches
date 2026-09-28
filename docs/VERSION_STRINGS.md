@@ -2,8 +2,8 @@
 
 ## What the System Information screen shows
 
-Spike #191, stock NAV `SMEG5.43.A.R2`. Read from decompiles and disassembly; nothing here was
-executed, and nothing was re-checked on the car.
+Stock NAV `SMEG5.43.A.R2`, read from decompiles and disassembly. Nothing in this section was
+executed, and none of it has been checked on the car.
 
 **Where the values come from.** `C_BCM_VERSION::Init` (`0x0158e010`) builds a list of
 version entries (`TB_SW`, `BR`, `CD`, `UBOOT`, `Renesas`, `GUI`, `DbDwnl`, `Gruppo`; plus
@@ -26,31 +26,18 @@ seed `versions.sqlite` is empty *(read)*.
 | `CD` | `VER` in the **media partition's** `Data_Base/media.inf`, inside `system.bin` *(read; the `.inf` suffix is inferred)* | – | the diagnostic DID `C_RDBLID_2010_80`, and the CAN version frame *(read)*; very likely the updater's `media.inf` gate *(inferred)* |
 | `GUI` | `GUI_VER` in the media partition's `Data_Base/smeg.inf` *(read)* | – | nothing else found *(read)* |
 
-`smeg.inf`'s `VER:` is **not read** by this screen at all. The package-root `media.inf` and the
-media partition's `Data_base/media.inf` are byte-identical in stock (`VER:26482`), which is how
-the two were confused.
-
-!!! failure "Corrected: where the displayed versions come from"
-
-    This page used to say the main software version comes from `smeg.inf` `VER:`, and that
-    the application carries no version strings for display. Both were read off the strings
-    in the image and the files in the package, not off the code that builds the screen.
-    The code shows the main software version and date come from the **application image**,
-    and `cd` from the **media partition's** `media.inf` *(read, #191)*.
+`smeg.inf`'s `VER:` is **not read** by this screen. The package-root `media.inf` and the media
+partition's `Data_base/media.inf` are byte-identical in stock (`VER:26482`), so either looks
+like the source of `cd`; the code reads the media partition's copy.
 
 ### Is `GUI_VER` visible?
 
-By the code, `GUI_VER` is shown in field 5000 of the **GUI** item's page *(read)*. On
-2026-09-27 a build set it to `32.01`, and it was not seen, while `cd 26482` was. The likeliest
-explanation is that the page looked at was not the GUI item's: `cd` is on every page, and the
-item labels are in the undecoded GUI text strings (#62), so which on-screen label is the GUI
-item is **not known** *(inferred)*.
-
-!!! failure "Withdrawn: GUI_VER is not shown on the unit"
-
-    That conclusion came from one look at one page. The code puts `GUI_VER` on the GUI item's
-    page. What is actually known is narrower: `32.01` was not seen on the page that was
-    looked at.
+By the code, `GUI_VER` is shown in field 5000 of the **GUI** item's page *(read)*. Which
+on-screen label is the GUI item is **not known**: the labels are in the undecoded GUI text
+strings (#62). A build with `GUI_VER` 32.01 has been flashed and `32.01` was not seen on the one
+page looked at, while `cd 26482`, which is on every page, was *(observed; see
+[Hardware verification](VERIFICATION.md))*. That page was most likely not the GUI item's
+*(inferred)*.
 
 **The cheap car check, with no new build.** On the current stock-`GUI_VER` build, open each
 System Information item in turn and note which shows `32.00`, and where `19-09-17` appears.

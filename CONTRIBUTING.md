@@ -56,11 +56,10 @@ it finds a UK mobile number, a full postcode, an email address or an NI number.
 
 If a match is a deliberate example rather than a real one, put `pii-ok` on that line.
 
-Two things it deliberately does **not** flag. A bare `/Users/<name>/` home path, because the
-committed `builds/*.json` manifests are local build recipes that already carry one and the
-docs say so. And car registrations, because the format collides with ordinary uppercase
-tokens in patch notes — a guard that cries wolf gets turned off, and then it protects
-nothing.
+Two things it deliberately does **not** flag. A bare `/Users/<name>/` home path, which names
+an account rather than a person (build manifests use `~/` anyway). And car registrations,
+because the format collides with ordinary uppercase tokens in patch notes — a guard that
+cries wolf gets turned off, and then it protects nothing.
 
 It is a floor, not a guarantee: nothing catches personal data that matches no pattern. Read
 the diff before you push.
@@ -99,7 +98,7 @@ and linking a whole routine at the patch address with `clang` and `lld`.
 
 ## 4. Gotchas worth knowing
 
-Things that have each cost time here at least once, in roughly the order you meet them.
+Things that are easy to trip over, in roughly the order you meet them.
 
 ### The working loop
 
@@ -163,7 +162,7 @@ silent.
 Two shapes keep coming up:
 
 - **"File is not always closed"** — use `pathlib` (`Path(p).read_text()`), which closes what
-  it opens. This is the third time it has been raised.
+  it opens.
 - **"Potentially uninitialized local variable"** — `argparse.error()` looks like it returns.
   Use `sys.exit()` where the fall-through must be impossible.
 
@@ -172,7 +171,8 @@ Two shapes keep coming up:
 Writing to FAT32 makes macOS create an AppleDouble `._*` shadow **per file**, even on a plain
 data-only copy, because of the `com.apple.provenance` attribute. `tools/prepare_usb.py`
 removes the shadows it created, including the package folder's own, and fails if any junk is
-left; use it rather than `cp`. If you copied by hand:
+left; use it rather than `cp`. It also stops Spotlight indexing the stick, and `--eject` ejects
+it, retrying while the volume is busy. If you copied by hand:
 
 ```sh
 dot_clean -m /Volumes/SMEG

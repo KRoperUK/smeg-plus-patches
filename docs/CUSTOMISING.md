@@ -34,10 +34,8 @@ The phone ring tones, and the call/status tones.
 | `koRT.wav` | failure tone | same |
 
 The `RT` is part of the real filename. The names the **phone UI** shows are *not* here: they
-are string literals in the application image *(read, #190)*, which `media.names` now patches
-in place, each with a fixed maximum length. Replacing the audio works on the car; a name
-changed the old way, in the seed database, kept its stock name *(observed, 2026-09-27)*. See
-[Ring tones](RINGTONES.md#names).
+are string literals in the application image *(read)*, which `media.names` patches in place,
+each with a fixed maximum length. See [Ring tones](RINGTONES.md#names).
 
 ### Wait tones — `wait_tones/` (13)
 
@@ -72,8 +70,8 @@ All in `Data_base/TMP/lib/fonts/`, and the names say what they are for:
 | `GillSansSLIDER.ttf`, `Ecube SLIDER.ttf`, `T9typoSLIDER.ttf`, `TYPEC4SLIDER.ttf` | the "slider" family, one per harmony |
 | `DejaVuSans.ttf` | a fallback with wider script coverage |
 
-This is a genuine find: **the unit ships its own fonts**, so the typeface is replaceable. Fair
-warning — `GillSansPSA` is a licensed commercial face, so substituting it is a licensing
+**The unit ships its own fonts**, so the typeface is replaceable. `GillSansPSA` is a licensed
+commercial face, so substituting it is a licensing
 question as much as a technical one. `DejaVuSans` is the free one.
 
 ## Images and glyphs — 631 PNG + 2 BMP
@@ -134,8 +132,8 @@ would allow renaming UI labels, e.g. calling the `AUX` tile "CarPlay".
 **The catch for all of these:** `gui_config.xml` sets harmony id **10**, which is outside the
 0–7 range in `gui_harmonies.xml`, and the image/font/colour paths it references are **absent**
 from the partition. The real skin is delivered by the **HARMONY module**, not from here. So
-these files are configuration for a skin system whose artwork lives elsewhere — editing them
-may change nothing, exactly as happened with the marque logos.
+these files are configuration for a skin system whose artwork lives elsewhere, and editing them
+may change nothing.
 
 See [What is reachable](CAPABILITIES.md) for the HARMONY findings, including the five skins the
 unit ships and why custom artwork is out of reach for now.
@@ -171,8 +169,10 @@ than anything in [PATCHES.md](PATCHES.md).
 
 ## Tooling
 
-`tools/ringtones.py` handles the tone groups, including format conversion and level matching.
-`tools/splash.py` handles the marque `.pkg` containers. The rest — logos, fonts, portal art —
-are plain file swaps that `tools/patch_media.py` already supports; a helper that maps a
-directory of replacements onto the right paths, with human-readable labels, is the obvious
-next step.
+- `tools/assets.py` lists every replaceable file with a human-readable label, exports a group,
+  and replaces one asset or a directory of them (`--tree media replace --asset radio-logos
+  --with my-logos/`).
+- `tools/ringtones.py` converts audio to the tone formats. It does not change level; a build
+  manifest's `gain_db` does (see [Ring tones](RINGTONES.md)).
+- `tools/splash.py` handles the marque `.pkg` containers.
+- `tools/patch_media.py` rebuilds the partition and its checksum cascade after any of these.

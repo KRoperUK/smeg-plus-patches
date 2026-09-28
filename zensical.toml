@@ -37,7 +37,6 @@ nav = [
     { "Update flow" = "UPGRADE_FLOW.md" },
     { "Emulation" = "EMULATION.md" },
     { "Toolchain" = "TOOLCHAIN.md" },
-    { "Analysis (archive)" = "ANALYSIS.md" },
   ] },
   { "The media partition" = [
     { "Media partition" = "MEDIA_PARTITION.md" },
