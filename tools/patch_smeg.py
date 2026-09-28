@@ -48,7 +48,7 @@ sys.path.insert(0, HERE)
 
 from appimage import DEFAULT_BASE, inflate  # noqa: E402
 from fingerprint import identify, variants_from_spec  # noqa: E402
-from smeglib import crc32, s32, swap_crc  # noqa: E402
+from smeglib import crc32, refresh_trailer, s32, swap_crc  # noqa: E402
 
 
 def rewrite_inf(blob, new_crc):
@@ -327,7 +327,8 @@ def main():
         print("copying package ...")
         shutil.copytree(args.src, args.out, dirs_exist_ok=True)
 
-    root_ctrl = bytearray(load(os.path.join(args.src, "ctrl.bin")))
+    stock_root = load(os.path.join(args.src, "ctrl.bin"))
+    root_ctrl = bytearray(stock_root)
     done = 0
     ctrl_crcs = {}
 
@@ -378,7 +379,7 @@ def main():
         ctrl = swap_crc(ctrl, old_crc["bq"], new_crc_bq, "%s/BigQuick" % name)
         ctrl = swap_crc(ctrl, old_crc["inf"], new_crc_inf, "%s/BigQuick.inf" % name)
         ctrl = swap_crc(ctrl, old_crc["smeg"], new_crc_smeg, "%s/smeg.inf" % name)
-        new_ctrl = bytes(ctrl)
+        new_ctrl = refresh_trailer(old_ctrl, ctrl)
         new_crc_ctrl = crc32(new_ctrl)
 
         root_ctrl = bytearray(
@@ -401,7 +402,7 @@ def main():
         done += 1
 
     if done:
-        write(os.path.join(args.out, "ctrl.bin"), bytes(root_ctrl))
+        write(os.path.join(args.out, "ctrl.bin"), refresh_trailer(stock_root, root_ctrl))
         verify_root(args.out, ctrl_crcs)
         print("wrote ctrl.bin (root manifest)")
 
