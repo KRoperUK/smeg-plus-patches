@@ -553,8 +553,9 @@ Emulated on the NAV image (`tools/ppcemu.py`), with the saved value set to `1` (
 | stock | 1 | 1 | 1 |
 | patched | 7 | 7 | 7 |
 
-So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. Pair it with
-`aux-always-available` so AUX is a valid source — `builds/aux-boot.json` does both.
+So the restore now targets AUX no matter what `ImmediateSourceSave` persisted. On its own that
+is not enough (falsified, below): it needs `aux-boot-restore` too. `builds/aux-boot.json` is the
+minimal confirmed build: `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore`.
 
 !!! warning "Sets the target, does not force the switch"
 
