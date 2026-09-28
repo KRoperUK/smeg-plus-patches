@@ -1,0 +1,3 @@
+# The docs site (zensical.toml). Kept apart from requirements-dev.txt so the Pages
+# workflow installs only this; both workflows key their pip cache on these files.
+zensical
