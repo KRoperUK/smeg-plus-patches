@@ -41,3 +41,6 @@ site/
 .commandcode/
 .claude/
 .kiro/
+
+# created by `uv run`; the scripts pin their dependencies via PEP 723, so the repo has no lockfile
+uv.lock

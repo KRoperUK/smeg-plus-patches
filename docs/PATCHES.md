@@ -133,8 +133,10 @@ NAV: this image is not the NAV build - refusing to patch.
 ```
 
 The probes are the recorded `expect` bytes themselves, so a build only fingerprints as well as
-the patch data for it is accurate. A build with no patch set here cannot be identified at all —
-that is issue [#16](https://github.com/KRoperUK/smeg-plus-patches/issues/16).
+the patch data for it is accurate. A build with no patch set here is still **named** from the
+vendor build path inside its image (`build_tokens` in `fingerprint.py`'s output; issue
+[#16](https://github.com/KRoperUK/smeg-plus-patches/issues/16), closed), but no patch set can be
+selected for it: its addresses have to be derived first (see `tools/symdiff.py` above).
 
 ## 1. `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable()` — force available
 
@@ -282,6 +284,8 @@ invisible to them. That is the gap this closes.
 | `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
 | `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
+| `patches/spy-dump-userdata-partition.json` | `SPYSTORE` copies the whole `USER_DATA` partition root instead of the calibration and regen files; supersedes `spy-dump-userdata` | **Flashed**{ .pill .pill-wip } in the 2026-09-27 and 2026-09-28 car builds; whether the copy lands on the stick is not yet checked |
+| `patches/diagnostic-logsink.json` | points the stubbed `Log_msg` sink at VxWorks `logMsg`; where its output surfaces is issue #94 | **Not for driving**{ .pill .pill-no } diagnostic build; never flashed |
 
 !!! note "Hardware status"
 
@@ -764,10 +768,16 @@ nop ×7                   # pads the reclaimed 120 bytes
 **It supersedes `spy-dump-userdata`.** Both write `0x01273a1c`, so applying both fails the
 `expect` check — pick one.
 
-!!! warning "Not flashed"
+!!! warning "Flashed, output not yet checked"
 
-    Static verification only. Its call sequence was executed under `tools/ppcemu.py`, with
-    every callee stubbed so the sequence itself is the evidence:
+    Flashed as part of the 2026-09-27 and 2026-09-28 car builds, and `SPYSTORE` was run after
+    each. The captures kept from those runs have no `SD_regen*` files, which fits the edit
+    having taken effect, but they also hold no `USER_DATA` directories. Whether the stick's
+    `SPY/<stamp>/` held them is **not known**: the kept copies may be partial. Check the whole
+    folder on the stick after the next `SPYSTORE`.
+
+    Its call sequence was executed under `tools/ppcemu.py`, with every callee stubbed so the
+    sequence itself is the evidence:
 
     | | call sequence through the copy blocks |
     |---|---|

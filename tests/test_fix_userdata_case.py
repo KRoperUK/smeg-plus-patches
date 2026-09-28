@@ -105,3 +105,10 @@ def test_dry_run_writes_nothing(tmp_path):
     assert result.returncode == 0, result.stderr
     assert image.read_bytes() == before
     assert "dry run: nothing written" in result.stdout
+
+
+def test_help_prints_usage_and_succeeds():
+    """`--help` is a request for usage, not an unknown argument."""
+    r = subprocess.run([sys.executable, TOOL, "--help"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "--check" in r.stdout

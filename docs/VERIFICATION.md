@@ -155,6 +155,17 @@ that.
     dump additionally carries a task/exception capture, which is where the settings listing
     above came from.
 
+## Later car tests
+
+| date | build | outcome | detail |
+|---|---|---|---|
+| 2026-09-27 | `aux-autoswitch` + `aux-boot-default` (+ `spy-dump-userdata-partition`, piano ring tone) | accepted and flashed; the custom tone played; **boots to FM** — `aux-boot-default` falsified; `GUI_VER` 32.01 not seen on the unit; a renamed tone kept its stock name | [first car test](AUX_CHAIN.md#what-the-first-car-test-established) |
+| 2026-09-28 | the same + `aux-boot-restore`, handler edit only | **still FM**. The `SPYTAKE` trace: `Last_Source` 7 at 8847 ms, AUX's request with `PrOnly` true at 10109 ms, the tuner ACK at 16347 ms = 8847 + 7500 (the init timer) | [second car test](AUX_CHAIN.md#what-the-second-car-test-established) |
+
+The three-edit `aux-boot-restore` build is on a stick and not yet flashed. `aux-signal-switch`
+is verified under emulation only. *(All outcomes above are executed on hardware; the causes
+given on the linked pages are read from the trace and the disassembly.)*
+
 ## Observed update sequence
 
 Captured from photographs taken during the update, ordered by capture time. Screens marked
@@ -277,7 +288,10 @@ figures change as partitions are rewritten:
     indistinguishable from "setting 0" and lands in the change-detector as "nothing
     changed". *Later correction:* that query returns the saved AUX input **setting**, not
     the signal — see
-    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to). Settle it with the diagnostic build before flashing anything else.
+    [What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to). The
+    question was later answered without a log: the handler reacts to the setting (read), and
+    the spy capture (`SPYTAKE`/`SPYSTORE`) is now how runtime behaviour is observed. The
+    diagnostic build stays unreadable until issue #94 is settled.
 
     The handler logs its own name on **every** exit — `HandleAudioAuxInputStatusChnged() -`,
     at level 1, on the shared return path. That would settle "is it entered at all?" in one

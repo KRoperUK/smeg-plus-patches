@@ -189,8 +189,9 @@ the `SPYSTORE` library found it passing `"/bd0"` *(read)*. The destination comes
 
 ### What a collect captures
 
-`SPYTAKE` is the way to get a module's runtime trace. It runs the **user collect**
-*(read)*:
+`SPYTAKE` is the way to get a module's runtime trace. How to get a capture off the unit and
+read it is [the test loop](FLASHING.md#the-test-loop-end-to-end); a capture holds the VIN and
+personal data, so keep it private. It runs the **user collect** *(read)*:
 
 1. **Trigger.** `SPYTAKE` → `DirectCallAudioLongEvent` → `CallBackUserSpyEvent` raises event
    `0x52d1`. `C_BCM_SPY::HandlePrivateMessage` (`0x01279010`) then runs case 2,

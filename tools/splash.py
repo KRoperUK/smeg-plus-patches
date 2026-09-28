@@ -14,8 +14,8 @@ docs/MEDIA_PARTITION.md. These images are real marque artwork used elsewhere; th
 still unidentified, so treat their effect on the unit as unknown.
 
 `Data_base/graphics/logo/` holds one `.pkg` per marque (`peugeot`, `citroen`, `ds`). Each is a
-small container holding four 800x480 24-bit images, the first of which is the boot
-splash — the Peugeot lion and wordmark that appears while the unit starts.
+small container holding four 800x480 24-bit images. The first is the Peugeot lion and
+wordmark artwork; it is not what the unit shows while starting (see above).
 
 Container layout (verified against the shipped packages):
 

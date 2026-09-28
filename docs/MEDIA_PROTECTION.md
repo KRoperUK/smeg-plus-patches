@@ -10,9 +10,13 @@
     Workflow:
 
     ```sh
-    uv run tools/patch_smeg.py     --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod
+    uv run tools/patch_smeg.py     --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod --copy-package
     uv run tools/patch_contract.py --package SMEG_PLUS_UPG_mod
     ```
+
+    `--copy-package` matters: without it `patch_smeg.py` writes only the changed files, and
+    the re-seal fails because there is no `contract.dat` in the output. `build_package.py` does
+    all of this in the right order.
 
     Verified on a real package: all 115 records recompute to exactly the values the
     original contract holds, and after patching the application image the regenerated

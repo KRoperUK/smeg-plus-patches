@@ -260,14 +260,16 @@ what pins this format down.
 
 !!! warning "The images are stored vertically mirrored"
 
-    Read with normal BMP semantics the artwork is upside down, yet it displays correctly in
-    the car — so the unit flips it when rendering. A replacement must therefore be stored
-    **flipped**, which `splash.py replace` does automatically. Get this wrong and the splash
-    is upside down.
+    Read with normal BMP semantics the stored artwork is upside down, so it is mirrored
+    relative to normal BMP row order, and `splash.py replace` keeps that convention. Whether a
+    replacement then renders the right way up is **unknown**: no screen that shows these
+    images has been identified (they are not the boot splash, see above).
 
 Known unknown: the two-byte trailer after each zlib stream has not been identified — it is
-not a crc32 or adler32 fragment of the chunk. It is preserved as-is. A rebuilt splash has
-**not yet been flashed**, so treat a replaced splash as unverified until a unit accepts one.
+not a crc32 or adler32 fragment of the chunk. It is preserved as-is. A replaced bundle **has**
+been flashed: the boot animation did not change, which is how it was found not to be the boot
+splash. What displays these images is still unknown, so whether a replacement renders
+correctly is untested.
 
 ```sh
 uv run tools/splash.py --tree media/ list

@@ -10,9 +10,9 @@ message on `main`** — so the PR title must be a conventional commit.
 
 | commit / PR title | release |
 |---|---|
-| `feat: add long-press SRC trigger` | **minor** — `0.1.0` → `0.2.0` |
-| `fix: correct AUX gain default` | **patch** — `0.1.0` → `0.1.1` |
-| `feat!: drop the availability patch` | **major** — `0.1.0` → `1.0.0` |
+| `feat: add long-press SRC trigger` | **minor** — `x.Y.z` goes up |
+| `fix: correct AUX gain default` | **patch** — `x.y.Z` goes up |
+| `feat!: drop the availability patch` | **major** — `X.y.z` goes up |
 | `fix!: change patch file layout` | **major** |
 | `docs:`, `refactor:`, `perf:`, `chore:`, `ci:`, `test:`, `build:` | no release on their own |
 

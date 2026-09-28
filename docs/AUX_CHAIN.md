@@ -181,18 +181,21 @@ When the setting notification is raised, **read** (see [The audio module](AUDIO_
 
 What follows:
 
-* **Stock firmware has no path that switches to AUX because a signal appeared.** *Inferred*
-  from the routing above. The observed behaviour on the car — AUX greys out and re-enables with
+* **Stock firmware has no path that switches to AUX because a signal appeared.** For the
+  media dispatch this is **executed**: the stock window sends `0xcc` to its default case
+  ([Emulation results](AUX_SIGNAL.md#emulation-results)). For the whole image it remains
+  *inferred* from the routing above, since other paths are not exhaustively excluded. The observed behaviour on the car — AUX greys out and re-enables with
   the signal — is `IsAUXSRCAvailable()` in the audio app, a separate path.
 * **`aux-autoswitch`'s premise needs re-examining.** Its second edit nops gate 3, which never
   fires (executed), and even with every gate open the handler would act on a *setting* change.
   Its first edit, `IsAUXSRCAvailable()`, is confirmed on hardware and is unaffected.
-* **A real signal-triggered switch would need a new wire.** *Inferred design, untested:* route
+* **A real signal-triggered switch would need a new wire.** Now `patches/aux-signal-switch.json`,
+  **executed** under emulation (handler and dispatch window), not flashed: route
   `0xcc` into the media app's AUX handler, and make that handler test `Get_AUX_signal_status`
   rather than `Get_aux_status`. Two constraints from the audio module apply: signal events are
   dropped until the radio has started (`+0x74` = 10), and AUX is kept muted while it is the
-  current source with no signal (`+0x168`). The whole signal path, and two concrete candidate edit groups,
-  now `patches/aux-signal-switch.json` (emulated, not flashed), are in [The AUX signal path](AUX_SIGNAL.md).
+  current source with no signal (`+0x168`). The whole signal path and the emulation results are
+  in [The AUX signal path](AUX_SIGNAL.md).
 * **`aux-boot-restore` is unaffected at boot.** Its boot edit is on `InitApp`, which does not go
   through this handler. Its handler edit still covers the boot-time re-announcement and later
   setting changes. What changes is the expected *auto-switch*: see below.
@@ -472,36 +475,27 @@ path that was nonetheless correct on the stick, a step-gated copy, and a save/re
 
 ## What to do next
 
-Three things are open, in order of value.
+1. **Car test of the three-edit `aux-boot-restore`** (built, on a stick). Does it boot to AUX over
+   two restarts? Then `SPYTAKE`/`SPYSTORE`, and check the `25300` buffer for AUX's request with
+   `PrOnly` false and a `ScheduledInit` row (7, 20). The procedure is
+   [the test loop](FLASHING.md#the-test-loop-end-to-end).
+2. **Car test of `builds/aux-signal-switch.json`**, only after test 1 has been read; see
+   [What the car test answers](AUX_SIGNAL.md#what-the-car-test-answers).
+3. **If test 1 still boots to FM:** look in the capture for an AUX request from
+   `HandleMediaStateReady`. The candidate fourth edit is at `0x02306a18`; see
+   [How HMI apps request sources](HMI_SOURCES.md).
 
-**Observe it instead — the spy path is not blocked.** This is the cheapest route to the same
-answer. `C_MGR_SRC`'s per-source dump (`0x0169a2e4`) emits through `C_BCM_SPY::WriteData`, not
-through `Log_msg`'s stubbed sink, so a boot-time dump would list the registered sources and their
-`POS_*` ids without the log sink being fixed first. See
-[Cheatcodes](CHEATCODES.md#a-module-dump-reaches-the-spy-not-the-dead-log-sink) and issue **#24**.
+Earlier routes, now closed or superseded:
 
-**Capture AUX's request at runtime — done.** The 2026-09-14 user spy archive
-(`TAR/…-USER.tar.gz`) contains it:
-`AllocateSource : MsgSrc = 3, SrcId= 0xe200,Type=5, Sched_Pos= 7`. So AUX's raw `SrcId` is
-`0xe200`, its sender is `MsgSrc` 3, and it is a type-5 request. The next capture worth having is
-the same archive from a boot of the `aux-boot-default` build, left untouched on FM. See
-[How the boot source is actually chosen](#how-the-boot-source-is-actually-chosen).
-
-**Give the firmware a log to write to.** The handler logs its own name at level 1 on its
-**shared return path** — and **executed**: every one of the four exit paths, plus the success
-path, reaches that log call. So the line `HandleAudioAuxInputStatusChnged() -` appearing at
-all means the message arrived and the handler ran; its absence means link A is broken.
-
-That would be one flash — except that this build has **no log output path**. `Log_msg`'s
-sink is stubbed, so forcing the trace mask formats the message and then discards it, and
-flashing both diagnostic patches makes the logger and the sink call each other. See
-[Patch reference](PATCHES.md).
-
-The sink now has a candidate destination: VxWorks `logMsg` at `0x00484a94`, recovered from
-the symbol table inside the BSP image, with `patches/diagnostic-logsink.json` to point it
-there. What is still unknown is where `logMsg`'s output physically surfaces on this unit,
-which is issue #94. Until that is settled the diagnostic build is buildable but not
-readable.
+- **Observe it through the spy — done.** `C_MGR_SRC`'s dump emits through `C_BCM_SPY::WriteData`,
+  not the stubbed log sink, and the user spy collect carries it: the 2026-09-14 and 2026-09-28
+  archives answered the questions a log was wanted for. See
+  [Cheatcodes](CHEATCODES.md#a-module-dump-reaches-the-spy-not-the-dead-log-sink).
+- **Give the firmware a log to write to — superseded.** The handler logs its own name on its
+  shared return path (**executed**: every exit reaches the log call), but this build's
+  `Log_msg` sink is stubbed. `patches/diagnostic-logsink.json` points it at VxWorks `logMsg`
+  (`0x00484a94`); where that output surfaces is issue #94. Until then the diagnostic build is
+  buildable but not readable, and the spy capture is the route.
 
 ## What the first car test established
 
@@ -549,8 +543,9 @@ checkable rather than merely making it convenient:
     scan for `lis`/`addi` pairs that build the target address finds them — for example
     `ExecuteAllocationFirstRound`'s single caller, `ExecuteAllocation+0x4c`. Treat "0 callers"
     from `callers.py` as "no *direct* callers", never as "unreachable".
-  * `ppcdis`, `xref`, `callers` and `symdiff` can now be run against real firmware, which is
-    what issue **#38** says has never happened.
+  * `ppcdis`, `xref`, `callers` and `symdiff` can now be run against real firmware. Issue
+    **#38**, now closed, covered them in CI with synthetic images. For the indirect calls
+    `callers.py` misses, use `tools/survey.py` ([Firmware map](FIRMWARE_MAP.md)).
 
 A warning for whoever picks this up: the entry point `InitializeMetaNav` at `0x01000000` also has
 0 direct callers, and that is correct — the boot loader jumps to it, nothing in the image branches
@@ -705,8 +700,10 @@ stubbed), fed AUX's request (type 5, position 7, priority 20):
 So `PrOnly` is the only gate between AUX and the restore, and the second edit is needed as
 well. An earlier version of this patch removed the gate itself (`nop` at `0x01698474` in
 `AddRequest`) and emulated identically. It was replaced because that would also have changed
-the video sources, which pass `true`. What is **not** emulated: the handler and `StartUp` (both
-edits are checked only by decoding them), and everything downstream of `ExecuteAllocation`.
+the video sources, which pass `true`. What is **not** emulated: `StartUp` and the `InitApp` site
+(both decoded only), and everything downstream of `ExecuteAllocation`. The handler edit
+(`0x02303474`) was executed later, in the `aux-signal-switch` handler runs: with it applied, the
+activation passes `PrOnly` 0 ([Emulation results](AUX_SIGNAL.md#emulation-results)).
 Whether the unit boots to AUX is **not known** until it is flashed. What to expect beyond boot:
 
 * **Not an auto-switch on signal.** Once AUX is in the table, a *second* AUX request is forced to
@@ -784,7 +781,10 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | `aux-sticky`'s second edit does what it says | **executed on all three builds** — after being corrected; it shipped unconditional |
 | link A's state on a real unit | **not known** — needs the car |
 | `HandleAudioAuxInputStatusChnged` reacts to the saved AUX input setting (`C_MODULE_AUDIO+0x8c`, `Auxiliary_Status`), not to signal presence | **read** — `Get_aux_status`, its two writers, and the `0xcb`/`0xcc` posts in disassembly; supersedes the earlier "signal" reading |
-| stock firmware has no path that switches to AUX when a signal appears | **inferred** — from the routing; the media app's lack of a `0xcc` case was read in the audio-module reading, not re-checked |
+| stock firmware has no path that switches to AUX when a signal appears | **executed** for the media dispatch — the stock window sends `0xcc` to its default case; **inferred** for the whole image |
+| `InitApp`'s AUX activation passes `PrOnly` true (`0x022c0678`) and is the boot request | **read**; the boot request's `PrOnly` true is **executed** on the 2026-09-28 car trace |
+| `aux-signal-switch` routes `0xcc` to the handler and makes it follow the signal | **executed** under emulation (two functions); not flashed |
+| the unit measures AUX while another source plays | **not known** — step 1 of the `aux-signal-switch` car test |
 | every boot re-announces the AUX setting once (`ElabRADIO_READY_FOR_INIT_0` → `setAUXGain`) | **read** |
 | `HandleMediaStateReady` can activate AUX with a computed `PrOnly` (`0x02306a18`), outside `aux-boot-restore` | **read**; whether it runs for AUX is **not known** — see [How HMI apps request sources](HMI_SOURCES.md) |
 | `AddRequest` writes `SrcId` to `node+0x04` and `Sched_Pos` to `node+0x18`; the lists at `+0xd4` are requests, not a registry | **read from disassembly/decompiled code** — field names corroborated by the named `SetScheduledInit` call |

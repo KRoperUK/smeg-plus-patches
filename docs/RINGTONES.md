@@ -79,6 +79,9 @@ manifest above it change — the tool does all of that in one step.
 The whole path, from an mp3 to a package that will flash. This is the sequence used to
 replace `ring1` with a custom tone.
 
+The one-command version is `uv run tools/build_package.py --manifest builds/alien-piano-riff.json`
+(edit its paths first). The manual steps below are what it runs.
+
 ```sh
 # 1. work on a copy — never edit your rollback package
 cp -a SMEG_PLUS_UPG SMEG_PLUS_UPG_custom
@@ -125,6 +128,22 @@ To put the original back:
 uv run tools/patch_media.py restore --backup backup --tree media \
     --module NAV --only ring_tones/ring1RT.wav
 ```
+
+## Names
+
+The name each slot shows in the phone UI is a row in the seed settings database
+(`Data_base/sqlite/up_common.sqlite`, `UP_Keys`, section `phone`, `Ringing_List`), not part of
+the audio file:
+
+```sh
+uv run tools/ringtones.py names  --tree media
+uv run tools/ringtones.py rename --tree media --slot ring1 --name Piano_riff
+```
+
+`build_package.py`'s `media.names` does the same. **On a real unit the rename did not show**:
+the replaced tone played, but the list still said `Alien` *(observed, 2026-09-27)*. The likely
+reason is that the unit reads the live copy of that database in `/USER_DATA`, not the seed
+*(inferred, not verified)*. Replacing the audio works; renaming does not, yet.
 
 ## Level — the thing that will annoy you
 

@@ -9,10 +9,14 @@ local: read a package, patch it, write a new package.
 Two things are worth stating plainly:
 
 - **Flashing is at your own risk.** A bad build can leave a head unit needing recovery or
-  dealer service. Everything here is prepared and checksum-verified, but it has not been
-  validated on hardware by the maintainer.
-- **The patches are not security fixes.** This is not a jailbreak, an unlock, or a
-  tamper-resistance bypass; it changes which audio source the unit selects.
+  dealer service. Everything here is prepared and checksum-verified; some changes are
+  confirmed on hardware, most are not — see
+  [Hardware verification](https://smeg.kroper.uk/VERIFICATION/).
+- **What the patches change** is head-unit behaviour: audio source selection, diagnostics,
+  ring tones. To be accepted, a modified package is re-sealed with key material extracted at
+  runtime from **your own** package; none is stored here.
+- **A `USER_DATA` payload overwrites data the car owns** (paired phones, destinations,
+  presets), and the build tool refuses one without an explicit acknowledgement.
 
 ## Reporting
 

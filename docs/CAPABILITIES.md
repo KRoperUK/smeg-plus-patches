@@ -8,7 +8,9 @@ or in a hardware observation — the evidence is named so it can be checked.
 
     Every "can it do X?" question resolves to one of three outcomes:
 
-    1. **The code is already there** → it is a patch or a setting. (AUX, ZA files, BT PAN.)
+    1. **The code is already there** → it is a patch or a setting. (AUX availability, ZA files,
+       BT PAN. A switch to AUX on signal needs one dropped event re-routed — see
+       [The AUX signal path](AUX_SIGNAL.md).)
     2. **It is a hardware capability** → it needs an external box. (CarPlay, WiFi.)
     3. **It is data we do not have and cannot generate** → out of reach. (Maps.)
 
@@ -281,7 +283,9 @@ Seen in `up_common.sqlite` or the application image, all data rather than code:
   NAND boot logo, so this is where a custom image can actually go.
 - **Jukebox** — `media_jkb_catalog.sqlite`.
 - **Extra video inputs** — `video: Video_Input_2/3`, `Reverse1/2/3`.
-- **Cheatcodes** — `cheatcodes.sqlite` is data.
+- **Cheatcodes** — `cheatcodes.sqlite` lists them, but each code's behaviour is a
+  `libcheatcode_*` library on the unit, and three codes destroy data. See
+  [Cheatcodes & spy](CHEATCODES.md).
 - **Radio logos**, **GUI sounds**, **UI strings** — see the media partition notes.
 
 Four settings databases have not been opened at all: `up_config.sqlite`, `up_user_hmi.sqlite`,
@@ -355,4 +359,7 @@ looks.
 **Caveats.** Nobody has established which harmony a 208 NAV actually uses, so the alternatives
 cannot be described yet. The updater **version-checks** harmonies and will erase and rewrite
 them on a mismatch, so this is not free. And the vehicle type that drives the mapping may come
-over CAN, which would make it less directly editable than it appears.
+over CAN, which would make it less directly editable than it appears. The first boot after an
+update can also rewrite the skin keys in the user profile (driven by
+`/SYSTEM_TMP_DATA/HarmoniesChecked.tst`; read, see [The update flow](UPGRADE_FLOW.md)), so a skin
+choice written as data may not survive an update.

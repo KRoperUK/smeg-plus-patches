@@ -4,10 +4,14 @@
 
     The unit validates the media against a signed contract, and will reject a patched
     package with *"The update file is protected and cannot be copied."* (string 2099)
-    unless the contract is regenerated:
+    unless the contract is regenerated. `build_package.py` does it for you, in the right
+    order. By hand, the patch step must write a **full** package (`--copy-package`), or the
+    re-seal finds no `contract.dat`:
 
     ```sh
-    uv run tools/patch_smeg.py     --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod
+    uv run tools/build_package.py  --manifest builds/<scheme>.json      # recommended
+    # or, by hand:
+    uv run tools/patch_smeg.py     --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod --copy-package
     uv run tools/patch_contract.py --package SMEG_PLUS_UPG_mod
     ```
 
@@ -81,8 +85,9 @@ not help; it does the same thing. The entry has to be written or corrected direc
 !!! warning "Not yet confirmed on hardware"
 
     The filesystem half is verified: the directory reads back as `sqlite`, and the `.inf` is
-    present. Whether the application *accepts* the database once it lands there is the next
-    flash's question — the updater log will show the destination case either way. Until that
+    present. Whether the application *accepts* the database once it lands there was not
+    demonstrated by the next flash — see
+    [the later flash report](VERIFICATION.md#later-flash-report-the-case-workaround-package). Until that
     is settled, prefer routes that are known to work: an application-image patch (proven on
     hardware) or a media-partition edit.
 
@@ -140,6 +145,10 @@ file with a `com.apple.provenance` attribute, and FAT can only store that as a `
 beside it. After copying, the tool deletes the shadow of each file and directory it wrote, and
 nothing else. Any other litter inside the package still fails the check.
 
+macOS also creates `.Spotlight-V100` and `.fseventsd` at the stick's **root** when it mounts it
+(observed). They are outside `SMEG_PLUS_UPG`, which is all the updater reads, and
+`prepare_usb` checks only the package tree. Eject with `diskutil eject` before unplugging.
+
 It only ever writes inside `--target`, and refuses to copy a package into itself.
 
 **It also refuses to write into a package that is already there.** Copying into a directory
@@ -194,13 +203,16 @@ The `.inf` value and `smeg.inf`'s `BIGQUICK_CRC32` must both equal the CRC print
 
 ## In the car
 
-- Ignition on, **engine running** (these updates are long and the unit must not lose
-  power).
+- **Parked**, ignition on, **engine running**. The update takes over 20 minutes and reboots
+  the unit several times; never start one while driving, and the unit must not lose power.
 - Insert the stick into the vehicle USB port and let the unit detect the update; follow
   the on-screen prompts.
 - The updater is incremental: an already-current unit will report the boot ROM as done
   and skip the Renesas MCU, and will rewrite the application when its content differs.
 - Do not remove the stick or cut power until it reboots.
+- When the normal UI is back, **remove the stick**. While `SMEG_PLUS_UPG/UpgPlugin.out` is on a
+  mounted stick, the unit offers the update again at every start (read; see
+  [The update flow](UPGRADE_FLOW.md)).
 
 ## What you will see
 
@@ -274,16 +286,49 @@ The version strings do **not** change when re-flashing the same release, so veri
 behaviour. System Information will still read the same `SMEG5.43.A.R2` / `CD 26482` after
 a successful patched flash — see [Version strings](VERSION_STRINGS.md).
 
-With the `aux-autoswitch` patch set:
+What to check depends on the build. After each, capture (step 5 of
+[the test loop](#the-test-loop-end-to-end)):
 
-- The **AUX tile stays selectable with nothing plugged in** — on stock firmware it greys
-  out. This alone confirms `IsAUXSRCAvailable()` is patched.
-- **SRC steps through to AUX** as one of the normal sources. This patch set does not reorder
-  that cycle.
-- **Do not expect this patch set to switch to AUX by itself.** Function-level emulation proved
-  the status-handler edit is inert, and the hardware result agrees. Boot-to-AUX was a separate
-  `USER_DATA` experiment; the unit's SPY dump shows it still read `Last_Source = 1` (FM), not
-  the payload's `7`. See [Hardware verification](VERIFICATION.md).
+- **`aux-autoswitch` / `aux-always-available`:** the **AUX tile stays selectable with nothing
+  plugged in** (on stock it greys out), and **SRC steps through to AUX**. Confirmed on hardware.
+  Do not expect a switch to AUX by itself: the status-handler edit is inert (executed), and the
+  handler follows the AUX *setting*, not the signal.
+- **`aux-boot-restore` (`builds/aux-boot-restore.json`):** with AUX selected, does the unit
+  **boot to AUX** over at least two restarts? Not yet shown on a car.
+- **`aux-signal-switch` (`builds/aux-signal-switch.json`):** on FM, start playback into AUX —
+  does it switch? See [What the car test answers](AUX_SIGNAL.md#what-the-car-test-answers).
+
+## The test loop, end to end
+
+1. **Build.** `uv run tools/build_package.py --manifest builds/<scheme>.json` — it patches,
+   rebuilds the media partition and the checksum cascade, re-seals, and runs preflight.
+2. **Stick.** `uv run tools/prepare_usb.py --package <out>/SMEG_PLUS_UPG --target /Volumes/<stick>`,
+   then `diskutil eject /Volumes/<stick>`.
+3. **Car.** Parked, engine running; accept the update; do not remove the stick until the normal
+   UI is back. Then remove it — it re-offers the update while present.
+4. **Observe** the behaviour under test, over at least two restarts.
+5. **Capture.** Dial `SPYTAKE`: the unit collects every trace buffer, then reboots. Then, with a
+   stick in, dial `SPYSTORE`, which copies `SPY/<stamp>/` to it. If the package is still on
+   that stick, decline the update offer.
+6. **Read.**
+
+    ```sh
+    mkdir cap && tar -xzf /Volumes/<stick>/SPY/<stamp>/TAR/*-USER.tar.gz -C cap
+    less cap/RAMDISK_SPY/25300/*.bin   # C_MGR_SRC: requests, Last_Source, the restore table
+    less cap/RAMDISK_SPY/06301/*.bin   # the media app: AUX activation, PrOnly
+    less cap/RAMDISK_SPY/15400/*.bin   # the audio module (the id is inferred)
+    ```
+
+    The buffers are plain text, one `<ms since boot>::<event>` per line. `traces.bin` beside
+    the archive is only the VxWorks exception log. If no restore matched at boot, FM wins on
+    the 7.5 s init timer: in `25300` that shows as a tuner acknowledgement about 7500 ms after
+    `Last_Source` is read. See [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+
+!!! danger "A capture is personal data"
+
+    A spy capture and a settings dump hold the car's **VIN**, paired phones and other personal
+    settings. Keep them on your own machine: never commit one, and never attach one to a
+    public issue.
 
 ## Rollback
 
@@ -293,14 +338,17 @@ application content differs from the patched one, so it will be rewritten.
 If something has already gone wrong, see [Recovery](RECOVERY.md) — including what is *not*
 documented, which is worth reading before you need it.
 
-To produce that baseline with a single command, rather than a manual rebuild:
+For a plain rollback, flash the **untouched original** package. `--stock` is a canary for the
+packaging path, not a substitute for the original:
 
 ```sh
-python3 tools/patch_smeg.py --src ORIGINAL_PKG --out out/SMEG_PLUS_UPG \
-    --patches patches/aux-autoswitch.json --stock
+uv run tools/patch_smeg.py     --src ORIGINAL_PKG --out out/SMEG_PLUS_UPG --copy-package --stock
+uv run tools/patch_contract.py --package out/SMEG_PLUS_UPG
 ```
 
-`--stock` applies **no patches** but does everything else — re-packs, re-seals the cascade and
-verifies it end to end. Apart from re-compression the result is the package you started from,
-which makes it both a restore artifact and a **canary for the packaging path**: if a re-sealed
-stock package is refused by the unit, the fault is in the sealing rather than in any patch.
+`--stock` applies **no patches** but does everything else — re-packs, rebuilds the checksum
+cascade and verifies it end to end — and `patch_contract.py` then re-seals it, which a
+re-compressed image needs (its size changes). If a re-sealed stock package is refused by the
+unit, the fault is in the packaging or sealing rather than in any patch. *(These two commands
+were run on the stock NAV package: the contract re-sealed and decrypted cleanly, and preflight
+reported no problems.)*

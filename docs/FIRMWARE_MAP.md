@@ -97,11 +97,10 @@ How closely each part has been examined, using the evidence tiers from
 
 | area | depth | where |
 |---|---|---|
-| `C_MGR_SRC` boot restore: `StartUp`, `AddRequest`, `SetScheduledInit`, `SchedulerInitTimeout`, `ExecuteAllocation` | read. `AddRequest` executed under emulation. The boot-to-FM outcome was observed on the car. | [The AUX chain](AUX_CHAIN.md) |
-| `C_MODULE_AUDIO::IsAUXSRCAvailable` and the AUX gates | read. The patched gate was confirmed on hardware. | [The AUX chain](AUX_CHAIN.md), [Patches](PATCHES.md) |
-| `C_HMI_MEDIA_APP_BASE::InitApp` and `HandleAudioAuxInputStatusChnged` (`ActivateSource` call sites) | read | [The AUX chain](AUX_CHAIN.md) |
+| `C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable` and the handler's gates | read; the gates executed under emulation; the `IsAUXSRCAvailable` edit confirmed on hardware | [The AUX chain](AUX_CHAIN.md), [Patches](PATCHES.md) |
+| `C_HMI_MEDIA_APP_BASE::InitApp` and `HandleAudioAuxInputStatusChnged` (`ActivateSource` call sites) | read; `HandleAudioAuxInputStatusChnged` also **executed** under emulation (gates 1–4, and the `aux-signal-switch` runs) | [The AUX chain](AUX_CHAIN.md), [Emulation](EMULATION.md), [AUX signal path](AUX_SIGNAL.md#emulation-results) |
 | the upgrade container, manifests and `contract.dat` format | read, and executed on the car (packages flash) | [Boot & update chain](FLASH_CHAIN.md), [Media protection](MEDIA_PROTECTION.md) |
-| `C_MGR_SRC`, the source scheduler: all 71 functions | read, every function; `AddRequest` also executed under emulation | [The source scheduler](SCHEDULER.md) |
+| `C_MGR_SRC`, the source scheduler: all 71 functions | read, every function; `AddRequest` also executed under emulation; the boot-to-FM outcome observed on the car | [The source scheduler](SCHEDULER.md), [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen) |
 | `C_MODULE_AUDIO`, the audio module: 273 functions | 25 read closely (the AUX path, lifecycle, event dispatch, mute); 248 inferred from names, strings and a decompile digest | [The audio module](AUDIO_MODULE.md) |
 | `C_HMI_SrcMgntBase` and every `ActivateSource(bool)` call site (17) | read | [How HMI apps request sources](HMI_SOURCES.md) |
 | the update flow: `C_BCM_UPGRADE` (353), `C_HMI_UPGRADE` (293), `C_HMI_UPG` (195) | about 30 functions read closely: plugin loading, the contract check, mount/probe, skin rewrite, result mapping; `HandlePrivateMessage` skimmed per case; the rest inferred from names. The contract layout was also executed (decrypted). Everything after `upgplugin_LaunchUpgrade` is outside the image. | [The update flow](UPGRADE_FLOW.md) |
