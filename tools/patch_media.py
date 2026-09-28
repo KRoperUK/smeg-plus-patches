@@ -60,7 +60,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from smeglib import crc32, swap_crc  # noqa: E402
+from smeglib import crc32, refresh_trailer, swap_crc  # noqa: E402
 
 SYSTEM_PREFIX = "/SYSTEM/"
 RECORD_SIZE = 264  # system_ctrl.bin record stride
@@ -312,9 +312,8 @@ def cmd_apply(args):
     new_data.update(changes)
     new_tar = part.build_tar(new_data)
     new_bin = gzip.compress(new_tar, args.level)
-    new_ctrl = patch_system_ctrl(
-        Path(os.path.join(part.dir, "system_ctrl.bin")).read_bytes(), changes, part.data
-    )
+    old_sys_ctrl = Path(os.path.join(part.dir, "system_ctrl.bin")).read_bytes()
+    new_ctrl = refresh_trailer(old_sys_ctrl, patch_system_ctrl(old_sys_ctrl, changes, part.data))
     old_inf_bytes = Path(os.path.join(part.dir, "system.bin.inf")).read_bytes()
     old_fields = read_size_fields(old_inf_bytes)
     new_fields = adjusted_size_fields(part.data, new_data, old_fields)
@@ -334,7 +333,9 @@ def cmd_apply(args):
     mod_ctrl = swap_crc(old_mod, old_bin_crc, crc32(new_bin), "%s/system.bin" % args.module)
     mod_ctrl = swap_crc(mod_ctrl, old_inf_crc, crc32(new_inf), "%s/system.bin.inf" % args.module)
     mod_ctrl = swap_crc(mod_ctrl, old_ctrl_crc, crc32(new_ctrl), "%s/system_ctrl.bin" % args.module)
+    mod_ctrl = refresh_trailer(old_mod, mod_ctrl)
     root_ctrl = swap_crc(old_root, crc32(old_mod), crc32(mod_ctrl), "%s_ctrl.bin" % args.module)
+    root_ctrl = refresh_trailer(old_root, root_ctrl)
 
     out = args.out
     writes = {

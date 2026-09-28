@@ -45,6 +45,29 @@ def swap_crc(buf, old, new, what, where="the control file"):
     return buf.replace(pat, struct.pack(">I", new))
 
 
+def has_trailer(buf):
+    """Whether a `ctrl` file ends in a CRC32 of everything before it.
+
+    Every stock `ctrl.bin`, `<MODULE>_ctrl.bin` and `system_ctrl.bin` does. The synthetic
+    packages the tests build do not, so this is checked rather than assumed.
+    """
+    return len(buf) >= 8 and crc32(buf[:-4]) == struct.unpack(">I", bytes(buf[-4:]))[0]
+
+
+def refresh_trailer(old, new):
+    """Recompute `new`'s trailing CRC32 when `old` carried a valid one.
+
+    `swap_crc` rewrites the records but not the trailer, so without this every patched
+    `ctrl` file ends in the stock file's CRC. Units have accepted packages like that, which
+    suggests the trailer is not checked, but that is inferred; a stock-shaped file is not.
+    Call it on the finished file, before taking its CRC for the manifest above it.
+    """
+    if not has_trailer(old):
+        return bytes(new)
+    body = bytes(new[:-4])
+    return body + struct.pack(">I", crc32(body))
+
+
 def read_inf_field(text, field="CRC32"):
     """Read one numeric field out of an `.inf`, or None when it is absent."""
     m = re.search((field + r": (-?\d+)").encode(), text)
