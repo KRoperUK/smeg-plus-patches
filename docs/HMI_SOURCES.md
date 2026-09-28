@@ -1,17 +1,13 @@
 # How HMI apps request sources
 
-How the HMI side asks [the scheduler](SCHEDULER.md) for audio, and every place that asks for
-AUX. Everything below comes from the stock NAV `SMEG5.43.A.R2` image, with addresses at base
-`0x01000000`. The method was a capstone disassembly of each site, with call targets resolved
-through `lis`/`addi` pairs, plus the `tools/survey.py` inventory ([Firmware map](FIRMWARE_MAP.md)). Ghidra was not used; its MCP tools
-were not reachable from this session.
+How the HMI side asks [the scheduler](SCHEDULER.md) for audio, and every place that asks for AUX.
+Everything below comes from the stock NAV `SMEG5.43.A.R2` image, with addresses at base
+`0x01000000`: a capstone disassembly of each site, with call targets resolved through
+`lis`/`addi` pairs, plus the `tools/survey.py` inventory ([Firmware map](FIRMWARE_MAP.md)).
 
-Evidence tiers:
-- **read**: disassembled and followed by hand;
-- **inferred**: reasoned from something read, with the basis given;
-- **not known**: not established.
-
-Nothing here was executed.
+Evidence tiers: **read** (disassembled and followed by hand), **inferred** (reasoned from
+something read, with the basis given), **not known**. Nothing on this page was executed, except
+where a car capture is cited.
 
 ## Overview
 
@@ -35,7 +31,9 @@ Every HMI audio source (USB, iPod, BT streaming, CDC, AUX, jukebox, tuner, video
    - In state 7 (SUSPENDED), it calls `ActivateSourceByID(this+0x14)`, which carries **no**
      `PrOnly` at all.
    - In any other state, it only logs "m_source_state is not IDLE".
-   - So the `bool` reaches `C_MGR_SRC` only on an IDLE→REQUESTED transition.
+   - So the `bool` reaches `C_MGR_SRC` only on an IDLE→REQUESTED transition, and a SUSPENDED
+     source that is reactivated takes the ID path. How `C_MGR_SRC` treats an ID-only activation
+     is **not known**.
 3. **`HandleSrcMgrEnd` (`0x0273a400`) re-requests with the stored template.** *(read)*
    - When the source manager ends a source whose `this+0x60` is clear, it calls
      `AllocateSource` again with `this+0x10` as it stands, with no argument override.
@@ -54,8 +52,8 @@ Every HMI audio source (USB, iPod, BT streaming, CDC, AUX, jukebox, tuner, video
 
 The table covers all 17 sites that build the address `0x0273a248`, found by a `lis`/`addi` scan of
 the whole image. There are no `bl` callers. The one data pointer to it is the
-`C_HMI_SrcMgntBase`/`SrcAudio` vtable. Calls made through that vtable slot would not appear here:
-**not known** whether any exist.
+`C_HMI_SrcMgntBase`/`SrcAudio` vtable; calls made through that vtable slot would not appear here,
+and whether any exist is **not known**.
 
 | call site (`bctrl` target load) | `li r4` at | containing function | source | `PrOnly` passed | tier |
 |---|---|---|---|---|---|
@@ -64,10 +62,10 @@ the whole image. There are no `bl` callers. The one data pointer to it is the
 | `0x022c01b0` | `0x022c01a8` | `InitApp` | iPod (`+0xe34`) | 0 | read |
 | `0x022c0358` | `0x022c0350` | `InitApp` | BT streaming (`+0xe30`) | 0 | read |
 | `0x022c0504` | `0x022c04fc` | `InitApp` | CDC (`+0xe38`) | 0 | read |
-| `0x022c0680` | **`0x022c0678`** | `InitApp` | **AUX** (`+0xe3c`, `user_HMI.AUX.*` labels) | **1** (patch edit 1 → 0) | read |
+| `0x022c0680` | **`0x022c0678`** | `InitApp` | **AUX** (`+0xe3c`, `user_HMI.AUX.*` labels) | **1**; `aux-boot-restore` makes it 0 | read |
 | `0x022c0828` | `0x022c0820` | `InitApp` | JKB (`+0xe40`) | 0 | read |
-| `0x0230347c` | **`0x02303474`** | `HandleAudioAuxInputStatusChnged` | **AUX** (`GetMediaDevice(5)`) | **1** (patch edit 2 → 0) | read |
-| `0x02306a20` | computed: `mr r4,r0` at `0x02306a18`, from the byte at `0x14(r31)` | `HandleMediaStateReady(type, bool)` | the device of `type`, **including AUX if `type` = 5** | 1 for types 0–4 in some branches. For type ≥ 5 it is the caller's `bool` (`HandleDBUSMessage`'s own `bool` parameter) | read (plumbing); **not known** whether type 5 ever arrives |
+| `0x0230347c` | **`0x02303474`** | `HandleAudioAuxInputStatusChnged` | **AUX** (`GetMediaDevice(5)`) | **1**; `aux-boot-restore` makes it 0 | read |
+| `0x02306a20` | computed: `mr r4,r0` at `0x02306a18`, from the byte at `0x14(r31)` | `HandleMediaStateReady(type, bool)` | the device of `type`, **including AUX if `type` = 5** | 1 for types 0–4 in some branches; for type ≥ 5 it is the caller's `bool` (`HandleDBUSMessage`'s own `bool` parameter) | read (plumbing); **not known** whether type 5 ever arrives |
 | `0x0230b6ac` | `0x0230b6a4` | `C_HMI_MEDIA_APP_BASE::HandleSystemMessage`, private message (`0xcc`=6, `0xd0`=`0xbba`) | `GetActiveMediaDevice`: whichever is active, **AUX included** | **1** (after `ReleaseSource`) | read |
 | `0x0232b274` | `0x0232b26c` | `C_HMI_MEDIA_POPUP_ERR_DETECT::Close` | `GetActiveMediaDevice`: **AUX included** | **1** (after `ReleaseSource`) | read |
 | `0x023c767c` | `0x023c7674` | `C_HMI_TUNER_APP_BASE::InitApp` | tuner (`+0xe10`) | 0 | read |
@@ -90,47 +88,47 @@ Two related paths bypass `ActivateSource(bool)`, so they carry no `PrOnly` argum
 
   None of these is AUX. *(read: caller names only; their requests were not decoded)*
 
-### Is any AUX activation path left uncovered by `aux-boot-restore`?
+## Which AUX activations `aux-boot-restore` covers
 
 1. **Boot.** Only the `InitApp` site sends AUX's first request. It is the only IDLE→REQUESTED
-   transition at boot, because `Open` sets IDLE at `0x0273aa98` immediately before it. Edit 1
-   (`0x022c0678`) covers it. *(read)*
-   - If the handler then fires while AUX is REQUESTED, its `ActivateSource` only logs "not IDLE",
-     so the handler cannot re-send at boot. *(read)*
-   - That agrees with car test 1, where the handler-only patch changed nothing.
+   transition at boot, because `Open` sets IDLE at `0x0273aa98` immediately before it. The edit
+   at `0x022c0678` covers it. *(read)* If the handler then fires while AUX is REQUESTED, its
+   `ActivateSource` only logs "not IDLE", so the handler cannot re-send at boot. *(read)* On the
+   car, the handler edit alone left the boot request with `PrOnly` true, and adding the `InitApp`
+   edit made it false and booted to AUX *(executed;
+   [evidence](AUX_CHAIN.md#evidence-from-the-car))*.
 2. **AUX input setting switched off and on again.** When the setting goes to zero, the handler
    always calls `ReleaseSource` (states 3–6 first make an extra virtual call through `+0xe28`),
    and `ReleaseSource` returns the state to IDLE. *(read, `0x02303534`, `0x0273a008`)* When it
-   goes non-zero again, `ActivateSource(true)` therefore goes IDLE→REQUESTED, and edit 2
-   (`0x02303474`) covers it. *(read)* With `aux-signal-switch`, the same path follows the
-   signal instead.
-3. **Uncovered, `PrOnly` still 1:**
-   - `HandleSystemMessage` at `0x0230b6a4`, and `POPUP_ERR_DETECT::Close` at `0x0232b26c`.
-     Both re-activate *the active media device* after releasing it, so they reach AUX only when
-     AUX is already the active source. They cannot decide the boot source, because they run on a
-     private message or on closing an error popup. For auto-switch they are a re-activation of
-     what is already playing. *(inferred from the guards read above)*
-   - `HandleMediaStateReady(5, true)`. This is the one path that could send an AUX request with
-     `PrOnly` 1 that the patch does not touch. *Read*, and re-checked in the disassembly: the
-     argument is loaded by `mr r4,r0` at `0x02306a18` from a local byte at `0x14(r31)`, which is
-     set to 1 when the byte at `0x1a0(r31)` is set, so it is computed rather than a literal.
-     It needs the media server to send a StateReady DBUS message for device type 5 with that
-     `bool` set. **Not known** whether that ever happens. Neither the 2026-09-14 nor the
-     2026-09-28 spy request list has been checked for an AUX request with a caller other than
-     `InitApp`, so check the next car dump for it.
+   goes non-zero again, `ActivateSource(true)` goes IDLE→REQUESTED, and the edit at `0x02303474`
+   covers it. *(read)* With `aux-signal-switch`, the same path follows the signal instead.
+3. **Not covered, `PrOnly` still 1:**
+   - `HandleSystemMessage` at `0x0230b6a4` and `POPUP_ERR_DETECT::Close` at `0x0232b26c`. Both
+     re-activate *the active media device* after releasing it, so they reach AUX only when AUX is
+     already the active source. They run on a private message or on closing an error popup, so
+     they cannot decide the boot source. *(inferred from the guards read above)*
+   - `HandleMediaStateReady(5, true)`, the one path that could send an AUX request with `PrOnly`
+     1 outside the patched sites. The argument is loaded by `mr r4,r0` at `0x02306a18` from a
+     local byte at `0x14(r31)`, set to 1 when the byte at `0x1a0(r31)` is set *(read)*. It needs
+     the media server to send a StateReady DBUS message for device type 5 with that `bool` set;
+     whether that ever happens is **not known**. The boot-to-AUX capture of 2026-09-28 shows a
+     single AUX request, with `PrOnly` false *(executed)*.
 
-     !!! note "A candidate fourth edit, not shipped"
-
-         If a car trace shows an AUX request with `PrOnly` true arriving from this path, the
-         matching edit would be `0x02306a18` `mr r4,r0` (`7c 04 03 78`) → `li r4,0`
-         (`38 80 00 00`). It is **not** in `patches/aux-boot-restore.json`: nothing yet shows
-         the path runs for AUX, and it also carries other device types' activations.
+     If a capture ever showed an AUX request with `PrOnly` true from this path, the matching edit
+     would be `0x02306a18` `mr r4,r0` (`7c 04 03 78`) → `li r4,0` (`38 80 00 00`). It is not in
+     `patches/aux-boot-restore.json`: it also carries other device types' activations, and boot
+     to AUX works without it.
 4. **Re-requests after a source end** use the template's `PrOnly` 0. *(read)* No edit is needed.
+
+**BT (`0x1e600`) re-requests with `PrOnly` true** about 15.3 s into boot in both 2026-09-28
+captures (15 266 ms and 15 522 ms, executed). That
+cannot come from `InitApp`, which passes 0 for BT streaming; the remaining candidates are
+`HandleMediaStateReady` with `bool` true, or the "active device" re-activations at `0x0230b6a4`
+and `0x0232b26c`. *(inferred; not checked against the trace)*
 
 ## `C_HMI_SrcMgntBase`: every function
 
-The addresses are the symbol starts. The reference counts come from the survey: `mat` is
-materialised references, `ptr` is data pointers.
+The addresses are the symbol starts.
 
 | address | function | what it does | tier |
 |---|---|---|---|
@@ -155,30 +153,3 @@ materialised references, `ptr` is data pointers.
 | `0x0273a98c` | `Open(labels)` | state → 1, `LoadProfile(labels)`, `Cmd_create_audio_context` | read |
 | `0x0273aa70` | `Open()` | state → 1, `Cmd_create_audio_context` (used by video) | read |
 | `0x0273ab08`, `0x0273ab9c`, `0x0273ac30` | destructors | not followed | not known |
-
-## Consistency with `docs/AUX_CHAIN.md`
-
-- **Consistent:**
-  - `PrOnly` at `this+0x38`, set only for the one `AllocateSource` call and then restored;
-  - AUX's boot request comes from `InitApp` with `li r4,1`;
-  - the video app passes `true` from `HandleMediaStateReady` and `HandleVideoTrackFound`;
-  - the 2026-09-14 dump showing AUX as the only `PrOnly`-true request matches `InitApp`, where
-    AUX is the only source given 1.
-- **Refinement, not in `AUX_CHAIN`:**
-  - the video app's own `InitApp` passes 0;
-  - `ActivateSource` does nothing unless the source is IDLE or SUSPENDED;
-  - SUSPENDED goes through `ActivateSourceByID`, which carries no `PrOnly` argument.
-
-  An AUX source that was never released (state 7) and is reactivated takes the ID path, not the
-  `AllocateSource` path. *(read)* How `C_MGR_SRC` handles that is **not known** from this pass.
-- **Possible explanation for BT (`0x1e600`) re-requesting with `PrOnly` true at 15 266 ms:** it
-  cannot come from `InitApp`, which passes 0 for BT streaming. The remaining candidates are
-  `HandleMediaStateReady` with `bool` true, or the "active device" re-activations at
-  `0x0230b6a4` and `0x0232b26c`. *(inferred; not checked against the trace)*
-
-## A survey artefact this reading exposed
-
-While this page was written, `tools/survey.py` attributed bogus strings to some functions
-(for example "SendGroupMessage: SendMessage returned Error" on the `C_HMI_SrcMgntBase`
-constructor). Its register tracking kept a `lis` value after the register was overwritten.
-That was fixed in #153; the counts on [Firmware map](FIRMWARE_MAP.md) are from the fixed scan.
