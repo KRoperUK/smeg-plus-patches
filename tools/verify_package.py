@@ -40,6 +40,7 @@ sys.path.insert(0, HERE)
 import struct  # noqa: E402
 
 from appimage import crc32_file  # noqa: E402
+from smeglib import stale_trailers  # noqa: E402
 
 # `smeg.inf` carries BSP_CRC32 and BIGQUICK_CRC32, which are different things entirely, so
 # the sidecar match has to be a bare CRC32 field and not a suffix of another key
@@ -180,6 +181,12 @@ def audit(root):
     return problems
 
 
+STALE_TRAILER = (
+    "trailing CRC32 does not match the file (built before #159?). Units have accepted this, "
+    "but rebuilding on current main makes it match stock"
+)
+
+
 def summary(root):
     """The facts worth printing even when nothing is wrong."""
     mods = modules(root)
@@ -208,9 +215,12 @@ def main(argv=None):
 
     problems = audit(root)
     info = summary(root)
+    warnings = [
+        {"kind": "trailer", "where": rel, "detail": STALE_TRAILER} for rel in stale_trailers(root)
+    ]
 
     if args.json:
-        print(json.dumps({"summary": info, "problems": problems}, indent=2))
+        print(json.dumps({"summary": info, "problems": problems, "warnings": warnings}, indent=2))
         return 1 if problems else 0
 
     print("package : %s" % root)
@@ -227,6 +237,9 @@ def main(argv=None):
     for p in problems:
         print("  FAIL  %-10s %s" % (p["kind"], p["where"]))
         print("        %s" % p["detail"])
+    for w in warnings:
+        print("  WARN  %-10s %s" % (w["kind"], w["where"]))
+        print("        %s" % w["detail"])
 
     if problems:
         print("\n%d problem(s) - do not flash this package" % len(problems))

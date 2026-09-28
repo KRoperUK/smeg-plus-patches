@@ -166,3 +166,47 @@ def test_non_application_modules_are_not_failures(tmp_path):
     helpers.build_package(str(p), variant="NAV")
     assert (p / "BSP").is_dir() and not (p / "BSP" / "AppBin").exists()
     assert verify_package.audit(str(p)) == []
+
+
+# ------------------------------------------------------ ctrl trailers (#181)
+
+
+def stock_shaped_ctrl(valid=True):
+    """A one-record ctrl file laid out as stock is: header, u32 count, record, trailer."""
+    import struct
+    import zlib
+
+    body = b"19/09/2017  2.1.0.0".ljust(0x2C, b"\0") + struct.pack(">I", 1)
+    body += b"/NAV/x.bin".ljust(256, b"\0") + struct.pack(">II", 2, 0x12345678)
+    trailer = zlib.crc32(body) & 0xFFFFFFFF
+    return body + struct.pack(">I", trailer if valid else trailer ^ 1)
+
+
+def test_a_stale_ctrl_trailer_is_a_warning_not_a_failure(pkg):
+    p, _ = pkg
+    (p / "NAV" / "extra_ctrl.bin").write_bytes(stock_shaped_ctrl(valid=False))
+    r = run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p))
+    assert r.returncode == 0, "units have accepted stale trailers; this must not block"
+    assert "WARN  trailer" in r.stdout and "NAV/extra_ctrl.bin" in r.stdout
+    j = json.loads(
+        run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p), "--json").stdout
+    )
+    assert [w["where"] for w in j["warnings"]] == [os.path.join("NAV", "extra_ctrl.bin")]
+
+
+def test_a_valid_trailer_and_a_file_without_one_are_both_quiet(pkg):
+    """The synthetic manifests are not stock-shaped; only a stock-shaped file is judged."""
+    p, _ = pkg
+    (p / "NAV" / "extra_ctrl.bin").write_bytes(stock_shaped_ctrl(valid=True))
+    r = run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p))
+    assert r.returncode == 0 and "WARN" not in r.stdout
+
+
+def test_preflight_reports_a_stale_trailer_as_a_warning(pkg):
+    import preflight
+
+    p, _ = pkg
+    (p / "ctrl_extra_ctrl.bin").write_bytes(stock_shaped_ctrl(valid=False))
+    rep = preflight.Report()
+    preflight.check_trailers(rep, str(p))
+    assert rep.warnings == 1 and rep.problems == 0

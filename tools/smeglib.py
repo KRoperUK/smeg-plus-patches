@@ -9,6 +9,7 @@ Stdlib only, deliberately: `patch_smeg` runs with no dependencies, and this is t
 code that must not drag one in.
 """
 
+import os
 import re
 import struct
 import zlib
@@ -66,6 +67,42 @@ def refresh_trailer(old, new):
         return bytes(new)
     body = bytes(new[:-4])
     return body + struct.pack(">I", crc32(body))
+
+
+CTRL_HEADER = 0x30  # date/version string to 0x2c, then the u32 record count
+CTRL_RECORD = 264  # path[256], CheckType u32, value u32
+
+
+def has_ctrl_layout(buf):
+    """Whether `buf` is sized exactly as a stock `ctrl` file: header, records, trailer.
+
+    All 16 `*ctrl.bin` files in the stock 5.43.A.R2 package match this (docs/FLASH_CHAIN.md).
+    The synthetic test packages do not, which is how a check can tell a file that should
+    carry a trailer from one that never had one.
+    """
+    if len(buf) < CTRL_HEADER + 4:
+        return False
+    count = struct.unpack(">I", bytes(buf[0x2C:0x30]))[0]
+    return len(buf) == CTRL_HEADER + count * CTRL_RECORD + 4
+
+
+def stale_trailers(root):
+    """Package-relative paths of stock-layout `ctrl` files whose trailing CRC32 is wrong.
+
+    Packages built before #159 carry three of these. Units have accepted them, which suggests
+    the trailer is not checked (inferred), so callers report this as a warning.
+    """
+    stale = []
+    for dirpath, _, names in os.walk(root):
+        for name in sorted(names):
+            if not name.endswith("ctrl.bin"):
+                continue
+            path = os.path.join(dirpath, name)
+            with open(path, "rb") as fh:
+                buf = fh.read()
+            if has_ctrl_layout(buf) and not has_trailer(buf):
+                stale.append(os.path.relpath(path, root))
+    return sorted(stale)
 
 
 def read_inf_field(text, field="CRC32"):
