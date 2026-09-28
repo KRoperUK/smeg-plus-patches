@@ -204,6 +204,10 @@ with the tooling and propagate through the cascade (the tool does this automatic
 
 ```json
 {
+  "name": "my-patch",
+  "description": "what it does, why, and what has been verified",
+  "summary": "one line of Markdown for the status table",
+  "status": {"state": "never-flashed", "label": "Never flashed", "note": "decoded only"},
   "variants": {
     "NAV": {
       "app_image": "NAV/AppBin/f_BigQuick.bin",
@@ -227,6 +231,10 @@ with the tooling and propagate through the cascade (the tool does this automatic
 
 `expect` is checked before writing, so a mismatched firmware build fails loudly instead of
 being corrupted.
+
+`status.state` is one of `confirmed`, `flashed`, `never-flashed`, `falsified` or `diagnostic`.
+After adding a set, or when a car test changes its status, run `python3 tools/patch_status.py`
+to regenerate the table above and the landing-page panel; a test fails while they are stale.
 
 ### `disasm` — pin the instructions, not just the bytes
 
@@ -273,19 +281,24 @@ invisible to them. That is the gap this closes.
 
 ## Patch sets in this repository
 
+The status column is generated from each file's `status` field by `tools/patch_status.py`;
+edit the JSON, not this table.
+
+<!-- patch-status:table -->
 | file | what it changes | status |
 |---|---|---|
-| `patches/aux-autoswitch.json` | `IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out | **Flashed**{ .pill .pill-ok } the combined build — accepted by the contract check; first edit confirmed on hardware |
 | `patches/aux-always-available.json` | `IsAUXSRCAvailable()` true only — AUX stops greying out | **Confirmed**{ .pill .pill-ok } behavioural; no switching |
-| `patches/aux-sticky.json` | removes the bail-out **and** turns "AUX setting switched off" into a no-op (previously described as "signal absent") | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
+| `patches/aux-autoswitch.json` | `IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out | **Flashed**{ .pill .pill-ok } the combined build — accepted by the contract check; first edit confirmed on hardware |
 | `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Falsified on hardware**{ .pill .pill-no } applies correctly, unit still boots to FM (2026-09-27, NAV) |
-| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Two-edit version falsified**{ .pill .pill-no } still FM on 2026-09-28; the three-edit version is not yet flashed |
+| `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Candidate, not yet flashed**{ .pill .pill-wip } the three-edit version; the two-edit version was falsified on 2026-09-28 (still FM) |
 | `patches/aux-signal-switch.json` | the AUX handler reads the **signal** instead of the setting, and the media dispatch sends the signal event (`0xcc`) to it; pair with `aux-boot-restore` and `aux-sticky` | **Never flashed**{ .pill .pill-wip } both functions verified under emulation |
-| `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
+| `patches/aux-sticky.json` | removes the bail-out **and** turns "AUX setting switched off" into a no-op (previously described as "signal absent") | **Never flashed**{ .pill .pill-wip } control flow verified under emulation |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
-| `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
-| `patches/spy-dump-userdata-partition.json` | `SPYSTORE` copies the whole `USER_DATA` partition root instead of the calibration and regen files; supersedes `spy-dump-userdata` | **Flashed**{ .pill .pill-wip } in the 2026-09-27 and 2026-09-28 car builds; whether the copy lands on the stick is not yet checked |
+| `patches/diagnostic-logmask.json` | forces the global trace mask — **necessary but not sufficient**, see below | **Not for driving**{ .pill .pill-no } diagnostic build |
 | `patches/diagnostic-logsink.json` | points the stubbed `Log_msg` sink at VxWorks `logMsg`; where its output surfaces is issue #94 | **Not for driving**{ .pill .pill-no } diagnostic build; never flashed |
+| `patches/spy-dump-userdata-partition.json` | `SPYSTORE` copies the whole `USER_DATA` partition root instead of the calibration and regen files; supersedes `spy-dump-userdata` | **Flashed**{ .pill .pill-wip } in the 2026-09-27 and 2026-09-28 car builds; whether the copy lands on the stick is not yet checked |
+| `patches/spy-dump-userdata.json` | makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick | **Confirmed**{ .pill .pill-ok } on hardware (2026-09-14, NAV) |
+<!-- /patch-status:table -->
 
 !!! note "Hardware status"
 

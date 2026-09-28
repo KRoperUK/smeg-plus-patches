@@ -1,6 +1,12 @@
 {
   "name": "spy-dump-userdata-partition",
   "description": "Make the on-unit SPYSTORE collect back up the WHOLE /USER_DATA partition instead of only the /USER_DATA/user_data subtree that spy-dump-userdata captures. The partition holds the settings tree (/user_data) plus its siblings - /address_book, /internet_user, /welcome_screen, /picture_cache, /catalog, /TurboBoot - which are separate directories on the SAME C_FS_STORAGE_DEVICE_USER_DATA device, so the existing patch misses them. Confirmed by the path-fragment table at 0x02f08418: each C_FS_STORAGE_CTRL_PATH::Get*Dir getter is just SetDevice(<device>) + SetPartition(n) + AddName(\"<fragment>\"), so device+partition with NO AddName is that device's root. This patch rebuilds the source entity that way (fresh ctor, SetDevice(USER_DATA), SetPartition(4)) and copies it, so ONE Xcopy captures every sibling. SUPERSEDES spy-dump-userdata: it overwrites the same 0x01273a1c block with a wider one and subsumes its /user_data result. Do not apply both - the expect check will refuse it. Trade-off: this consumes TWO adjacent copy blocks (the calibration *.log copy AND the *regen* block that spy-dump-userdata already repurposed), so the spy dump also loses the calibration *.log files. Structural cost of no usable code cave in .text - verified: every >=32-byte run of nops/zeros in the image is .rodata (sqlite3/utf8proc tables), and text ends at 0x02def4c0. NAV only: the addresses are per build and this has not been derived for AUDIO_BT / AUDIO_BT_256.",
+  "summary": "`SPYSTORE` copies the whole `USER_DATA` partition root instead of the calibration and regen files; supersedes `spy-dump-userdata`",
+  "status": {
+    "state": "flashed",
+    "label": "Flashed",
+    "note": "in the 2026-09-27 and 2026-09-28 car builds; whether the copy lands on the stick is not yet checked"
+  },
   "variants": {
     "NAV": {
       "app_image": "NAV/AppBin/f_BigQuick.bin",

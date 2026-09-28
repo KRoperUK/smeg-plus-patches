@@ -1,6 +1,12 @@
 {
   "name": "aux-sticky",
   "description": "Auto-switch variant that also stops the unit releasing AUX when the AUX input setting goes to zero, so once AUX has been activated it stays selected until the user changes source. CORRECTED: this was written as if the handler tracked the AUX signal; it tracks the saved AUX input setting (Auxiliary_Status), so it does not address intermittent CarPlay audio (see docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to). TWO EDITS, AND ONLY THE SECOND DOES ANYTHING: the +0x10c edit removes the GetMediaDevice bail-out, which is inert - that branch is never taken, because the AUX media device is registered unconditionally (see docs/AUX_CHAIN.md). It is kept so this set stays a superset of aux-autoswitch. The +0x118 edit is the real one. NOT VALIDATED ON HARDWARE, but the control flow is verified under emulation on ALL THREE images - activates when the setting query turns non-zero, does not release when it returns to zero. The bug this set shipped with, an unconditional branch in place of the conditional one, broke activation on all three identically.",
+  "summary": "removes the bail-out **and** turns \"AUX setting switched off\" into a no-op (previously described as \"signal absent\")",
+  "status": {
+    "state": "never-flashed",
+    "label": "Never flashed",
+    "note": "control flow verified under emulation"
+  },
   "variants": {
     "AUDIO_BT": {
       "app_image": "AUDIO_BT/AppBin/f_BigQuick.bin",

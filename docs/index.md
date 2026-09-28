@@ -125,6 +125,21 @@ media check passed, the application image was written, and the unit came back up
   `aux-boot-restore` is the current candidate, not yet flashed. See
   [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
 
+### Every patch set, by status
+
+Generated from the `status` field of each `patches/*.json` by `tools/patch_status.py`, so it
+cannot disagree with the patch reference.
+
+<!-- patch-status:panel -->
+- **Confirmed on hardware:** `aux-always-available`, `aux-autoswitch`, `spy-dump-userdata`
+- **Flashed, effect not yet confirmed:** `spy-dump-userdata-partition`
+- **Candidates awaiting a car test:** `aux-boot-restore`, `aux-signal-switch`, `aux-sticky`
+- **Falsified on hardware:** `aux-boot-default`
+- **Diagnostic builds, not for driving:** `diagnostic-logging`, `diagnostic-logmask`, `diagnostic-logsink`
+
+Per-patch detail: [Patch reference](PATCHES.md#patch-sets-in-this-repository).
+<!-- /patch-status:panel -->
+
 See [Hardware verification](VERIFICATION.md) for the full picture, and the
 [repository issues](https://github.com/KRoperUK/smeg-plus-patches/issues) for what is being
 worked on.
