@@ -137,6 +137,7 @@ this ordering — prefer it over running the tools by hand.
 | `fix_userdata_case.py` | verify/fix the FAT long-filename entry a lowercase `sqlite` payload directory needs |
 | `appimage.py`, `symbols.py`, `smeglib.py` | shared leaf modules: the app container, the symbol-map reader (last name wins), the CRC/`.inf` helpers |
 | `survey.py` | inventory of every function in an image: family, size, `bl` callers, materialised (`lis`/`addi`) references, data pointers, strings; output stays local — see `docs/FIRMWARE_MAP.md` |
+| `spy_read.py` | read a SPY capture: boot-source report, AUX lines, any buffer; redacts personal data by default |
 | `check_commit_msg.py`, `check_no_firmware.sh`, `check_no_pii.py` | the three enforcement hooks |
 | `cartography.py` | the map metadata that *is* understood: name pools, `.inf` sidecars, `SCC` records, `CCT.DAT` (decrypt only — see the licensing note in `docs/CARTOGRAPHY.md`) |
 

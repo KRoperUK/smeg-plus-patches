@@ -324,7 +324,23 @@ What to check depends on the build. After each, capture (step 5 of
 5. **Capture.** Dial `SPYTAKE`: the unit collects every trace buffer, then reboots. Then, with a
    stick in, dial `SPYSTORE`, which copies `SPY/<stamp>/` to it. If the package is still on
    that stick, decline the update offer.
-6. **Read.**
+6. **Read.** `tools/spy_read.py` reads the archive in memory and redacts the VIN, device
+    addresses and long numbers by default:
+
+    ```sh
+    uv run tools/spy_read.py /Volumes/<stick>/SPY/<stamp>          # how the boot source was chosen
+    uv run tools/spy_read.py /Volumes/<stick>/SPY/<stamp> --aux    # AUX lines from 25300, 06301, 15400
+    uv run tools/spy_read.py /Volumes/<stick>/SPY/<stamp> --list   # every buffer
+    uv run tools/spy_read.py /Volumes/<stick>/SPY/<stamp> --show 25300
+    ```
+
+    The boot report lists each source request with its PrOnly flag, the ScheduledInit table,
+    and which source was acknowledged first. When that is the tuner about 7500 ms after
+    `Last_Source`, it calls it the init timer's fallback, which is inferred from the timing.
+    Redaction is best-effort: it catches VIN-shaped tokens, VIN byte runs, device addresses
+    and phone-length numbers, but not a phone's *name*.
+
+    By hand:
 
     ```sh
     mkdir cap && tar -xzf /Volumes/<stick>/SPY/<stamp>/TAR/*-USER.tar.gz -C cap
