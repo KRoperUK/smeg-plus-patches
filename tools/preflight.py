@@ -163,6 +163,21 @@ def check_structure(rep, pkg):
     return found
 
 
+def check_trailers(rep, pkg):
+    from smeglib import stale_trailers
+
+    stale = stale_trailers(pkg)
+    for rel in stale:
+        rep.add(
+            WARN,
+            "cascade",
+            "%s: stale trailing CRC32 (built before #159?) - accepted by units so far, "
+            "but rebuild on current main to match stock" % rel,
+        )
+    if not stale:
+        rep.add(OK, "cascade", "ctrl trailers match their files")
+
+
 def check_cascade(rep, pkg, module):
     def crc(p):
         return zlib.crc32(Path(p).read_bytes()) & 0xFFFFFFFF
@@ -409,6 +424,7 @@ def main():
     img, media = read_module(pkg, module)
     check_firmware(rep, img)
     check_cascade(rep, pkg, module)
+    check_trailers(rep, pkg)
     patches = check_patches(rep, img, module)
 
     keys = {}

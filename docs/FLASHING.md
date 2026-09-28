@@ -176,6 +176,11 @@ It checks every `*.inf` sidecar against the file beside it, `smeg.inf` against t
 image, each `<MODULE>_ctrl.bin` against its module's files, and `ctrl.bin` against each module
 manifest. Exit is non-zero if anything disagrees; `--json` is there for scripting.
 
+It also **warns** (without failing) about a stock-shaped `*ctrl.bin` whose trailing CRC32 is
+wrong. Packages built before #159 carry three of these. Units have accepted them, which
+suggests the trailer is not checked *(inferred)*, but rebuilding on current `main` makes the
+manifests match stock. `preflight.py` reports the same warning.
+
 It deliberately does **not** parse the manifest layout, although the layout is now known
 ([Boot & update chain](FLASH_CHAIN.md#_ctrlbin-format)). It looks for each CRC as a *value* in
 the manifest instead. That is layout-free, and still catches a manifest that does not describe
