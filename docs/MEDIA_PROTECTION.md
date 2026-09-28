@@ -48,6 +48,11 @@ flowchart TD
     style H fill:#ffe0e0,stroke:#c62828
 ```
 
+The chart is simplified in two ways *(read)*. Before the check, the unit has already loaded
+and called `UpgPlugin.out` from the stick. After `KNOWN_KEY_INSERTED` come three more stages
+before anything is flashed: the plugin's compatibility check, the user's confirmation, and
+the plugin's media check. [The update flow](UPGRADE_FLOW.md) has the whole sequence.
+
 
 ## Where the check lives
 
@@ -81,11 +86,24 @@ CheckTrustedSource()
   fail -> MSG_BCM_UPGRADE_ILLEGAL_MEDIA          # the user sees 2099
 ```
 
-There is also an abort path: if `m_abort_contract_checking` (this+`0x1d3`) is non-zero the
-check is skipped and the media treated as trusted. That flag is only set from
-`C_BCM_UPGRADE::HandlePrivateMessage`, gated on internal phase state
-(`C_CONTEXT_DYNAMIC_DATA::Get(0x4651, …)`), so it is not a usable route — and it would not
-help anyway, because the check runs before anything is copied.
+There is also an abort flag, `m_abort_contract_checking` (this+`0x1d3`). **Setting it makes
+the check reject the media, not trust it.** *(read)* `CheckTrustedSource` clears it on entry,
+and every path taken while it is set ends in `MSG_BCM_UPGRADE_ILLEGAL_MEDIA`. It is set
+unconditionally when the stick is removed, and on a backup-state message. See
+[The update flow](UPGRADE_FLOW.md#what-matters-for-package-safety).
+
+!!! failure "Correction"
+
+    This paragraph used to say the flag skipped the check and the media was treated as
+    trusted, and that it was gated on phase state (`0x4651`). That was a reading of the
+    strings and the call site, not of `CheckTrustedSource`'s control flow. The phase-state
+    gate belongs to `UnLoadUpgradePlugin` in the same `HandlePrivateMessage` case. A
+    decompile of the whole check shows the reverse.
+
+The page gives the NAV address above as `0x0187775c`. The close reading found
+`CheckTrustedSource` at `0x018778b4` in NAV `5.43.A.R2`, so `0x0187775c` is most likely the
+AUDIO_BT address *(inferred)*. Note also that `UpgPlugin.out` from the stick is loaded and
+called **before** this check runs *(read)*; see [The update flow](UPGRADE_FLOW.md).
 
 ## The format
 
@@ -96,21 +114,37 @@ help anyway, because the check runs before anything is copied.
 block 0        header, 152 bytes
                  [0..8]   "19/09/2017"
                  [10..]   manifest version, "1.1.0.0"
-                 [46..49] constant 0x7335cf08
-                 [50..57] magic: deadbeef badef00d
+                 [44..47] u32 BE record count (115) - the only field the unit reads
+                 [48..51] 0x35cf08ae, meaning not known
+                 [52..59] magic: deadbeef badef00d
 
 blocks 1..N    one 212-byte record per checked file
-                 [0..62]   path, NUL padded (e.g. "/SMEG_PLUS_UPG/NAV/smeg.inf")
-                 [63]      CheckType
+                 [0..59]   path, NUL padded (e.g. "/SMEG_PLUS_UPG/NAV/smeg.inf")
+                 [60..63]  CheckType, u32 BE
                  [64..67]  uint32 BE
                  [68..71]  uint32 BE
                  [72..]    payload
 ```
 
+!!! failure "Correction: the header offsets were two bytes out"
+
+    This block used to give "constant `0x7335cf08`" at `[46..49]` and the magic at
+    `[50..57]`. That layout was read off a hex dump by eye, and it straddles the
+    **record count**, a u32 at `[44..47]` that `CheckTrustedSource` reads into
+    `this+0x258` and loops on *(read)*. Decrypting the stock contract with
+    `patch_contract.py`'s own functions gives count 115 at `[44..47]`, then `0x35cf08ae`, then
+    the magic at `[52..59]` *(executed)*. The date, version and magic are never compared.
+    `CheckType` is likewise read as a u32 at `+0x3c`, not a byte at `[63]`. For the values
+    shipped this is the same thing, but it means a path must fit in 60 bytes.
+
+    Re-sealing was never affected. `patch_contract.py` re-encrypts the original header
+    unchanged (`tools/patch_contract.py`, `encrypt_block(header, key)`) and writes one record
+    per original record, so the count stays correct.
+
 ```mermaid
 flowchart LR
-    P["[0..62]<br/>path, NUL padded<br/>'/SMEG_PLUS_UPG/NAV/smeg.inf'"]
-    T["[63]<br/>CheckType"]
+    P["[0..59]<br/>path, NUL padded<br/>'/SMEG_PLUS_UPG/NAV/smeg.inf'"]
+    T["[60..63]<br/>CheckType, u32"]
     A["[64..67]<br/>u32 BE"]
     B["[68..71]<br/>u32 BE"]
     C["[72..211]<br/>payload"]

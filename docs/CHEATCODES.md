@@ -18,41 +18,90 @@ CREATE TABLE cheatcodes (
 );
 ```
 
-| name | displayable | params | CCOD_PATH | purpose |
-|---|---|---|---|---|
-| `SPYSTORE` | no | 0 | NAND | copy spy traces + spy dir out to removable storage |
-| `SPYTAKE` | no | 0 | NAND | audio long-event spy hook |
-| `SPYCLN` | no | 0 | NAND | clean spy buffers |
-| `REBOOT` | no | 0 | NAND | reboot the unit |
-| `HWINFO` | yes | 0 | NAND | hardware info |
-| `SWINFO` | yes | 0 | NAND | software info |
-| `AUDIOINFO` | yes | 0 | NAND | audio diagnostics |
-| `TUNERINFO` | yes | 0 | NAND | tuner diagnostics |
-| `BTINFO` | yes | 0 | NAND | Bluetooth info |
-| `NETINFO` | yes | 1 | NAND | network info |
-| `GPSINFO` | yes | 0 | MICRO_SD | GPS info |
-| `SYSMON` | yes | 0 | NAND | system monitor |
-| `MMIMON` | yes | 0 | NAND | MMI monitor |
-| `GUIDBG` | yes | 0 | NAND | GUI debug |
-| `ZAINFO` | yes | 0 | NAND | zone/area info |
-| `MSDREFRESH` | yes | 1 | NAND | refresh SD contents |
-| `PING` | yes | 1 | NAND | ping |
-| `AFTT` | no | 0 | NAND | AF tracking tool |
-| `ARKBYP` | no | 0 | NAND | Arkamys bypass |
-| `FPS` | no | 0 | NAND | frame rate |
-| `ECSAVE` | no | 1 | NAND | save EC |
-| `CATCLN` | no | 0 | NAND | catalogue clean |
-| `BT` | no | 2 | NAND | Bluetooth command |
-| `BT0DB` | no | 0 | NAND | Bluetooth 0 dB |
-| `BTADC` | no | 2 | NAND | Bluetooth ADC |
-| `BTSTARTER` | no | 1 | NAND | Bluetooth starter |
-| `MIRE` | no | 1 | NAND | MIRE test |
-| `SIMSPEED` | no | 1 | MICRO_SD | simulated speed |
-| `MAPSPEED` | no | 1 | MICRO_SD | map speed |
+!!! danger "Three codes destroy data"
 
-`is_displayable = 0` only means it is not listed on the entry screen — it can still be
-typed. The libraries themselves are in the media partition under `/CCOD/`, named
-`libcheatcode_<NAME>.out` (with `.out.inf` and a `.out.txt.gz` symbol map).
+    - **`CATCLN`** resets the media catalogue and picture databases, deletes the picture cache,
+      and renames the **jukebox directory** to the firmware's "to remove" directory *(read)*.
+      Music copied onto the unit's jukebox is very likely lost *(inferred: the rename target
+      is the directory the firmware deletes from; the deletion itself was not followed)*.
+    - **`SPYCLN`** deletes the whole spy directory, including any `TAR/*.tar.gz` capture that
+      has not yet been copied off with `SPYSTORE`, and clears the exception store *(read)*.
+      Run `SPYSTORE` first if a capture matters.
+    - **`MSDREFRESH ON`** deletes the `SD_regen*` files from the calibration directory, writes a
+      new `SD_regen.inf` and **reboots** *(read)*. What the next boot then does to the map card
+      is not known.
+
+    No other code read here writes to the `USER_DATA` settings databases.
+
+Every row below comes from a close reading of the stock NAV `5.43.A.R2` image and of the
+libraries in its media partition. The libraries are relocatable PPC ELFs, and their
+relocations name every application function they call, so what each code does is **read**,
+not guessed from its name. Nothing was run on the car except where a row says so.
+
+| code | params | what it does | reboots? | writes | tier |
+|---|---|---|---|---|---|
+| `SPYTAKE` | 0 | the full **user spy collect** (see [below](#what-a-collect-captures)) | **yes** | spy dir `TAR/<stamp>-USER.tar.gz` | read; the reboot is also observed on the car |
+| `SPYSTORE` | 0 | `C_BCM_SPY::DirectCallCopy("/bd0")` → `CallBackCopy`: copies the traces, spy dir, symbol maps and calibration logs to `<stick>/SPY/<stamp>` | no | the USB stick only | read; observed on the car |
+| `SPYCLN` | 0 | deletes and recreates the spy dir, then `mmf_exc_clean()` | no | **deletes spy captures** | read |
+| `REBOOT` | 0 | stops any micro-SD refresh, closes storage, reboots (`EmergencyReboot()` as fallback) | **yes** | none found | read |
+| `CATCLN` | 0 | `RestoreDataBase`/`SaveDataBase` on `media_catalog`, `media_cdc_catalog`, `media_jkb_catalog`, `Pictures`; deletes the picture cache; moves the jukebox dir aside | no | **media databases, picture cache, jukebox** | read; the music loss is inferred |
+| `MSDREFRESH` | 1 | `STOP` stops a refresh; `ON` deletes `SD_regen*`, writes `SD_regen.inf` and reboots; anything else reports progress | **yes**, for `ON` | calibration dir | read |
+| `HWINFO` | 0 | hardware info and memory-partition statistics | no | none | read |
+| `SWINFO` | 0 | software release, GUI version, symbol-table lookups | no | none | read (calls) |
+| `ZAINFO` | 0 | `SYSTOOL_GetEOLInfo()`, formatted | no | none | read |
+| `AUDIOINFO` | 0 | `C_MODULE_AUDIO::Get_audio_info` and the Arkamys configuration | no | none | read |
+| `TUNERINFO` | 0 | radio debug data, band, DAB quality and service info | no | none | read |
+| `BTINFO` | 0 | Bluetooth RSSI, SNR, and connected and media device info | no | none | read |
+| `NETINFO` | 1 | connectivity `netinfoCheatCode` | no | none found | read |
+| `PING` | 1 | connectivity `pingCheatCode(host, n, out)` | no | none found | read |
+| `SYSMON` | 0 | boot-monitor averages (CPU, RAM, GPU RAM, NAND, USB, SD) written to a spy file | no | spy dir | read (calls) |
+| `MMIMON` | 0 | MMI CPU-load monitor: start, stop, read | no | none found | read |
+| `FPS` | 0 | frame-rate overlay; can log to `/tgtsvr/FPSPLogs.txt` | no | a host path only | read (calls, strings) |
+| `MIRE` | 1 | display test pattern | no | none found | read (calls) |
+| `AFTT` | 0 | `C_MODULE_TUNER::Cmd_cheat_code_AFTT_triggered()`, the AF tracking tool | no | not followed | read (call only) |
+| `ARKBYP` | 0 | `C_MODULE_AUDIO::Cmd_cheat_code_Arkamys_Bypass()` | no | not followed | read (call only) |
+| `BT0DB` | 0 | `C_BCM_T2BF::CmdSetTestChannelPower0(39)`, a Bluetooth RF test | no | not known | read (call only) |
+| `BTSTARTER` | 1 | `"1"` → `C_BCM_T2BF::CmdSetTestMode(true)`, else `false` | no | not known | read |
+| `BT` | 2 | **stub**: `li r3,0; blr` | no | nothing | read |
+| `BTADC` | 2 | **stub**: `li r3,-1; blr` | no | nothing | read |
+| `ECSAVE` | 1 | **stub**: `li r3,-1; blr` | no | nothing | read |
+| `GPSINFO`, `SIMSPEED`, `MAPSPEED`, `GUIDBG` | — | **no library on NAND**, and none in the `M49RG20` map update | — | — | read (absence) |
+
+`BT0DB` and `BTSTARTER` put the Bluetooth chip into RF test modes. Expect them to disrupt
+phone connections until a reboot *(inferred from the names of the functions they call)*.
+
+### How a code is found and run *(read)*
+
+1. **Lookup.** `C_BCM_Cheat_Code::Activate` (`0x01604154`) looks the name up with
+   `... FROM cheatcodes WHERE name='%ws' AND is_available_in_release=1`.
+2. **Location.** **`CCOD_PATH` is never read.** It is not in the query, and the string does
+   not occur anywhere in the image. `StartCheatCode` (`0x01603ac8`) finds
+   `libcheatcode_<NAME>.out` through `GetCheatcodesPathList` (`0x0105c724`), which searches
+   `<ApplicationDir>/CCOD/` and then `<NavigationApplicationDir>/CCOD/`. It loads the library
+   with `MMdlopen` and calls its `Activate`. The database's `CCOD_PATH` values (`NAND` for most codes,
+   `MICRO_SD` for `GPSINFO`, `SIMSPEED` and `MAPSPEED`) are therefore metadata only; the four missing codes would load only if the navigation directory held
+   them *(not known)*.
+3. **Parameters.** `CheckConfiguration` (`0x016040a4`) requires the parameter string to be
+   **40 characters or fewer**. When `max_params_number` is non-zero, the string must hold
+   **exactly** that many `;`-separated fields.
+4. **Running.** A synchronous code is run inline, and its text is shown if `is_displayable`.
+   Any other code runs on a task, `ThCheatCode`, and reports back over DBUS. Only one code
+   runs at a time. `is_displayable = 0` only means the code is not listed on the entry
+   screen; it can still be typed.
+
+Each library ships beside a `.out.inf` and a `.out.txt.gz` symbol map. A loader string,
+"Symbols file of CCCOD [%s] is not aligned with application", suggests the map is checked
+against the application *(inferred from the string; not followed)*.
+
+!!! failure "Corrections to this page"
+
+    - **`SPYTAKE`** was described as an "audio long-event spy hook". It is the full user
+      collect followed by a reboot. The old description came from the name of its entry
+      function, `DirectCallAudioLongEvent`, not from following the call.
+    - **`CCOD_PATH`** was presented as where each library lives. The application never reads
+      it. The column was taken to be meaningful because it exists in the schema.
+    - **All 29 codes** were listed as usable. Only 25 libraries ship, and three of those are
+      empty stubs.
 
 ## How you get to the entry screen
 
@@ -118,7 +167,7 @@ What `SPYSTORE` actually does:
 
 ```
 libcheatcode_SPYSTORE.out : Activate()
-  -> C_BCM_SPY::DirectCallCopy(std::string const&)     # empty string in practice
+  -> C_BCM_SPY::DirectCallCopy(std::string const&)     # "/bd0" (see note below)
      -> C_BCM_SPY::CallBackCopy(std::string const&)    # NAV 0x01273734
         -> C_FS_STORAGE_CTRL_PATH::GetUnknownDir()      # removable media target
         -> Mkdir + GetSpyFolderName                     # dest = <stick>/SPY/<timestamp>
@@ -133,6 +182,71 @@ libcheatcode_SPYSTORE.out : Activate()
 same shape — a `Get<X>Dir` source getter, an optional `AddName` glob, then
 `C_FS_STORAGE_CTRL_IO::Xcopy(source, dest)` (`0x010554f4`) into the timestamped stick
 folder. Verified by disassembly (`tools/ppcdis.py`) against the 5.43.A.R2 NAV image.
+
+The argument used to be given here as "an empty string in practice". The close reading of
+the `SPYSTORE` library found it passing `"/bd0"` *(read)*. The destination comes from
+`GetUnknownDir()` either way, so the copy behaves as described.
+
+### What a collect captures
+
+`SPYTAKE` is the way to get a module's runtime trace. It runs the **user collect**
+*(read)*:
+
+1. **Trigger.** `SPYTAKE` → `DirectCallAudioLongEvent` → `CallBackUserSpyEvent` raises event
+   `0x52d1`. `C_BCM_SPY::HandlePrivateMessage` (`0x01279010`) then runs case 2,
+   `CommonCollectSpy("-USER")` (`0x01277634`). Front-panel key event **`0x40a`** in
+   `C_BCM_KIM::HandleKbdEvent_NotDiag_NotEC_15` (`0x014dcc58`) raises the same event. Which
+   physical key that is, is not known.
+2. **Build a RAM disk.** `/RAMDISK_SPY` is sized at 2 × the total buffer size + `0x277000`
+   bytes, capped at 10 MB.
+3. **Write the snapshots.** Into the RAM disk go: a beep, a task report, a screenshot, and
+   every enabled module buffer as `RAMDISK_SPY/<id %05d>/<stamp>.bin`. Then the `EXC` and
+   `REBOOT` trace copies, `FS_STORAGE_CTRL`, task tracebacks, `MONITOR/WakeUp` and
+   `MONITOR/RunTime`, and `FILES/SQLITE/diag_zi.sqlite`, which is a copy.
+4. **Archive it** to `<SpyDir>/TAR/<stamp>-USER.tar.gz`.
+5. **Reboot.** It sets context `0x52d3` to 1, and
+   `C_BCM_FAILSOFT::EvtHandlerRebootReqSpy` (`0x015a833c`) reboots.
+
+`SPYSTORE` then copies the spy dir, `TAR` included, to the stick. **No trace switch is
+needed.** Every buffer registration found passes `enable = 1`, and almost all set the
+starter bit a user collect uses *(read)*. `traces.bin` is the exception log from
+`GetTracesFile`, not a module trace.
+
+The other collectors are also *read*:
+
+| suffix | trigger | reboots? |
+|---|---|---|
+| `-USER` | `SPYTAKE`, key event `0x40a` | yes |
+| `-AUTO` | event `0x52d2`; nothing that raises it was found | no |
+| `-FRZ` | the freeze hook registered in `StartUp`; what calls it is not known | no |
+| `-EXC` | the exception hook; on `0xDEADBEEF` it also writes `<SpyDir>/SSM/<stamp>.txt` | no |
+| `-DEAD` | the dead-task hook | no |
+| `SELF/<id>` | `SpyMemorize(id)`, one buffer | no |
+
+**What a real capture holds** *(executed: the `-USER` archive from the car, 2026-09-28)*: 71
+buffer directories under `RAMDISK_SPY/`, plus `EXC`, `REBOOT`, `FILES`, `MONITOR`, `TASKS`,
+`FS_STORAGE_CTRL` and a screenshot. The ones that matter for the AUX work:
+
+| id | module | tier of the identification |
+|---|---|---|
+| `25300` | `C_MGR_SRC`, the [source scheduler](SCHEDULER.md) | read (registration call site) |
+| `06301` | `C_HMI_MEDIA_APP_BASE`, the media app | read (registration call site `0x022b1468`) |
+| `06500`, `06501` | `C_HMI_AUDIO_APP_BASE` | read |
+| `15400` | `C_MODULE_AUDIO`, the [audio module](AUDIO_MODULE.md) | inferred, from its object-table id |
+| `17900` | `C_MODULE_TUNER` | inferred, from its object-table id |
+
+Other ids registered at identifiable call sites *(read)*:
+
+- HMI: `6000`/`6001` event handler, `6003` window manager, `6004` asserts, `6100`/`6101` nav,
+  `6600` BT, `6900` upgrade, `7000`–`7002` tuner, `7100` picture, `8200` config,
+  `31500`/`31501` desktop;
+- `15600` CDC audio, `17800` sound;
+- `C_BCM_*`: `18000` upgrade, `21600` jukebox, `22300` USB, `22400` FMT, `24100` DAB,
+  `24400` BT audio, `25200` TS, `25600` BT connection, `26300` antitheft, `26700` picture,
+  `26800` OOM;
+- `30000` `C_SRV_MEDIA`.
+
+`6004`, `21600` and `26800` were missing from the car's archive; why is not known.
 
 ### Adding /USER_DATA to the dump (`spy-dump-userdata`)
 
@@ -164,9 +278,9 @@ and bytes are in [Patch reference](PATCHES.md).
     and trade-offs live with the patch itself — see
     [Patch reference](PATCHES.md#spy-dump-userdata-spystore-also-backs-up-user_data).
 
-**Do not confuse this with** `C_BCM_SPY_System_Shot::SpyFiles()` — despite the name it is
-a diagnostic snapshot that writes `diag_zi.sqlite`, not the debug spy logs. Ruled out as
-a hook.
+**Do not confuse this with** `C_BCM_SPY_System_Shot::SpyFiles()`. Despite the name, it copies
+`diag_zi.sqlite` from `USER_DATA` into a collect; it does not copy the debug spy logs, and it
+writes nothing back to `USER_DATA` *(read)*. It was ruled out as a hook.
 
 ### A module dump reaches the spy, not the dead log sink
 
@@ -187,10 +301,8 @@ the only stubbed sink it touches, `0x010346d0`, is reached on its **error** path
 (`m_pListSpy isn't init`). Spy data therefore has its own route to `/SYSTEM_TMP_DATA/SPY/`, and
 observing a module dump does not depend on the log sink being given a destination.
 
-That is why issue **#24** is worth attempting first: a boot-time dump of this kind would show, at
-runtime, which sources `C_MGR_SRC` has registered requests for and under which `POS_*` id — the
-empirical form of the enum the [AUX chain](AUX_CHAIN.md) derives statically.
-
-Relevant to this project: running `SPYSTORE` with a USB inserted would show whether HMI
-event `0x613dc` actually reaches `HandleAudioAuxInputStatusChnged()`, which is the open
-question behind the AUX auto-switch patch. See issue **#24**.
+That dump now exists. The `25300` buffer in a `SPYTAKE` capture is exactly this output, and it
+is what settled how the boot source is chosen (see [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen)).
+The same capture carries the media app's buffer (`06301`), which shows whether
+`HandleAudioAuxInputStatusChnged()` ran. It follows the saved AUX input setting, not the AUX
+signal; see [The AUX signal path](AUX_SIGNAL.md).

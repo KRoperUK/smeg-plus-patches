@@ -38,8 +38,17 @@ applies. *(observed — a re-sealed patched package was accepted by a real unit)
 ## The unit refused the update and showed an error
 
 **Nothing was written.** This is the good failure: the unit validates before it writes, so a
-refusal leaves the unit exactly as it was. *(read — the rejection path in `CheckTrustedSource`;
-the refusal itself was not reproduced on the test unit)*
+refusal leaves the unit exactly as it was. *(read — the rejection path in `CheckTrustedSource`
+only raises a popup; the refusal itself was not reproduced on the test unit)*
+
+!!! note "Validated before writing — but not before running stick code"
+
+    The contract check runs **after** the unit has already loaded `UpgPlugin.out` from the
+    stick and called four of its functions *(read, `LoadUpgradePlugin`; see
+    [The update flow](UPGRADE_FLOW.md#what-matters-for-package-safety))*. That does not
+    change the point above: nothing is written to the unit before the contract passes.
+    This project's tools never modify `UpgPlugin.out`, so a package built here runs only the
+    vendor's plugin, byte for byte.
 
 | what you see | what it means |
 |---|---|
@@ -51,7 +60,10 @@ the refusal itself was not reproduced on the test unit)*
 | `VerifyNANDBigQuick : CRC of data BigQuick is NOK` | the image failed its CRC check on the way to NAND. *(read)* |
 
 The unit **re-offers** the update when a valid stick is present — the confirmation dialog was
-seen a second time after the unit had already updated and come back up. *(observed)*
+seen a second time after the unit had already updated and come back up. *(observed)* The
+cause is read: at every start-up `C_BCM_UPGRADE::StartUp` probes `/bd0`–`/bd5`, and if
+`SMEG_PLUS_UPG/UpgPlugin.out` is on a mounted device the whole flow starts again. Take the
+stick out once the update has finished.
 
 **What is not known:** whether a refused package triggers any retry loop, and what state the
 unit settles into after repeated refusals. The updater does keep a **persisted step counter**,
