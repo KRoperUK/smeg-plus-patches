@@ -2,10 +2,9 @@
 
 How the unit's map data is organised, and what it would take to supply your own.
 
-This page exists because the answer changed. `CAPABILITIES.md` used to park maps as
-"proprietary and uninspectable"; then the container turned out to be a gzipped tar of tiles;
-then the **engine turned out to be shipped unstripped**. Every claim here comes from files in
-the update packages, not from inference — the evidence is named as it goes.
+The map container is a gzipped tar of tiles, and the **map engine ships unstripped**, so its
+function and type names are available. Every claim here comes from files in the update
+packages; the evidence is named as it goes.
 
 **`tools/cartography.py` reads every layer that is fully understood** — the name pools, the
 `.inf` sidecars, the `%03dSCC.DST` record tables and the `CCT.DAT` table — so the claims on
@@ -190,7 +189,7 @@ from **Navteq** (now HERE, matching `PROVIDER:HERE` in `DVD_VER.NAV`) or **Tele 
 
 ## So: can you build your own?
 
-**It is no longer an unknown — it is a bounded engineering problem.** What is now known:
+**It is a bounded engineering problem.** What is known:
 
 - the **container** (gzipped tar per country, ~790 members, 512 MB unpacked);
 - the **destination layout** (every filename template, quoted verbatim from the binary);
@@ -214,8 +213,8 @@ A realistic order of attack:
 4. **Satisfy the checks** — `FILES_VER.DAT`, `Check_map_ver`, the `GRUPPO_4_*` group tables.
 
 **The honest scale.** That is a project, not a patch: it is strictly larger than everything
-this repository has done so far. But it is now *legible* — a list of formats with named
-readers — rather than a 372 MB blob. And the cheap routes still stand: the
+else in this repository. But it is *legible* — a list of formats with named readers — rather
+than a 372 MB blob. And the cheap routes still stand: the
 [user POI store](CAPABILITIES.md#speed-cameras-danger-zones-the-one-navigation-win) needs none
 of this, and `Is_speed_trap_DB` shows the engine already treats speed traps as a category.
 
@@ -257,19 +256,17 @@ and `TYPE_DATI_DEG_XY` names geometry data with X/Y.
 
 So finishing this one file means: decompile `Load_poi_by_parc_cache` and the POI reader to
 recover the record struct, and take the parcel origin from the parcel table. That is the same
-shape of work as every other family — which is exactly why the page calls it a project and not
-a puzzle.
+shape of work as every other family.
 
 ## PoC: OpenStreetMap in, name-pool out
 
-The string-pool layer is fully understood and has now been driven end to end.
+The string-pool layer is fully understood and has been driven end to end.
 
 **The format.** `NAMECITY.DAT` and `%03d_NV.dat` are **plain NUL-separated strings** — no
 header, no footer, no compression. Verified by round-trip: reading `005_NV.DAT` and writing it
 back reproduces the file **byte for byte** (29,912 fields, 29,834 of them non-empty).
 
-That the *empty* fields matter is worth recording, because it cost a cycle: the first attempt
-filtered them out and the round-trip failed. The 78 empty fields are part of the format.
+The 78 empty fields are part of the format: dropping them breaks the round trip.
 
 **The convention.** `NAMECITY.DAT` holds `NAME\TOWN`, and some entries carry a postcode
 district:
@@ -385,17 +382,15 @@ why the caller divides by ten to get the key back. There is no projection and no
 correction in the distance function, so the coordinate space is a **planar grid**, and the
 meters-per-unit factor lives in whatever produced the grid, not here.
 
-**What that leaves, precisely.** The in-memory layouts and the distance maths are now known —
-that is the part that looked like an arbitrary scaling puzzle and is not one. What is *not*
-yet decoded is the **on-disk packing of the SCC payload**: the ten bytes that follow each name
+**What that leaves, precisely.** The in-memory layouts and the distance maths are known. What
+is *not* decoded is the **on-disk packing of the SCC payload**: the ten bytes that follow each name
 area in `%03dSCC.DST`. They do not read as two plain 32-bit integers (for `ST AGNES` the tail
 is `15 f4 f7 01 04 03 1d 01 96 03`), so there is a compression step between the file and the
 60-byte buffer that this path starts from. Reading `Create_buff_output_ptr_scc_by_parc` is the
 next step, and it is a small function with a known signature.
 
-Record the shape of this correctly: **it is no longer "the coordinates are an unknown
-encoding"** — the coordinate type is a planar integer grid and the distance function is
-arithmetic. It is "one packing layer is unread".
+So the coordinate type is a planar integer grid and the distance function is arithmetic; one
+packing layer is unread.
 
 ### The packing layer is bit-packed
 
@@ -423,7 +418,7 @@ Three things follow, and they are the useful part:
 
 So the payload is a packed bitstream with sub-byte fields, not an array of integers. Recovering
 the full field map means walking each extraction site — they are uniform in shape, which makes
-it mechanical — rather than inferring a layout from the bytes, which is what failed before.
+it mechanical — rather than inferring a layout from the bytes.
 
 This is worth stating as the general lesson for the remaining families too: **`%03d.DST`,
 `LZW%s.TOP` and the rest should be expected to be bit-packed.** The three files that *did* read
@@ -462,7 +457,7 @@ tarballs.
 `DATA/MAPPE/NNN/`, `DESCRI.DAT`, `CD_VER.*.INF`, `GRUPPO_4_*` — but which mechanism presents it
 to the unit has not been established here.
 
-!!! success "Answered: it covers the map data — and the container is re-sealable"
+!!! info "It covers the map data, and the container is re-sealable"
 
     Decrypting `CCT.DAT` (next section) yields a **per-country checksum keyed to that country's
     `DESCRI.DAT`**, which is the manifest over the country's payloads. So it **does bind the
@@ -513,8 +508,7 @@ acStack_b2[iVar3] = cVar5;
 
 so the transform is a **byte subtraction against a key vector applied cyclically with period
 896**, over a counter that runs continuously across all six 76-byte blocks. The
-`0x92492493` constant that looked like a divide-by-7 is a **divide by 896** (`7 × 128`) — a
-reminder that reading this by eye got it wrong and Ghidra got it right in one pass.
+`0x92492493` constant is a **divide by 896** (`7 × 128`), not a divide by 7.
 
 `ChipherCCT_Vect` is a **896-byte data symbol at `0x035E4CD8`, inside the application image**.
 Applying it reproduces the plaintext exactly.
@@ -531,7 +525,7 @@ one per country in the package:
 012 … 4deaa03f … /MAPPE/012/DESCRI.DAT
 ```
 
-**So the decisive question is answered in the affirmative: it covers the cartography.** It is a
+**So it covers the cartography.** It is a
 per-country integrity value keyed to that country's `DESCRI.DAT` — and `DESCRI.DAT` is itself
 the manifest carrying each payload's size and CRC, so the chain commits to the map data.
 
@@ -579,12 +573,11 @@ eight-byte string comparison. So:
 own file (for `MAPPE/001/DESCRI.DAT`, the sidecar says `4c75a293` while `crc32` is
 `6cb1bd24`), nor of the `.inf`, nor `adler32`/`md5`/`sha1`/`sha256` truncations — and it is
 not `crc32` of the country payload gzipped or inflated either. Identifying *that* is the
-remaining task, and it is worth naming precisely because it is now the only one.
+remaining task.
 
 ### The checksums are a parameter-recovery problem
 
-Further searching narrows what "unidentified" means, and it is worth recording the negative
-results because they bound the work rather than restarting it.
+The negative results below bound the work.
 
 **`DESCRI.DAT` uses a 16-bit CRC, not 32.** Its records carry four hex digits per payload —
 `CD_VER,001,\DATA\MAPPE\001\CD_VER.LA.INF,CRC,15af` — so the *descriptor* layer is CRC16.
@@ -626,8 +619,8 @@ failed — the whole file, the file with the first line stripped, with the first
 stripped, with the first 10 bytes stripped, and with trailing CRLF stripped. Simple checksums
 were ruled out earlier too: `sum8`, `xor8`, word-wise sums and XORs.
 
-So the most likely explanation stands, and is now the *only* one left: **the vendor checksums
-bytes that are not the file contents as shipped.** The updater `Untar`s the payloads, and
+So the remaining explanation is that **the vendor checksums bytes that are not the file
+contents as shipped.** The updater `Untar`s the payloads, and
 `DESCRI.DAT` describes the *installed* layout under `\DATA\`, so the checksummed byte range is
 probably produced during packaging rather than shipped verbatim.
 
@@ -639,10 +632,9 @@ which is exactly equivalent to its published `0xffff`/`0x0000` at every length, 
 the tool checks published values before calling a result non-standard. The polynomial, input
 reflection and output reflection *are* unique.
 
-**A performance note worth keeping.** The first implementation took **three minutes** over a
-test run, because it ran a whole CRC per candidate `init`. `init` enters the CRC linearly, so
-the register after *n* zero bytes is linear in it; precomputing the images of the basis vectors
-gets `Z_n(init)` for any init with a few XORs and takes the suite to **2.2 seconds**.
+**Performance.** `init` enters the CRC linearly, so the register after *n* zero bytes is
+linear in it; precomputing the images of the basis vectors gets `Z_n(init)` for any init with a
+few XORs, rather than running a whole CRC per candidate.
 
 **And there is a third layer above both.** The package ships
 `UHD6E2P01200REU_MEDIA_CONTENT.md5`, headed `MD5 Created with MD5_ISO Creator Ver. 2.10`,
@@ -662,9 +654,9 @@ provide a tool for forging the token.
 
 ## Caveats
 
-- **Nothing here has been executed or tested.** Everything above is read from symbol tables
-  and string tables in the shipped binaries, plus unpacking the shipped tars. No map data has
-  been written, and no unit has been touched.
+- **No map data has been written to a unit.** The findings are read from symbol tables,
+  string tables and decompiles of the shipped binaries, plus offline runs (unpacking the
+  tars, the name-pool round trip, decrypting `CCT.DAT`, `crc_recover.py`).
 - The map package is **vendor data** and must never be committed — the same rule as the
   firmware. Nothing in this repository reproduces it.
 - `%s` in the templates is a family tag whose exact values were not enumerated here.

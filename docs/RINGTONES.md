@@ -58,29 +58,22 @@ used to produce a package that was then flashed to a car, so treat the end-to-en
 as unverified; the pieces it drives are covered by tests. The **CLI sequence below is the
 verified path** — walk it if the studio gives you trouble.
 
-## The catch (solved)
+## How a tone gets onto the unit
 
-The tones live **inside the media partition** (`system.bin`), so changing them means
-repacking that gzip'd tar and rebuilding its checksum cascade — the same job as the
-cheatcode menu and the version marker.
-
-That repack was blocked on the `SIZE:` / `SIZE_1..SIZE_32` fields. It no longer is: they
-are computable from the tar (see
-[Media partition](MEDIA_PARTITION.md#the-size-fields-solved)), and the `SIZE` fields are
-carried forward by exactly the size change of the file you replace.
-
-`tools/patch_media.py` swaps a file inside the tar and rebuilds
-`system_ctrl.bin` → `system.bin` → `system.bin.inf` → the module manifest → the root
-manifest. A replacement tone almost never matches the original size, so the tar and every
-manifest above it change — the tool does all of that in one step.
+The tones live **inside the media partition** (`system.bin`), a gzip'd tar with its own
+checksum cascade. `tools/patch_media.py` swaps a file inside the tar and rebuilds
+`system_ctrl.bin` → `system.bin` → `system.bin.inf` → the module manifest → the root manifest.
+A replacement tone almost never matches the original size, so the tar and every manifest above
+it change; the `SIZE:` / `SIZE_1..SIZE_32` fields are computed from the tar (see
+[Media partition](MEDIA_PARTITION.md#the-size-fields-solved)).
 
 ## Worked example: replacing a ring tone
 
-The whole path, from an mp3 to a package that will flash. This is the sequence used to
-replace `ring1` with a custom tone.
+The whole path, from an mp3 to a package that will flash, replacing `ring1`.
 
 The one-command version is `uv run tools/build_package.py --manifest builds/alien-piano-riff.json`
-(edit its paths first). The manual steps below are what it runs.
+(edit its paths first); in a manifest, `media.tones` maps a slot's file to the source audio and
+an optional `gain_db`. The manual steps below are what it runs.
 
 ```sh
 # 1. work on a copy — never edit your rollback package
@@ -155,14 +148,12 @@ patch that rewrites the literal in place:
 It refuses a name that is too long, non-ASCII, or for a module whose addresses are not
 mapped (only NAV 5.43.A.R2 is).
 
-!!! failure "Corrected: names were written to the wrong place"
+Built and verified offline (the patched image carries the new name and nothing else
+changes); **not yet confirmed on a car**.
 
-    Until #190, `media.names` rewrote `phone/Ringing_List` in the seed `up_common.sqlite`. On a
-    real unit the tone changed but the list still said `Alien` *(observed, 2026-09-27)*. The
-    key appears nowhere in the application image, and the `USER_DATA` copy holds the same
-    stock list, so no database edit could work. The earlier guess that the unit read the
-    `/USER_DATA` copy was wrong. `ringtones.py names` / `rename` still inspect and edit that
-    seed list, but they say so. **The renamed build has not been flashed yet.**
+`ringtones.py names` / `rename` inspect and edit a different list: `phone/Ringing_List` in the
+seed `up_common.sqlite`. The unit does not display that list; the key appears nowhere in the
+application image *(read)*.
 
 ## Level — the thing that will annoy you
 

@@ -10,10 +10,10 @@ Reverse-engineering notes and tooling for PSA / Stellantis **SMEG+** head units 
 Magneti Marelli infotainment fitted to Peugeot, Citroën and DS vehicles around 2012–2017.
 
 The project started with one concrete problem: an aftermarket CarPlay / Android-Auto
-piggyback injects its audio into the head unit's AUX input, and the pain is having to switch
-the unit to AUX by hand every time. That is still the goal, but the work underneath it — the
-signed media contract, the checksum cascade, the settings partitions — generalises to any
-patch you want to make to one of these units.
+piggyback injects its audio into the head unit's AUX input, and the unit kept starting on the
+radio. It now **boots straight to AUX** (`builds/aux-boot.json`, confirmed on the car). The
+work underneath it — the signed media contract, the checksum cascade, the settings
+partitions — applies to any patch you want to make to one of these units.
 
 !!! warning "No vendor firmware here"
 
@@ -85,9 +85,9 @@ card matches what you are trying to do.
 
     ---
 
-    The PowerPC image inside `f_BigQuick.bin`: the patch reference, the AUX
-    auto-switch chain gate by gate, how it was verified by emulation, and the
-    cross-platform toolchain for reading and writing PowerPC.
+    The PowerPC image inside `f_BigQuick.bin`: the patch reference, how the unit
+    chooses its boot source and what the AUX handler does, how patches are checked by
+    emulation, and the cross-platform toolchain for reading and writing PowerPC.
 
     [:lucide-arrow-right: Patch reference](PATCHES.md) ·
     [The AUX chain](AUX_CHAIN.md) ·
@@ -138,23 +138,21 @@ with its own symbol map and patch addresses.
 
 ## Status
 
-A patched, **contract re-sealed** package has been flashed to a real unit successfully: the
-media check passed, the application image was written, and the unit came back up working.
+- [x] **Boot to AUX.** `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore` boot the unit
+  to AUX. The minimal build is `builds/aux-boot.json`. See
+  [How the boot source is chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+- [x] **The re-seal works.** A modified, re-sealed package is accepted; string 2099 (*"the
+  update file is protected and cannot be copied"*) does not appear.
+- [x] **AUX is always available** (`IsAUXSRCAvailable()`): it no longer greys out without a
+  signal, and it is in the SRC cycle.
+- [x] **Custom ring tone audio.**
+- [ ] **Custom ring tone names.** The names are literals in the application image, and
+  `media.names` patches them in place; built and verified offline, not yet confirmed on a car.
+  See [Ring tones](RINGTONES.md#names).
+- [x] **`SPYSTORE` backs up `/USER_DATA`** (`spy-dump-userdata`).
 
-- [x] **The re-seal works** — string 2099 (*"the update file is protected and cannot be
-  copied"*) never appeared, which was the blocker for the whole project.
-- [x] **`IsAUXSRCAvailable()`** — AUX no longer greys out without a signal, and it is back in
-  the SRC cycle.
-- [x] **Custom ring tone** audio. A *renamed* tone kept its stock name on the car
-  (2026-09-27): the names are literals in the application image, which `media.names` now
-  patches (not yet flashed) — see [Ring tones](RINGTONES.md#names).
-- [x] **`SPYSTORE` backs up `/USER_DATA`** — the `spy-dump-userdata` patch, confirmed on a car.
-- [ ] **The automatic AUX switch.** The original handler patch rested on a wrong premise: the
-  handler follows the saved AUX *setting*. `aux-signal-switch` routes the real signal event
-  instead — verified under emulation, not yet flashed. See [The AUX signal path](AUX_SIGNAL.md).
-- [x] **Boot to AUX.** `aux-boot-default` + the three-edit `aux-boot-restore` booted to AUX three
-  times, confirmed by the spy capture (2026-09-28). Neither works alone. See
-  [The AUX chain](AUX_CHAIN.md#what-the-third-car-test-established).
+Switching to AUX when a signal appears is not being pursued. `aux-signal-switch` exists as an
+emulated candidate only; see [The AUX signal path](AUX_SIGNAL.md).
 
 ### Every patch set, by status
 
@@ -170,15 +168,14 @@ cannot disagree with the patch reference.
 Per-patch detail: [Patch reference](PATCHES.md#patch-sets-in-this-repository).
 <!-- /patch-status:panel -->
 
-See [Hardware verification](VERIFICATION.md) for the full picture, and the
-[repository issues](https://github.com/KRoperUK/smeg-plus-patches/issues) for what is being
-worked on.
+The car tests behind each status are in [Hardware verification](VERIFICATION.md#later-car-tests);
+open work is in the [repository issues](https://github.com/KRoperUK/smeg-plus-patches/issues).
 
-## The short version of the hard-won lessons
+## Lessons worth knowing first
 
 - **The unit keeps its own state.** Settings live on a separate `/USER_DATA` partition, not in
   the package. Editing the copy inside `system.bin` can appear to do nothing.
 - **Payloads are version- and value-checked.** A source value the unit does not recognise is
   ignored silently, and it falls back — so validate against the real enum rather than guessing.
 - **Build, then check, then flash.** `tools/preflight.py` runs as part of the build and fails
-  it; most of the wasted trips in this project were things it would have caught.
+  it; it catches the mistakes that otherwise cost a trip to the car.

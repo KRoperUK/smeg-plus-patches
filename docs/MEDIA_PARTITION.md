@@ -7,10 +7,9 @@ The partition can be **rebuilt**, and `tools/patch_media.py` does it: extract th
 replace a file, re-tar, re-gzip, then repair `system_ctrl.bin` (per-file CRCs),
 `system.bin.inf` (`CRC32` + the `SIZE` fields), the module manifest and the root manifest.
 Replacing a ring tone is the worked example — see [Ring tones](RINGTONES.md). The tools
-support **replacement only**. Adding a file needs a new `system_ctrl.bin` record; that
-record format is now fully mapped (see below), so it is mechanically expressible, but
-whether the updater accepts a record count it has never seen is untested — which is why the
-tools still refuse.
+support **replacement only**. Adding a file would need a new `system_ctrl.bin` record: the
+format is known (below), but whether the updater accepts a record count it has not been
+shipped with is untested, so the tools refuse.
 
 ## How the partition is described
 
@@ -35,10 +34,10 @@ flowchart LR
     MC --> RC["ctrl.bin<br/>root manifest"]
 ```
 
-### The `SIZE` fields — solved
+### The `SIZE` fields { #the-size-fields-solved }
 
 `SIZE:` and `SIZE_1..SIZE_32` are the uncompressed *contents* size, not the tar or the
-gzip size, and they are computable:
+gzip size:
 
 * **`SIZE`** = the sum of the file sizes inside the tar, excluding tar headers and
   padding. Verified exactly against the real partition: 844 files, sum **32 710 671**,
@@ -46,29 +45,20 @@ gzip size, and they are computable:
 * **`SIZE_n`** = the same sum with every file rounded up to an *n* KiB block
   (`Σ roundup(size, n * 1024)`). Exact for n = 8, 16 and 32. For n = 1, 2 and 4 it lands a
   fixed amount *below* the vendor's values — **29 696**, **18 432** and **8 192** bytes
-  respectively, the same three constants on both a stock and a rebuilt partition. That
-  rule was not identified, so the values are not derived from scratch.
+  respectively, the same three constants on both a stock and a rebuilt partition. The rule
+  behind those constants is not identified.
 
 They are read by **`UpgPlugin.out`**, not `upgrade.out` — the plugin's
 `C_UPG_PLUGIN_Interface::GetSize()` / `GetPartitionBlockSize()` select the field that
 matches the destination's block size, falling back to plain `SIZE` when the block size
 is not one of the managed values (`SD Block size (%d) not managed!`). They feed the
-media space-check (`C_APPLI_UPG_PLUGIN::CheckMediaTask`), so they should be recomputed
-after a media edit — but nothing needs to be obtained from elsewhere to do it.
+media space-check (`C_APPLI_UPG_PLUGIN::CheckMediaTask`).
 
-**How the patcher handles them.** Our own formula reproduces `SIZE` exactly but lands a
-fixed, module-independent amount below the vendor's values for n = 1/2/4 (29 696, 18 432
-and 8 192 bytes — a rule we could not identify). Rather than guess it,
-`tools/patch_media.py` applies the *delta* to the values already in the `.inf`: an
-untouched partition keeps its numbers byte-for-byte, and a changed file moves each field
-by exactly its own size change.
+`tools/patch_media.py` therefore applies the *delta* to the values already in the `.inf`
+rather than recomputing them: an untouched partition keeps its numbers byte-for-byte, and a
+changed file moves each field by exactly its own size change.
 
-**What this means:** the media partition can be rebuilt. `tools/patch_media.py` extracts
-the tar, swaps a file, re-tars and re-gzips, then updates `system_ctrl.bin` (the per-file
-CRCs), `system.bin.inf` (`CRC32` + the `SIZE` fields), the module manifest and the root
-manifest. See [Running the tools](RUNNING.md).
-
-### `system_ctrl.bin` — fully mapped
+### `system_ctrl.bin`
 
 ```
 0x00   header, 48 bytes
@@ -84,16 +74,20 @@ The header:
 | `0x0C` | version string — `2.1.0.0` |
 | `0x2C` | **record count**, `u32` big-endian |
 
-Each record is **264 bytes**:
+Each record is **264 bytes**, the same layout as `ctrl.bin` and `<module>_ctrl.bin`
+([Boot & update chain](FLASH_CHAIN.md)):
 
 ```
-[path][zero padding][CheckType @ +259 (1 byte)][CRC32 @ +260 (u32, big-endian)]
+[0..255] path, NUL-padded   [256..259] CheckType (u32, big-endian)   [260..263] value (u32, big-endian)
 ```
 
 - **path** is absolute and NUL-terminated: `/SYSTEM/<partition-relative path>`. The longest
   in the shipped NAV partition is 89 bytes, well inside the 259 available.
 - **CheckType** is `2` in 815 of the 845 records and `3` in the remaining 30.
-- **CRC32** for a type-2 record is the CRC32 of that file's **contents**.
+- The **value** of a type-2 record is the CRC32 of that file's **contents**; of a type-3
+  record, a CRC-16 of the contents (reflected, table polynomial `0xD415`, stored
+  byte-swapped and sign-extended; `smeglib.ctrl_crc16`), reproduced for the type-3 members
+  checked *(executed)*. See [Boot & update chain](FLASH_CHAIN.md).
 
 **Verified end to end** against `NAV/system_ctrl.bin`:
 
@@ -102,20 +96,13 @@ Each record is **264 bytes**:
 - every type-2 record's CRC equals `crc32(tar member contents)` — 815/815;
 - the trailing `u32` equals `crc32` of all preceding bytes (`0xd05fd5e8` for the shipped file).
 
-**Open — the 30 `CheckType = 3` records.** Their field at `+260` is **not** a content CRC: it
-matches neither the raw contents nor a gunzipped copy. They are the four
-`Data_base/TMP/lib/license/*` documents plus `Application/CCOD/libcheatcode_AFTT.out`.
-Tested and rejected against one of them (`LGPL_EXCEPTION.txt`, field `0xffff80f9`): CRC32 of
-the raw member bytes as stored in the tar, of the tar header, and of the path, plus
-adler32. Several of the values are small or negative when read signed, which suggests a
-different meaning rather than a checksum — treat type 3 as "field meaning unknown".
+The 30 type-3 records are the `Data_base/TMP/lib/license/*` documents and cheatcode
+libraries such as `Application/CCOD/libcheatcode_AFTT.out`.
 
-**What this unlocks.** Adding a file to the partition is now mechanically expressible:
-append a 264-byte type-2 record, increment the count, recompute the trailing CRC32, add the
-file to the tar, move the `SIZE` fields by its size, and rebuild the module and root
-manifests. What is **not** established is whether the updater *accepts* a count it has not
-seen before — it has only ever been handed a packager's own 845. That needs a hardware test,
-so the tools still refuse to add files.
+**Adding a file** is mechanically expressible: append a 264-byte type-2 record, increment the
+count, recompute the trailing CRC32, add the file to the tar, move the `SIZE` fields by its
+size, and rebuild the module and root manifests. The updater has only ever been handed a
+packager's own count of 845, so whether it accepts another is untested and the tools refuse.
 
 ## Top-level layout
 
@@ -154,10 +141,9 @@ Relevant code: `C_SRV_RING_TOUCH` (`srvPlayTouch`, `srvSetCurrentIDTone`,
 `GetRingToneList` / `GetRingtoneID` / `SetRingToneID` behind the phone settings UI.
 
 **Custom ringtones** means replacing `ringNRT.wav` with your own file in the same format,
-keeping the filename. This works: the partition rebuild is implemented, and the `SIZE`
-fields are carried forward by exactly the size change of the replaced file. Replacements
-are essentially never the same size as the original, so the tar and every manifest above
-it do change — which the tool handles in one step. See
+keeping the filename; this works on the car. A replacement is almost never the same size as
+the original, so the tar and every manifest above it change, and the tool handles that in
+one step. See
 [Ring tones](RINGTONES.md) for the worked example, including the level-matching caveat:
 the stock tones are mastered loud (peak ≈ −1 dBFS), so an unmodified music track will
 sound noticeably quieter than the tone it replaced.
@@ -193,9 +179,9 @@ The cheatcode libraries are documented in [Cheatcodes](CHEATCODES.md).
 
 !!! warning "This is NOT the boot splash"
 
-    An earlier version of this page claimed `peugeot.pkg` holds the boot splash. **That is
-    wrong, and flashing a replaced one proves it** — the unit still shows the factory
-    Peugeot animation. Two things say why:
+    The marque bundles below are not the boot artwork. A package with a replaced
+    `peugeot.pkg` was flashed and the unit still showed the factory Peugeot animation
+    *(observed)*, and:
 
     - the application image contains **no reference at all** to `peugeot.pkg`,
       `graphics/logo` or the `_adml_` names, so nothing reads these files at boot;
@@ -265,11 +251,9 @@ what pins this format down.
     replacement then renders the right way up is **unknown**: no screen that shows these
     images has been identified (they are not the boot splash, see above).
 
-Known unknown: the two-byte trailer after each zlib stream has not been identified — it is
-not a crc32 or adler32 fragment of the chunk. It is preserved as-is. A replaced bundle **has**
-been flashed: the boot animation did not change, which is how it was found not to be the boot
-splash. What displays these images is still unknown, so whether a replacement renders
-correctly is untested.
+The two-byte trailer after each zlib stream is not identified — it is not a crc32 or adler32
+fragment of the chunk — and is preserved as-is. What displays these images is unknown, so
+whether a replacement renders correctly is untested.
 
 ```sh
 uv run tools/splash.py --tree media/ list

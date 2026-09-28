@@ -25,8 +25,8 @@ risk.
 ## Shipping settings: the `USER_DATA` payload, and why it does not land
 
 A package can carry a `USER_DATA` payload — `NAV/USER_DATA/user_data/sqlite/…` — which the updater
-copies over the unit's live settings partition. **It does not currently work**, and the reason is
-worth knowing before building one:
+copies over the unit's live settings partition. **It does not work on this unit**, for these
+reasons:
 
 - The copy is `xcopy_blk("/bd0/SMEG_PLUS_UPG/NAV/USER_DATA", "/USER_DATA")`, hard-coded, in the
   block that continues **Phase 1** of `UpgradeTask`.
@@ -45,7 +45,7 @@ Two other things the same log and updater binary settled:
 - The live directory holds a `.inf` sidecar beside every database (`up_common.sqlite.inf`).
   `C_UPGRADE::ManageSQLiteFiles` says `We have to generate the .inf file!`; the generated file
   found on the stick is exactly `CRC32: <signed decimal>\r\n`, and its value matches the edited
-  database. `build_package.py` now writes that pair up front and pre-flight rejects a missing or
+  database. `build_package.py` writes that pair up front and pre-flight rejects a missing or
   stale sidecar.
 - `C_UPGRADE::RestoreDataFromUSB` copies from a **per-unit** directory, `/bd0/<unit-id>/`, not
   from the package path. `C_UPGRADE::SaveDataOnUSB` is what creates it, and it did not run.
@@ -82,14 +82,12 @@ not help; it does the same thing. The entry has to be written or corrected direc
    is not proof: the checker rejects short-name `SQLITE` even when its FAT lowercase-display bit
    is set, because that is the exact representation the updater mishandles.
 
-!!! warning "Not yet confirmed on hardware"
+!!! warning "Not shown to work on hardware"
 
     The filesystem half is verified: the directory reads back as `sqlite`, and the `.inf` is
-    present. Whether the application *accepts* the database once it lands there was not
-    demonstrated by the next flash — see
-    [the later flash report](VERIFICATION.md#later-flash-report-the-case-workaround-package). Until that
-    is settled, prefer routes that are known to work: an application-image patch (proven on
-    hardware) or a media-partition edit.
+    present. A flash laid out this way still did not change the setting — see
+    [the later flash report](VERIFICATION.md#later-flash-report-the-case-workaround-package).
+    Prefer an application-image patch (boot to AUX is one) or a media-partition edit.
 
 ## Prepare the USB stick
 
@@ -134,10 +132,9 @@ It checks the layout, the target and the free space **before copying anything**,
 target it is about to write to first, then copies and **re-reads every file back off the stick
 and compares checksums**.
 
-That last step is the one that matters. Copying by hand has already gone wrong twice here — a
-stick was pulled mid-copy, and `ditto` left AppleDouble `._*` files beside the package. A
-silently truncated copy produces an update failure in the car that looks like a firmware
-fault, which is an expensive way to find out. `._*` and `.DS_Store` count as a **failure, not
+That last step is the one that matters: a stick pulled mid-copy, or a copy tool that leaves
+AppleDouble `._*` files beside the package, produces an update failure in the car that looks
+like a firmware fault. `._*` and `.DS_Store` count as a **failure, not
 a warning**: the updater does not expect them, so the exit code is non-zero and nothing is
 left to judgement.
 
@@ -146,10 +143,10 @@ file with a `com.apple.provenance` attribute, and FAT can only store that as a `
 beside it. After copying, the tool deletes the shadow of each file and directory it wrote, and
 nothing else. Any other litter inside the package still fails the check.
 
-macOS also creates `.Spotlight-V100` and `.fseventsd` at the stick's **root** when it mounts it
-(observed). They are outside `SMEG_PLUS_UPG`, which is all the updater reads, so they are
-probably harmless *(inferred)*. Spotlight indexing a freshly written stick did, though, keep the
-volume busy until `diskutil eject` was retried. So on macOS `prepare_usb`:
+macOS also creates `.Spotlight-V100` and `.fseventsd` at the stick's **root** when it mounts it,
+and Spotlight indexing a freshly written stick keeps the volume busy, so `diskutil eject` can
+fail until retried. The folders are outside `SMEG_PLUS_UPG`, which is all the updater reads.
+On macOS `prepare_usb` therefore:
 
 - writes `.metadata_never_index` at the root and runs `mdutil -i off` (a refusal is reported,
   not fatal);
@@ -164,8 +161,7 @@ It only ever writes inside `--target`, and refuses to copy a package into itself
 **It also refuses to write into a package that is already there.** Copying into a directory
 that already holds one silently merges the two, and the result still passes every checksum
 its own manifests declare — so nothing downstream notices, and the stick ends up flashing
-something nobody built. This is not hypothetical: it happened on the first real stick this
-was run against. Remove the old copy first, or point `--target` at a clean one.
+something nobody built. Remove the old copy first, or point `--target` at a clean one.
 
 `--force` continues past a filesystem complaint — a non-FAT32 or non-MBR target is refused by
 default, with the Disk Utility steps below. The probing is macOS-only and deliberately
@@ -187,14 +183,13 @@ image, each `<MODULE>_ctrl.bin` against its module's files, and `ctrl.bin` again
 manifest. Exit is non-zero if anything disagrees; `--json` is there for scripting.
 
 It also **warns** (without failing) about a stock-shaped `*ctrl.bin` whose trailing CRC32 is
-wrong. Packages built before #159 carry three of these. Units have accepted them, which
-suggests the trailer is not checked *(inferred)*, but rebuilding on current `main` makes the
-manifests match stock. `preflight.py` reports the same warning.
+wrong, which packages built by older versions of the tools carry. Units have accepted them,
+which suggests the trailer is not checked *(inferred)*, but rebuilding makes the manifests
+match stock. `preflight.py` reports the same warning.
 
-It deliberately does **not** parse the manifest layout, although the layout is now known
-([Boot & update chain](FLASH_CHAIN.md#_ctrlbin-format)). It looks for each CRC as a *value* in
-the manifest instead. That is layout-free, and still catches a manifest that does not describe
-what shipped.
+It looks for each CRC as a *value* in the manifest rather than parsing the record layout
+(documented in [Boot & update chain](FLASH_CHAIN.md)), so it stays correct if a manifest's
+layout ever differs.
 
 ### Keeping a rollback package
 
@@ -305,13 +300,14 @@ What to check depends on the build. After each, capture (step 5 of
 [the test loop](#the-test-loop-end-to-end)):
 
 - **`aux-autoswitch` / `aux-always-available`:** the **AUX tile stays selectable with nothing
-  plugged in** (on stock it greys out), and **SRC steps through to AUX**. Confirmed on hardware.
-  Do not expect a switch to AUX by itself: the status-handler edit is inert (executed), and the
-  handler follows the AUX *setting*, not the signal.
-- **`aux-boot-restore` (`builds/aux-boot-restore.json`):** with AUX selected, does the unit
-  **boot to AUX** over at least two restarts? Not yet shown on a car.
-- **`aux-signal-switch` (`builds/aux-signal-switch.json`):** on FM, start playback into AUX —
-  does it switch? See [What the car test answers](AUX_SIGNAL.md#what-the-car-test-answers).
+  plugged in** (on stock it greys out), and **SRC steps through to AUX**. The unit does not
+  switch to AUX by itself: the handler follows the AUX *setting*, not the signal.
+- **Boot to AUX (`builds/aux-boot.json`):** the unit **starts on AUX** at every boot, whatever
+  source was playing before. A capture shows AUX's request with PrOnly false and AUX
+  acknowledged at once.
+- **Ring tone names (`media.names`):** the phone's ringtone menu lists the new name.
+- **`aux-signal-switch` (candidate, emulated only):** on FM, start playback into AUX — does it
+  switch? See [The AUX signal path](AUX_SIGNAL.md).
 
 ## The test loop, end to end
 
@@ -362,10 +358,8 @@ What to check depends on the build. After each, capture (step 5 of
 
 ## Rollback
 
-Keep an untouched copy of the original package. Re-flash it the same way; the original
-application content differs from the patched one, so it will be rewritten.
-
-If something has already gone wrong, see [Recovery](RECOVERY.md) — including what is *not*
+Flash the untouched original package the same way as any other (see
+[Keeping a rollback package](#keeping-a-rollback-package)). If something has already gone wrong, see [Recovery](RECOVERY.md) — including what is *not*
 documented, which is worth reading before you need it.
 
 For a plain rollback, flash the **untouched original** package. `--stock` is a canary for the
