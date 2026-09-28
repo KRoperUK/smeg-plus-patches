@@ -1,6 +1,12 @@
 {
   "name": "diagnostic-logging",
   "description": "DIAGNOSTIC BUILD, AND IT DOES NOT WORK YET - redirects the ~6700 compiled-out log call sites from `dummyLogMsg` to `Log_msg`. ON ITS OWN THIS EMITS NOTHING, because `Log_msg` returns at the trace-mask gate. PAIRING IT WITH `diagnostic-logmask` IS WORSE, NOT BETTER: 0x010346d0 is not merely a stub called instead of `Log_msg`, it is the sink `Log_msg` itself calls, so redirecting it makes the logger and the sink call each other on every log call in the firmware. Both halves of the firmware's logging end at that one stubbed sink, so neither patch gives it an output path. See docs/PATCHES.md for what a working diagnostic build would need. NAV only for now.",
+  "summary": "redirects the logging stub to the real logger",
+  "status": {
+    "state": "diagnostic",
+    "label": "Not for driving",
+    "note": "diagnostic build; needs the mask patch too"
+  },
   "variants": {
     "NAV": {
       "app_image": "NAV/AppBin/f_BigQuick.bin",

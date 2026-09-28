@@ -1,6 +1,12 @@
 {
   "name": "aux-always-available",
   "description": "Force C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable() to report AUX as available. AUX stops greying out when there is no signal, so it can be selected on demand and is always in the SRC cycle. Diagnostic/behavioural only - it does not make the unit switch by itself.",
+  "summary": "`IsAUXSRCAvailable()` true only — AUX stops greying out",
+  "status": {
+    "state": "confirmed",
+    "label": "Confirmed",
+    "note": "behavioural; no switching"
+  },
   "variants": {
     "AUDIO_BT": {
       "app_image": "AUDIO_BT/AppBin/f_BigQuick.bin",
@@ -10,7 +16,12 @@
       "base": "0x01000000",
       "firmware": "5.43.A.R2",
       "patches": [
-        { "addr": "0x02247718", "expect": "9421ffa0", "bytes": "386000014e800020", "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)" }
+        {
+          "addr": "0x02247718",
+          "expect": "9421ffa0",
+          "bytes": "386000014e800020",
+          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true (li r3,1 ; blr)"
+        }
       ]
     },
     "AUDIO_BT_256": {
@@ -21,7 +32,12 @@
       "base": "0x01000000",
       "firmware": "5.43.A.R2",
       "patches": [
-        { "addr": "0x02247718", "expect": "9421ffa0", "bytes": "386000014e800020", "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true" }
+        {
+          "addr": "0x02247718",
+          "expect": "9421ffa0",
+          "bytes": "386000014e800020",
+          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true"
+        }
       ]
     },
     "NAV": {
@@ -32,7 +48,12 @@
       "base": "0x01000000",
       "firmware": "5.43.A.R2",
       "patches": [
-        { "addr": "0x02247858", "expect": "9421ffa0", "bytes": "386000014e800020", "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true" }
+        {
+          "addr": "0x02247858",
+          "expect": "9421ffa0",
+          "bytes": "386000014e800020",
+          "why": "C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true"
+        }
       ]
     }
   }

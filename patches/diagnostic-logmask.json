@@ -1,6 +1,12 @@
 {
   "name": "diagnostic-logmask",
   "description": "DIAGNOSTIC BUILD, AND INCOMPLETE ON ITS OWN - forces the global trace mask that gates `Log_msg` (0x02742558), so the ~5900 call sites that go through it run to completion instead of returning at the gate. The mask lives at 0x036d42a8, past the end of the image - BSS, zero at boot - and only ten vtable-exposed `SetTrace` wrappers reach the one instruction that writes it. THIS DOES NOT PRODUCE OUTPUT BY ITSELF: `Log_msg` formats the message and then calls 0x010346d0, which the vendor shipped as `li r3,0 ; blr`. That is the sink, and it is a no-op, so the message is discarded. Do NOT pair this with `diagnostic-logging`, which repoints 0x010346d0 at `Log_msg` and so makes the two call each other. A working diagnostic needs the sink pointed at a real output function - the signature matches VxWorks `logMsg(fmt, a1..a6)` - which is not a one-instruction patch and is not solved yet. Keep this definition for when it is. NAV only; the other builds need their own addresses checked.",
+  "summary": "forces the global trace mask — **necessary but not sufficient**, see below",
+  "status": {
+    "state": "diagnostic",
+    "label": "Not for driving",
+    "note": "diagnostic build"
+  },
   "variants": {
     "NAV": {
       "app_image": "NAV/AppBin/f_BigQuick.bin",

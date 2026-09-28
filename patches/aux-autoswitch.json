@@ -1,6 +1,12 @@
 {
   "name": "aux-autoswitch",
   "description": "Force the SMEG+ AUX source available and remove the early exit in the AUX status-changed handler. Written to make the unit auto-select AUX when its signal appears, but that premise is wrong: the handler reacts to the saved AUX input setting (Auxiliary_Status), not the signal, and the removed exit never fires (executed). Only the IsAUXSRCAvailable edit has an effect (confirmed on hardware). See docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to.",
+  "summary": "`IsAUXSRCAvailable()` true **and** removes the `GetMediaDevice` bail-out",
+  "status": {
+    "state": "confirmed",
+    "label": "Flashed",
+    "note": "the combined build — accepted by the contract check; first edit confirmed on hardware"
+  },
   "variants": {
     "AUDIO_BT": {
       "app_image": "AUDIO_BT/AppBin/f_BigQuick.bin",

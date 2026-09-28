@@ -192,6 +192,7 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 | `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. `ppcdis` needs `capstone`. Covered by `tests/test_analysis_tools.py` on a hand-encoded image (`unpack.py` is not). **`callers.py` finds only direct `bl` calls.** Most calls in this firmware go through `lis`/`addi` + `mtctr`/`bctrl`, so "0 callers" usually means "called indirectly"; use `survey.py` or `xref.py` for those. |
 | `tools/survey.py` | Whole-image function inventory, including the `lis`/`addi` references `callers.py` misses. Tested with a synthetic image. Its output is derived from the vendor symbol map, so it is never committed. |
 | `tools/spy_read.py` | Reads a SPY capture (`SPY/<stamp>`, the `-USER.tar.gz`, or an extracted tree) in memory: the boot-source report from `25300` (requests with PrOnly, ScheduledInit, first acknowledgement, the 7.5 s fallback), `--aux`, `--list`, `--show ID`. Redacts the VIN, device addresses and long numbers by default. Tested with a synthetic capture; never commit a real one. |
+| `tools/patch_status.py` | Generates the patch-status table (`docs/PATCHES.md`) and landing-page panel (`docs/index.md`) from each `patches/*.json` `status`; `--check` fails when they are stale (a test runs it). |
 | `tools/preflight.py` | Validates a built package offline before it goes on a stick, and reports unknowns as loudly as knowns. `build_package.py` runs it last. |
 | `tools/patch_media.py`, `tools/assets.py` | The media partition (`list`/`extract`/`restore`/`apply`), and human-readable names for its replaceable files. Replacing files only; adding one is refused. |
 | `tools/patch_contract.py` | Re-seals `contract.dat` with key material extracted at runtime from the user's own image. It must never ship key material. |
@@ -240,7 +241,7 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 
 ## Working style
 
-- Prefer **data-driven** changes: a new `patches/*.json` beats new Python.
+- Prefer **data-driven** changes: a new `patches/*.json` beats new Python. Each carries `summary` and `status` (state `confirmed` / `flashed` / `never-flashed` / `falsified` / `diagnostic`); the status tables in `docs/PATCHES.md` and `docs/index.md` are generated from them by `tools/patch_status.py`, so update the JSON after a car test and re-run it.
 - The patches are **not validated on hardware** by the maintainer. Say so plainly; do not
   claim a patch "works". Report what was verified statically and what needs a car test.
 - Add a regression test for any bug fixed, and a synthetic fixture for any new file

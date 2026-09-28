@@ -1,6 +1,12 @@
 {
   "name": "spy-dump-userdata",
   "description": "Make the on-unit SPYSTORE collect also back up the live /USER_DATA/user_data tree (settings databases: up_common, connectivity, nav_dest, Audio/Tuner.dat, ...) to the removable stick, so a user can pull their real settings off the unit. There is no supported card to image and the ordinary spy collect only captures the RAMDISK ring buffers, so this is the only route to a live-settings backup. Implemented cave-free by repurposing the least-valuable existing copy block in C_BCM_SPY::CallBackCopy (the *regen* calibration-files copy) into GetUserDataDir(entity)+Xcopy(entity,dest). Trade-off: the spy dump no longer contains the *regen* calibration files.",
+  "summary": "makes `SPYSTORE` also copy `/USER_DATA/user_data` out to the stick",
+  "status": {
+    "state": "confirmed",
+    "label": "Confirmed",
+    "note": "on hardware (2026-09-14, NAV)"
+  },
   "variants": {
     "NAV": {
       "app_image": "NAV/AppBin/f_BigQuick.bin",
