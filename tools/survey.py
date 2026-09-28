@@ -34,7 +34,6 @@ usage:
 """
 
 import argparse
-import bisect
 import collections
 import os
 import re
@@ -101,12 +100,12 @@ def written(w, op):
     Opcode 31 is not decoded further, so both of its register fields count as written.
     """
     if op in WRITES_RT:
-        return ((w >> 21) & 31,)
+        return [(w >> 21) & 31]
     if op in WRITES_RA:
-        return ((w >> 16) & 31,)
+        return [(w >> 16) & 31]
     if op == 31:
-        return ((w >> 21) & 31, (w >> 16) & 31)
-    return ()
+        return [(w >> 21) & 31, (w >> 16) & 31]
+    return []
 
 
 def load_image(path):
@@ -172,12 +171,6 @@ def survey(img, typed, base=DEFAULT_BASE):
 
     n = len(img) // 4
     words = struct.unpack(">%dI" % n, img[: n * 4])
-
-    owner_idx = [(f - base) // 4 for f in funcs]
-
-    def owner(i):
-        k = bisect.bisect_right(owner_idx, i) - 1
-        return funcs[k] if k >= 0 and i < (ends[funcs[k]] - base) // 4 else None
 
     callers = collections.defaultdict(set)
     materialised = collections.defaultdict(set)

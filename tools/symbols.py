@@ -53,6 +53,7 @@ def load_typed_symbols(path):
                 try:
                     syms[int(p[0], 16)] = (p[1], p[2])
                 except ValueError:
+                    # a header or section line, as in load_symbols: not a symbol
                     pass
     return syms
 
