@@ -67,8 +67,8 @@ stick out once the update has finished.
 
 **What is not known:** whether a refused package triggers any retry loop, and what state the
 unit settles into after repeated refusals. The updater does keep a **persisted step counter**,
-which implies a re-run resumes rather than restarts — but that is a reading of `upgrade.out`,
-not an observed behaviour, and this page will not pretend otherwise. *(read/*unknown*)*
+which implies a re-run resumes rather than restarts. That is a reading of `upgrade.out`, not an
+observed behaviour. *(read; behaviour unknown)*
 
 ## "BSP Not compatible. Please use the loader button"
 

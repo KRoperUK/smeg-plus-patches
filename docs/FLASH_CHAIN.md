@@ -132,8 +132,7 @@ a dynamically-resolved BSP symbol. `UpgradeHarmoniesIfNeeded` runs four steps: s
 harmony offset from `Harmony.ini`, erase all harmonies, manage the ones on the stick,
 then write them. Images are read/written with bad-block handling.
 
-**Resolved since this was first written:** the `SIZE:` / `SIZE_1..SIZE_32` fields are
-computable — `SIZE` is the sum of the file sizes inside the tar and `SIZE_n` the same with
+The `SIZE:` / `SIZE_1..SIZE_32` fields of `system.bin.inf` are computable: `SIZE` is the sum of the file sizes inside the tar and `SIZE_n` the same with
 each file rounded up to *n* KiB. They are read by `UpgPlugin.out` for the media space check.
 See [Media partition](MEDIA_PARTITION.md#the-size-fields-solved).
 
@@ -161,8 +160,7 @@ itself, the code that runs from the stick — and they carry full symbol tables:
 | `UpgPlugin.out` | ~440 | the plugin the application talks to, including `C_UPG_LOGS` |
 | `upgrade_lib.out` | ~250 | shared helpers |
 
-So the flow on this page, which was originally recovered by matching log strings, can be
-read directly:
+So the flow on this page can be read from the symbols, not only matched from log strings:
 
 ```sh
 uv run tools/elfsyms.py SMEG_PLUS_UPG/upgrade.out --class C_UPGRADE
@@ -281,7 +279,7 @@ What the value holds depends on `CheckType`:
 | 1 | the file's size | *executed* for the one type-1 record, `/ctrl.bin` itself: `0x13cc` = 5 068, its own length. That it means size in general is *inferred*, and agrees with `contract.dat`'s types |
 | 3 | a CRC-16 of the whole file | *executed*: reproduced for every type-3 record whose file is loose in the stock package (110 of 110, including the updater ELFs, `db_dwnl_gl.out` and the HARMONY skins; see below) |
 
-### The type-3 value *(#197)*
+### The type-3 value
 
 A reflected CRC-16 over the whole file: table polynomial **`0xD415`** (`0xA82B` in normal
 form), initial value 0, no final XOR. The two result bytes are stored **swapped**, and the
@@ -305,17 +303,10 @@ No file our tools edit has a type-3 record, since tones, logos and `up_common` a
 2. So nothing changes today. `smeglib.ctrl_crc16()` computes the value for anyone who needs
 to edit a type-3 file; they would also need to find the sidecar.
 
-!!! failure "Corrected: the record layout was misread"
-
-    An earlier version of this section read the manifest as a 1-byte count followed by
-    `{CheckType (1 byte), CRC32, path}` records. It was worked out by eye from a hex dump: the
-    `02 21 51 67 F7` "before the `dbsystem.bin` path" is the **previous** record's type and
-    value. That reading paired each CRC with the wrong file. The tools were never affected,
-    because they find a CRC by its value, not by parsing records.
-
-Patched packages have carried a stale trailer: `patch_smeg` and `patch_media` did not
-recompute it until #159. Units accepted those packages, which suggests the trailer is not
-checked *(inferred)*. The tools now recompute it, so a patched manifest has the stock shape.
+`patch_smeg` and `patch_media` recompute the trailer after every edit, so a patched manifest
+has the stock shape. `verify_package` and `preflight` warn about a stock-shaped `ctrl` file
+whose trailer does not match. Whether the unit checks the trailer is *not known*: packages with
+a stale one have been accepted *(executed)*.
 
 The updater logs `CheckEntryFile : CheckType = 0 / 1 / 2 / 3 / unknown for file %s`, so the
 type field is what it switches on. `flasher.crc` is the CRC32 of `flasher.inf`.
@@ -337,10 +328,10 @@ and cannot be copied."* unless the contract is regenerated — the format is dec
 ## 6. Open questions
 
 - Exact field offsets inside `dbsystem.bin`.
-- `CheckType` in the `*_ctrl.bin` manifests: 2 = CRC32 and 1 = size are now established
-  from the stock files ([above](#_ctrlbin-format)). A type-3 value is a CRC-16 ([above](#the-type-3-value-197)); what type 0
-  means, is still open. `CheckEntryFile`, which checks them, is in `upgrade.out`, not in the
-  application image. For **`contract.dat`**: 1 = size, 2 = CRC32, 3 = spot check, anything
-  else fails *(read, `RsaCheckDataBlock`; see [The update flow](UPGRADE_FLOW.md#the-contract-check))*.
+- What `CheckType` 0 means in the `*_ctrl.bin` manifests (1, 2 and 3 are
+  [above](#_ctrlbin-format)), and whether `CheckCRCFile` compares the manifest's type-3 value
+  or a sidecar's ([above](#the-type-3-value)). For comparison, **`contract.dat`** uses
+  1 = size, 2 = CRC32, 3 = spot check, anything else fails *(read, `RsaCheckDataBlock`; see
+  [The update flow](UPGRADE_FLOW.md#the-contract-check))*.
 - Which module a given unit selects at runtime (`AUDIO_BT` vs `_256` vs `NAV`) — read
   from the vehicle/hardware type, not traced.
