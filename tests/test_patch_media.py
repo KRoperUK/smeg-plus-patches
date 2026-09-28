@@ -130,8 +130,11 @@ def test_apply_rebuilds_the_whole_cascade(media, tmp_path):
 
     # system.bin.inf: CRC is over the new container, SIZE moves by exactly our change
     inf = (out / "NAV" / "system.bin.inf").read_bytes().decode()
-    g = lambda k: int(re.search(k + r": (\d+)", inf).group(1))
-    assert g("CRC32") == crc(new_bin)
+    g = lambda k: int(re.search(k + r": (-?\d+)", inf).group(1))
+    # signed, as stock writes it; this test once read only unsigned digits, which baked the
+    # bug in and made it fail or pass depending on the CRC gzip's timestamp produced
+    assert g("CRC32") & 0xFFFFFFFF == crc(new_bin)
+    assert g("CRC32") < 0x80000000
 
     old_len = len(info["files"]["ring_tones/ring1RT.wav"])
     grew = len(new_tone) - old_len
@@ -222,3 +225,16 @@ def test_apply_only_limits_the_change(media, tmp_path):
     data = members((out / "NAV" / "system.bin").read_bytes())
     assert data["ring_tones/ring1RT.wav"] != info["files"]["ring_tones/ring1RT.wav"]
     assert data["ring_tones/ring2RT.wav"] == info["files"]["ring_tones/ring2RT.wav"]
+
+
+def test_inf_crc_is_written_signed_like_every_stock_inf():
+    """Above 0x7fffffff a stock `.inf` writes the CRC negative; patch_media wrote it unsigned.
+
+    Found by verify_package on a real rebuild: `CRC32: 4036199671` where stock would write
+    -258767625. Roughly half of all media rebuilds hit it, since gzip's timestamp moves the CRC.
+    """
+    import patch_media
+
+    inf = b"CRC32: 1\r\nSIZE: 10\r\n"
+    assert b"CRC32: -268435456\r\n" in patch_media.patch_inf(inf, 0xF0000000, {})
+    assert b"CRC32: 305419896\r\n" in patch_media.patch_inf(inf, 0x12345678, {})
