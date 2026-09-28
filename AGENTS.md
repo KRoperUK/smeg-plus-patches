@@ -63,7 +63,8 @@ Two things in a package are patchable, and both paths are implemented and used o
 ## How to run things
 
 The CLI tools need nothing but `uv`: every script declares its own dependencies in a PEP 723
-header.
+header. A header opened with `# /// script` must be closed with `# ///`, or uv refuses the file;
+`tests/test_script_headers.py` checks every tool.
 
 ```sh
 uv run tools/build_package.py --manifest builds/aux-boot.json
@@ -297,6 +298,12 @@ traps:
   package at runtime; keep it that way.
 - Tone slot formats differ: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones
   16-bit **stereo 8 kHz**.
+- **Ring tone names are string literals in the application image**, not settings rows; each
+  slot has a fixed maximum length (ring1 7, ring3 15, the others 11). `media.names` becomes an
+  application patch whose edits carry `"data": true`. See `docs/RINGTONES.md#names`.
+- In the `ctrl` manifests, CheckType 1 holds the file size, 2 its CRC32, and 3 a reflected
+  CRC-16 (table polynomial `0xD415`, byte-swapped, sign-extended; `smeglib.ctrl_crc16`).
+  The tools recompute each `ctrl` file's trailing CRC32. See `docs/FLASH_CHAIN.md`.
 
 ## Working style
 
@@ -306,7 +313,12 @@ traps:
   "works" beyond that; report what was verified statically and what needs a car test.
 - Add a regression test for any bug fixed, and a synthetic fixture for any new file format.
 - Keep docs current in the same PR — the user-facing pages are the product here. Write them as
-  the current understanding, not as a log of corrections.
+  the current understanding, not as a log of corrections; dated hardware results go in the
+  log in `docs/VERIFICATION.md`.
+- **Parallel agents that edit the repository each need their own git worktree.** Sharing one
+  checkout, one agent's branch switch lands another's commit on the wrong branch.
+- **Pace GitHub writes.** Open issues, comments and PRs a couple of minutes apart; a burst of
+  issue creation has tripped GitHub's anti-spam and suspended an account.
 
 ## Related documents
 
