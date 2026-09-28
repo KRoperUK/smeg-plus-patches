@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """Audit a package's checksum cascade before it goes near a car.
 

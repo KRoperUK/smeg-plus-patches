@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """Put a built package onto a USB stick, and prove it landed.
 

@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """The application image container, shared by every tool that reads it.
 

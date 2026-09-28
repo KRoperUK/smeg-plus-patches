@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """Inventory every function in a SMEG+ application image: where it sits, what reaches it.
 

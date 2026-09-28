@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """Reading the symbol maps the vendor's unstripped ELFs come with.
 
