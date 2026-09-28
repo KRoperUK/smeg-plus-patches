@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """Identify which SMEG+ build an application image is, and fail loudly when it is unclear.
 

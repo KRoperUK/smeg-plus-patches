@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = []
+# ///
 
 """Diff two firmware releases by symbol, so a patch set can be carried across.
 
