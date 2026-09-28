@@ -10,10 +10,9 @@ A package is refused by the unit if any of its recorded CRC32s disagree with the
 describe, and the failure it produces in the car looks like a firmware fault rather than a
 packaging one. This reads every record the package carries and checks it against the bytes.
 
-**It never assumes the record layout.** `*_ctrl.bin` manifests are binary and their exact
-stride is not something this repository has verified against a vendor package — `patch_media`
-still refuses a record count it has never seen for the same reason. So rather than parse
-them, this looks for the CRC *as a value*: each manifest must contain, as a raw big-endian
+**It never assumes the record layout.** The `*_ctrl.bin` layout is now known
+(docs/FLASH_CHAIN.md), but a check that does not depend on it stays correct if a manifest ever
+differs. So rather than parse them, this looks for the CRC *as a value*: each manifest must contain, as a raw big-endian
 word, the CRC32 of every file it is responsible for. That is layout-free and still catches
 the failure that matters, which is a manifest that does not describe what shipped.
 
