@@ -403,3 +403,65 @@ def test_a_module_with_an_empty_appbin_is_a_layout_problem(tmp_path):
     (p / "AUDIO_BT" / "AppBin").mkdir(parents=True)
     problems = prepare_usb.check_layout(str(p))
     assert any("has an AppBin/ but no" in x for x in problems)
+
+
+# ------------------------------------------------ macOS indexing and eject (#182)
+
+
+def test_stop_indexing_writes_the_marker_and_reports_mdutil(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        prepare_usb, "run_quiet", lambda cmd, **k: calls.append(cmd) or (False, "denied")
+    )
+    notes = prepare_usb.stop_indexing(str(tmp_path))
+    assert (tmp_path / ".metadata_never_index").exists()
+    assert calls == [["mdutil", "-i", "off", str(tmp_path)]]
+    assert any("not applied (denied)" in n for n in notes), "a refusal is reported, not fatal"
+
+
+def test_index_folders_at_the_root_are_removed_and_nothing_else(tmp_path):
+    for name in (".Spotlight-V100", ".fseventsd", "SMEG_PLUS_UPG"):
+        (tmp_path / name / "sub").mkdir(parents=True)
+    assert prepare_usb.remove_index_dirs(str(tmp_path)) == [".Spotlight-V100", ".fseventsd"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["SMEG_PLUS_UPG"]
+
+
+def test_eject_retries_while_the_volume_is_busy(monkeypatch):
+    results = iter([(False, "busy"), (False, "busy"), (True, "ejected")])
+    monkeypatch.setattr(prepare_usb, "run_quiet", lambda cmd, **k: next(results))
+    waits = []
+    assert prepare_usb.eject("/Volumes/X", sleep=waits.append) == (True, "ejected")
+    assert waits == [2.0, 4.0], "backs off between attempts"
+
+
+def test_eject_gives_up_after_the_last_attempt(monkeypatch):
+    monkeypatch.setattr(prepare_usb, "run_quiet", lambda cmd, **k: (False, "busy"))
+    assert prepare_usb.eject("/Volumes/X", attempts=3, sleep=lambda s: None) == (False, "busy")
+
+
+def test_keep_index_leaves_the_stick_alone(pkg, tmp_path, monkeypatch):
+    stick = tmp_path / "stick" / "a" / "b"
+    stick.mkdir(parents=True)
+    (stick / ".Spotlight-V100").mkdir()
+    monkeypatch.setattr(prepare_usb.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        prepare_usb, "probe_target", lambda t: {"filesystem": None, "scheme": None, "note": ""}
+    )
+    assert prepare_usb.main(["--package", str(pkg), "--target", str(stick), "--keep-index"]) == 0
+    assert (stick / ".Spotlight-V100").exists()
+    assert not (stick / ".metadata_never_index").exists()
+
+
+def test_by_default_macos_indexing_is_stopped_and_its_folders_removed(pkg, tmp_path, monkeypatch):
+    stick = tmp_path / "stick" / "a" / "b"
+    stick.mkdir(parents=True)
+    (stick / ".fseventsd").mkdir()
+    monkeypatch.setattr(prepare_usb.sys, "platform", "darwin")
+    monkeypatch.setattr(prepare_usb, "run_quiet", lambda cmd, **k: (True, ""))
+    monkeypatch.setattr(
+        prepare_usb, "probe_target", lambda t: {"filesystem": None, "scheme": None, "note": ""}
+    )
+    assert prepare_usb.main(["--package", str(pkg), "--target", str(stick)]) == 0
+    assert (stick / ".metadata_never_index").exists()
+    assert not (stick / ".fseventsd").exists()
+    assert (stick / "SMEG_PLUS_UPG" / "ctrl.bin").exists()

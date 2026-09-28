@@ -127,6 +127,7 @@ not help; it does the same thing. The entry has to be written or corrected direc
 ```sh
 python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB
 python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB --dry-run
+python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB --eject
 ```
 
 It checks the layout, the target and the free space **before copying anything**, says which
@@ -146,8 +147,17 @@ beside it. After copying, the tool deletes the shadow of each file and directory
 nothing else. Any other litter inside the package still fails the check.
 
 macOS also creates `.Spotlight-V100` and `.fseventsd` at the stick's **root** when it mounts it
-(observed). They are outside `SMEG_PLUS_UPG`, which is all the updater reads, and
-`prepare_usb` checks only the package tree. Eject with `diskutil eject` before unplugging.
+(observed). They are outside `SMEG_PLUS_UPG`, which is all the updater reads, so they are
+probably harmless *(inferred)*. Spotlight indexing a freshly written stick did, though, keep the
+volume busy until `diskutil eject` was retried. So on macOS `prepare_usb`:
+
+- writes `.metadata_never_index` at the root and runs `mdutil -i off` (a refusal is reported,
+  not fatal);
+- removes those two folders after the copy is verified;
+- with `--eject`, ejects the stick, retrying with a back-off while it is busy.
+
+`--keep-index` skips all of this. Without `--eject`, eject with `diskutil eject` before
+unplugging.
 
 It only ever writes inside `--target`, and refuses to copy a package into itself.
 
@@ -307,8 +317,7 @@ What to check depends on the build. After each, capture (step 5 of
 
 1. **Build.** `uv run tools/build_package.py --manifest builds/<scheme>.json` — it patches,
    rebuilds the media partition and the checksum cascade, re-seals, and runs preflight.
-2. **Stick.** `uv run tools/prepare_usb.py --package <out>/SMEG_PLUS_UPG --target /Volumes/<stick>`,
-   then `diskutil eject /Volumes/<stick>`.
+2. **Stick.** `uv run tools/prepare_usb.py --package <out>/SMEG_PLUS_UPG --target /Volumes/<stick> --eject`.
 3. **Car.** Parked, engine running; accept the update; do not remove the stick until the normal
    UI is back. Then remove it — it re-offers the update while present.
 4. **Observe** the behaviour under test, over at least two restarts.

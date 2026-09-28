@@ -18,12 +18,17 @@ firmware fault, which is an expensive way to find out. This makes both failures 
   4. **re-read every file from the stick and compare checksums** against the source, which
      is what catches the mid-copy removal
   5. confirm the layout the updater looks for, and count any `._*` left behind as a failure
+  6. on macOS: stop Spotlight indexing the stick (`.metadata_never_index`, `mdutil -i off`)
+     and remove the `.Spotlight-V100` / `.fseventsd` folders it leaves at the root; indexing
+     also held the volume busy so `diskutil eject` failed until retried (`--keep-index` skips)
+  7. with `--eject`, eject the stick, retrying while the volume is still busy
 
 It only ever writes inside `--target`, and it prints the target before touching anything.
 
 usage:
     python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB
     python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB --dry-run
+    python3 tools/prepare_usb.py --package out/SMEG_PLUS_UPG --target /Volumes/USB --eject
 """
 
 import argparse
@@ -32,6 +37,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import zlib
 
 # macOS writes these beside a file when it copies extended attributes. The updater does not
@@ -207,6 +213,62 @@ def verify_copy(src, dst):
     return bad
 
 
+INDEX_DIRS = (".Spotlight-V100", ".fseventsd")
+NEVER_INDEX = ".metadata_never_index"
+
+
+def run_quiet(cmd, timeout=60):
+    """Run a command, returning (ok, output); never raise for a missing tool or a timeout."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    return r.returncode == 0, (r.stdout + r.stderr).strip()
+
+
+def stop_indexing(target):
+    """Ask macOS not to index the stick. Best effort: a failure is reported, not fatal.
+
+    The updater reads only `SMEG_PLUS_UPG/`, so the index folders are probably harmless, but
+    Spotlight indexing a freshly written stick held the volume busy until `diskutil eject`
+    was retried (observed 2026-09-28).
+    """
+    notes = []
+    marker = os.path.join(target, NEVER_INDEX)
+    if not os.path.exists(marker):
+        with open(marker, "wb"):
+            pass
+        notes.append("wrote %s" % NEVER_INDEX)
+    ok, out = run_quiet(["mdutil", "-i", "off", target])
+    last = out.splitlines()[-1] if out else "no output"
+    notes.append("mdutil -i off: %s" % ("ok" if ok else "not applied (%s)" % last))
+    return notes
+
+
+def remove_index_dirs(target):
+    """Delete the index folders macOS leaves at the stick's root; return what was removed."""
+    removed = []
+    for name in INDEX_DIRS:
+        path = os.path.join(target, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+            if not os.path.exists(path):
+                removed.append(name)
+    return removed
+
+
+def eject(target, attempts=5, wait=2.0, sleep=time.sleep):
+    """`diskutil eject`, retried while the volume is busy. Returns (ok, last output)."""
+    out = ""
+    for i in range(attempts):
+        ok, out = run_quiet(["diskutil", "eject", target])
+        if ok:
+            return True, out
+        if i + 1 < attempts:
+            sleep(wait * (i + 1))
+    return False, out
+
+
 def probe_target(target):
     """Best-effort filesystem and partition-scheme facts. Missing facts are not failures.
 
@@ -281,6 +343,12 @@ def main(argv=None):
     ap.add_argument("--target", required=True, help="the mounted USB stick")
     ap.add_argument("--dry-run", action="store_true", help="check everything, copy nothing")
     ap.add_argument("--force", action="store_true", help="continue past filesystem warnings")
+    ap.add_argument(
+        "--keep-index",
+        action="store_true",
+        help="macOS: leave Spotlight indexing and its folders on the stick alone",
+    )
+    ap.add_argument("--eject", action="store_true", help="macOS: eject the stick when done")
     args = ap.parse_args(argv)
 
     src = os.path.abspath(args.package)
@@ -360,6 +428,11 @@ def main(argv=None):
             raise SystemExit(msg)
         print("  warning  %s" % msg.replace("\n", "\n           "))
 
+    macos = sys.platform == "darwin"
+    if macos and not args.keep_index:
+        for note in stop_indexing(dst):
+            print("  index    %s" % note)
+
     # 4. copy, then re-read every byte from the stick
     top, names = copy_tree(src, dst)
     print("  copied   %d file(s) to %s" % (len(names), top))
@@ -390,7 +463,22 @@ def main(argv=None):
         )
 
     print("  verified %d file(s), no junk, layout intact" % len(names))
+    if macos and not args.keep_index:
+        removed = remove_index_dirs(dst)
+        if removed:
+            print("  index    removed %s from the stick's root" % ", ".join(removed))
     print("stick ready: %s" % top)
+    if args.eject:
+        if not macos:
+            print("  eject    --eject is macOS-only; eject the stick from your file manager")
+            return 0
+        ok, out = eject(dst)
+        if not ok:
+            raise SystemExit(
+                "the stick is ready but did not eject (%s).\n"
+                "  Close anything using it and run: diskutil eject %s" % (out, dst)
+            )
+        print("  ejected  %s" % dst)
     return 0
 
 
