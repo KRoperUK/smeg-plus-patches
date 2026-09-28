@@ -10,11 +10,11 @@ This is a close reading of the stock **NAV `SMEG5.43.A.R2`** image, at base `0x0
 through Ghidra decompiles and `tools/ppcdis.py`. Evidence tiers are as in
 [Verification](VERIFICATION.md).
 
-!!! warning "Nothing here has been executed"
+!!! warning "Emulated, not flashed"
 
-    The detection and routing below are **read**. The two patch designs at the end are
-    **candidates**: they have not been emulated or flashed, and nothing in `patches/` ships
-    them.
+    The detection and routing below are **read**. The two patch designs at the end ship as
+    `patches/aux-signal-switch.json`. Each was **executed** under `tools/ppcemu.py`, on its own
+    function, with its callees stubbed. Neither has been flashed.
 
 ## In short
 
@@ -123,7 +123,7 @@ tile available.
 3. See whether the AUX tile ungreys. If it does, detection runs while AUX is not the current
    source.
 
-## Candidate designs *(unexecuted, unshipped)*
+## Candidate designs: `aux-signal-switch` *(emulated, not flashed)*
 
 Every **original** word below was read from the stock image and re-checked against it while
 writing this page, for both A and B. Replacements were assembled with `llvm-mc` or encoded by
@@ -142,15 +142,15 @@ In `C_HMI_MEDIA_APP_BASE::HandleAudioAuxInputStatusChnged`:
 | `0x02303398` | `801f0010` `lwz r0,0x10(r31)` | `881f0010` `lbz r0,0x10(r31)` | the signal query writes a `bool`, not a `long` |
 | `0x0230342c` | `801f0010` `lwz r0,0x10(r31)` | `881f0010` `lbz r0,0x10(r31)` | the same, at the activate/release decision |
 
-!!! warning "Open before shipping A: what is at `+8`?"
+!!! note "The dropped store to `+8` is dead *(read)*"
 
-    The first edit **drops the stock zeroing of `8(r31)`** to make room for zeroing the
-    result byte. The close reading judged that store redundant because both later branches
-    rewrite `+8`. That was read by the close reading and has **not** been checked
-    independently. What `+8` holds, and that nothing reads it before the rewrite, must be
-    established before A is flashed.
+    The first edit replaces the stock zeroing of `8(r31)`. `r31` is the frame pointer here, so
+    `+8` is a stack local: the handler's "state" byte. Both branches after the query overwrite
+    it, at `0x023033a8` (`0`) and `0x023033b4` (`1`), before its only read at `0x023033c8`.
+    The result byte at `+0x10` is also a stack local, the query's out-parameter.
 
-With A applied, the handler's cached state follows the signal *(inferred)*:
+With A applied, the handler's cached state follows the signal *(executed; see
+[Emulation results](#emulation-results))*:
 
 - **Signal appears:** it activates AUX. `aux-boot-restore`'s `0x02303474` edit already makes
   that request's `PrOnly` 0.
@@ -196,12 +196,53 @@ In `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage`. This drops the redundant reloads o
 - **No address overlap** with `aux-autoswitch` (`0x02303428`), `aux-sticky` (`0x02303434`) or
   `aux-boot-restore` (`0x02303474`, `0x022c0678`, `0x01699444`) *(read)*.
 
-**Next steps, in order:**
+### Emulation results
 
-1. Establish what `+8` is.
-2. Emulate the handler with `tools/ppcemu.py`: stub its callees and run both cached states
-   against both signal values.
-3. Emulate the dispatch window with message ids `0xcb`, `0xcc`, `0xd7`, `0xd9` and one above
-   `0xd9`.
-4. Run the car check above.
-5. Only then write a `patches/*.json` and do a car test with a `SPYTAKE` capture.
+**Handler** (`0x0230331c`), run on the stock NAV image with A applied. Every callee is
+stubbed: the audio client pointer, both queries (each writing the value under test),
+`GetMediaDevice` (returning 0 with a fake source), `SetMediaDeviceState`, `ActivateSource`
+and `ReleaseSource`. `this+0x51449` is the cached state *(executed)*.
+
+| image | setting | signal | cached | query called | outcome |
+|---|---|---|---|---|---|
+| stock | 1 | 0 | 0 | setting | `ActivateSource(aux, 1)`; cache → 1 |
+| stock | 0 | 1 | 0 | setting | nothing: the stock handler cannot see the signal |
+| A | 0 | 1 | 0 | signal | `ActivateSource(aux, 1)`, device state 2; cache → 1 |
+| A + `aux-boot-restore` | 0 | 1 | 0 | signal | `ActivateSource(aux, 0)`: `PrOnly` clear |
+| A | 1 | 0 | 0 | signal | nothing: a setting change alone no longer activates |
+| A | 1 | 1 | 1 | signal | nothing: no change |
+| A | 1 | 0 | 1 | signal | `ReleaseSource`, device state 0; cache → 0 (for every stubbed source state 0–8) |
+| A + `aux-sticky` | – | 0 | 1 | signal | no release; cache → 0 |
+| A + `aux-sticky` | – | 1 | 0 | signal | `ActivateSource`; cache → 1 |
+
+**Dispatch window** (`0x0230961c`–`0x02309650`), run from the message-id load to the first
+address outside the window *(executed)*:
+
+| message id | stock goes to | with B goes to |
+|---|---|---|
+| `0xcb` | AUX handler case (`0x02309fbc`) | same |
+| `0xcc` | default (`0x0230a664`) | **AUX handler case** |
+| `0xd7`, `0xd9` | `0x0230a190` | same |
+| `0xca`, `0xd8`, `0x10` | default | same |
+| `0xda`, `0x385` | the `> 0xd9` chain (`0x02309650`) | same |
+
+`tests/test_aux_signal_switch.py` replays the dispatch window on a synthetic image, so CI
+checks it without firmware. Breaking the `0xcc` compare fails the test.
+
+**Not executed:** anything outside those two functions, the DBUS round trip of
+`Get_AUX_signal_status`, and the car.
+
+### What the car test answers
+
+`builds/aux-signal-switch.json` combines this with the boot-restore build: `aux-always-available`,
+`aux-sticky`, `aux-boot-default`, `aux-boot-restore`, `aux-signal-switch` and
+`spy-dump-userdata-partition`. Flash it only after the `aux-boot-restore` test has been read.
+
+1. **On FM, start playback into AUX.** If the unit switches to AUX, the detector runs while
+   AUX is not selected. This also answers the open question
+   [above](#is-the-signal-measured-while-another-source-plays).
+2. **Pause the phone for a minute.** With `aux-sticky`, AUX should stay selected.
+3. **Change source manually, then restart playback.** Nothing should switch: the handler
+   acts on a *change* of signal, and the signal did not change.
+4. **Take a `SPYTAKE`, then `SPYSTORE`.** The `06301` buffer (the media app) and the
+   `25300` buffer (`C_MGR_SRC`) show whether `0xcc` arrived and what was requested.

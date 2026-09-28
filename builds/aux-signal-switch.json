@@ -1,0 +1,38 @@
+{
+  "_comment": "CANDIDATE car build for switching to AUX when its signal appears, on top of the aux-boot-restore build. NOT tested on hardware; aux-signal-switch is verified only under emulation (handler and dispatch window). Flash it only after the aux-boot-restore car test has been read. LOCAL build manifest: edit the paths below before reusing.",
+  "_sources": ["builds/aux-boot-restore.json"],
+  "_pairs": {
+    "aux-always-available": "AUX selectable and available (the first half of aux-autoswitch)",
+    "aux-sticky": "the second half of aux-autoswitch, plus: losing the signal no longer releases AUX, so a paused phone does not fall back to FM",
+    "aux-boot-default": "forces the restored Last_Source to 7",
+    "aux-boot-restore": "AUX's requests sent without PrOnly, and the restored priority forced to 20",
+    "aux-signal-switch": "the AUX handler reads the signal instead of the setting, and the media dispatch sends the signal event (0xcc) to it",
+    "spy-dump-userdata-partition": "SPYSTORE also copies /USER_DATA"
+  },
+  "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
+  "package": "~/Downloads/SMEG_PLUS_UPG",
+  "out": "~/smeg-builds/stick_signal/SMEG_PLUS_UPG",
+  "module": "NAV",
+  "app": {
+    "patches": [
+      "aux-always-available",
+      "aux-sticky",
+      "aux-boot-default",
+      "aux-boot-restore",
+      "aux-signal-switch",
+      "spy-dump-userdata-partition"
+    ]
+  },
+  "media": {
+    "tones": {
+      "ring_tones/ring1RT.wav": {
+        "source": "/Users/kieran/Downloads/piano-riff.mp3",
+        "gain_db": 7.4
+      }
+    },
+    "names": {
+      "ring1": "Piano_riff"
+    }
+  },
+  "seal": true
+}
