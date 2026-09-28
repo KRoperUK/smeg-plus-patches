@@ -75,7 +75,10 @@ first.
 
 `.venv/` is gitignored, so a fresh clone has none — build it first (Python 3.13, because
 Homebrew's `python3` is 3.14, where `ensurepip` is broken and PySide6 has no wheels):
-`uv venv --seed --python 3.13 .venv && uv pip install --python .venv/bin/python PySide6 pytest zensical ruff`.
+`uv venv --seed --python 3.13 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical`.
+`unicorn` and `capstone` come from `requirements-dev.txt`; without them the emulator and
+disassembler tests **skip** rather than fail, so a venv missing them looks green and is not
+what CI runs.
 
 ## Platforms: macOS and Windows
 
@@ -135,6 +138,32 @@ no compressed size, because the zlib stream is self-delimiting. So the image can
 that field updated. What remains unverified is whether the loader maps the appended region
 **executable**. Do not claim a trampoline works until that is settled on hardware.
 
+## Analysis workflow
+
+- **Tag every claim** with how it was established — *executed*, *read*, *inferred* or *not
+  known* (see [docs/VERIFICATION.md](docs/VERIFICATION.md)) — and never promote one to a
+  higher tier in a doc, a patch `description` or a PR.
+- **Most calls are indirect.** The compiler materialises an address (`lis`/`addi`) and calls
+  through `mtctr`/`bctrl`; `callers.py` sees only `bl`. `tools/survey.py` inventories every
+  function with all three reference kinds. Its output derives from the vendor symbol map, so
+  it stays **outside** the repository (see [docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md)).
+- **Ghidra is one shared server.** `.mcp.json` points at `http://127.0.0.1:8000/mcp`. Start
+  one pyghidra-mcp server over HTTP ([docs/TOOLCHAIN.md](docs/TOOLCHAIN.md)); a per-session
+  stdio copy fails with `LockException`, because Ghidra lets one process hold a project.
+- **Behaviour is checked by execution before a car.** `tools/ppcemu.py` runs one function
+  with its callees stubbed. A stub's return value is an assumption, so say what was stubbed.
+- **Runtime evidence comes from the spy collect.** `SPYTAKE` (the unit collects, then
+  reboots), then `SPYSTORE` with a stick in. The trace buffers are in
+  `SPY/<stamp>/TAR/*-USER.tar.gz` → `RAMDISK_SPY/<buffer>/*.bin`, plain `<ms>::<event>` text
+  (`25300` = `C_MGR_SRC`, `06301` = the media app); `traces.bin` is only the VxWorks
+  exception log. See [docs/FLASHING.md](docs/FLASHING.md#the-test-loop-end-to-end). A
+  capture holds the **VIN and personal data**: never commit it, quote it or attach it to an
+  issue.
+- **The AUX input handler follows the saved AUX setting, not the signal**
+  ([docs/AUX_CHAIN.md](docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to),
+  [docs/AUX_SIGNAL.md](docs/AUX_SIGNAL.md)). Anything built on "the handler fires when a
+  signal appears" is wrong.
+
 ## Testing without firmware
 
 `tests/helpers.py` builds a **synthetic package from scratch** — header + zlib container,
@@ -160,8 +189,15 @@ Building those tests immediately caught two fixture bugs, so it is worth the eff
 | `tools/prepare_usb.py` | Copies a package to a stick and re-reads every file back to prove the copy landed. **Refuses to write into a package already on the stick** — that merges two and the result still passes its own checksums. Junk (`._*`) is a failure, not a warning. Probing is macOS-only and reports "unknown" rather than guessing. |
 | `tools/symdiff.py` | Symbol-level diff between two releases, and locates a patch site in one nobody has analysed. Reports the **displacement** the images differ by, which a byte comparison buries under ~80% noise. A derived address is a **candidate**, never a patch. |
 | `tools/crc_recover.py` | Recovers CRC parameters from `(message, checksum)` samples. Checked against published variants, because a recovery tool that fails quietly reports "not a CRC" — and that is how its negative result on the map checksums is trustworthy. |
-| `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. Need `capstone`. Untested — see #38; `tools/symbols.py` is the closest thing they have to a net. |
+| `tools/ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py` | The analysis tools every patch address was derived with. `ppcdis` needs `capstone`. Covered by `tests/test_analysis_tools.py` on a hand-encoded image (`unpack.py` is not). **`callers.py` finds only direct `bl` calls.** Most calls in this firmware go through `lis`/`addi` + `mtctr`/`bctrl`, so "0 callers" usually means "called indirectly"; use `survey.py` or `xref.py` for those. |
 | `tools/survey.py` | Whole-image function inventory, including the `lis`/`addi` references `callers.py` misses. Tested with a synthetic image. Its output is derived from the vendor symbol map, so it is never committed. |
+| `tools/preflight.py` | Validates a built package offline before it goes on a stick, and reports unknowns as loudly as knowns. `build_package.py` runs it last. |
+| `tools/patch_media.py`, `tools/assets.py` | The media partition (`list`/`extract`/`restore`/`apply`), and human-readable names for its replaceable files. Replacing files only; adding one is refused. |
+| `tools/patch_contract.py` | Re-seals `contract.dat` with key material extracted at runtime from the user's own image. It must never ship key material. |
+| `tools/splash.py`, `tools/cartography.py` | The marque logo bundles (**not** the boot splash), and the map metadata that is understood. |
+| `tools/fix_userdata_case.py` | Verifies or fixes the FAT long-filename entry a lowercase `sqlite` payload directory needs; takes positional arguments only. |
+| `tools/smeglib.py` | Shared CRC and `.inf` helpers. `swap_crc` replaces **exactly one** occurrence of a CRC value or refuses. |
+| `tools/check_commit_msg.py`, `check_no_firmware.sh`, `check_no_pii.py` | The three enforcement hooks: conventional titles, no vendor files, no personal data. |
 | the toolchain | Per-machine, not bundled: `clang`/`ld.lld`/`llvm-mc`/`rizin`/Ghidra. On macOS only `lld` lands on `PATH`, and Apple's `clang` cannot target PowerPC. See [docs/TOOLCHAIN.md](docs/TOOLCHAIN.md). |
 | `docs/` | Published with Zensical to <https://smeg.kroper.uk/>. A broken anchor fails the build; run `zensical build` before pushing docs. |
 

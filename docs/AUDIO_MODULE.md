@@ -180,6 +180,11 @@ Everything in this section is **inferred** from the reading above.
   - AUX is muted while silent (`+0x168`).
 
   Both matter if AUX is selected with no signal.
+
+  Both changes are now `patches/aux-signal-switch.json`, **executed** under emulation and not
+  flashed; see [The AUX signal path](AUX_SIGNAL.md#emulation-results). The two constraints still
+  apply: a detection before `st_audio` = 10 is lost, and `aux-sticky` is paired with it so
+  silence does not release AUX.
 - **Boot-to-AUX.** The boot-time `AUDIO_AUX_INPUT_STATUS_CHANGED` from
   `ElabRADIO_READY_FOR_INIT_0` means `HandleAudioAuxInputStatusChnged` may run at boot. The
   `aux-boot-restore` edit at `0x02303474` (PrOnly false in that handler) therefore also covers

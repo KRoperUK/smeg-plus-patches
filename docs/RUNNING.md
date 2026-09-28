@@ -11,14 +11,14 @@ canonical one used everywhere here; if you have built the `.venv/` (see
 === "uv (recommended)"
 
     ```sh
-    uv run tools/patch_smeg.py     --src SMEG_PLUS_UPG --out overlay
+    uv run tools/patch_smeg.py     --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod --copy-package
     uv run tools/patch_contract.py --package SMEG_PLUS_UPG_mod
     ```
 
 === "venv / plain Python"
 
     ```sh
-    .venv/bin/python tools/patch_smeg.py     --src SMEG_PLUS_UPG --out overlay
+    .venv/bin/python tools/patch_smeg.py     --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod --copy-package
     .venv/bin/python tools/patch_contract.py --package SMEG_PLUS_UPG_mod
     ```
 
@@ -60,6 +60,19 @@ uvx --from 'smeg-plus-patches[gui] @ git+https://github.com/KRoperUK/smeg-plus-p
 | `smeg-ringtones` | `tools/ringtones.py` |
 | `smeg-patch-media` | `tools/patch_media.py` |
 | `smeg-patch` | `tools/patch_smeg.py` |
+| `smeg-build` | `tools/build_package.py` |
+| `smeg-preflight` | `tools/preflight.py` |
+| `smeg-prepare-usb` | `tools/prepare_usb.py` |
+| `smeg-verify-package` | `tools/verify_package.py` |
+| `smeg-fingerprint` | `tools/fingerprint.py` |
+| `smeg-assets` | `tools/assets.py` |
+| `smeg-splash` | `tools/splash.py` |
+| `smeg-cartography` | `tools/cartography.py` |
+| `smeg-crc-recover` | `tools/crc_recover.py` |
+| `smeg-symdiff` | `tools/symdiff.py` |
+
+The analysis-only tools (`survey.py`, `ppcdis.py`, `xref.py`, `callers.py`, `mkelf.py`) have no
+console script; run them from a checkout.
 
 ## Development
 
@@ -68,8 +81,11 @@ uvx --from 'smeg-plus-patches[gui] @ git+https://github.com/KRoperUK/smeg-plus-p
 
 ```sh
 uv venv --seed --python 3.13 .venv
-uv pip install --python .venv/bin/python PySide6 pytest zensical ruff
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical
 ```
+
+`requirements-dev.txt` brings `unicorn` and `capstone`; without them the emulator tests skip
+rather than run.
 
 ```sh
 .venv/bin/python -m pytest tests -q
@@ -157,30 +173,20 @@ uv run tools/build_package.py --manifest build.json --dry-run   # show the steps
     `accept_data_loss: true`, and the warning prints either way. That flag means a person was
     told what it may cost and agreed to it.
 
-`media.settings` writes integers into the settings database
-(`Data_base/sqlite/up_common.sqlite`), as `Section.Name`. These need no code patch, so they
-are the safest changes the project can make — the worst case is that the firmware ignores
-them:
+`media.settings` writes integers into the **seed** settings database inside `system.bin`
+(`Data_base/sqlite/up_common.sqlite`), as `Section.Name`. The unit reads its live settings from
+`/USER_DATA`, so on hardware these edits have not reached the running unit (observed) — treat
+them as an experiment, not a lever:
 
 ```json
-"settings": { "supervisor.Last_Source": 4 }
+"settings": { "supervisor.Last_Source": 7 }
 ```
 
-`media.gui_ver` sets `GUI_VER` in the partition's `Data_base/smeg.inf`, which the System Info
-screen shows as **Display version**. It is the one visible field nothing gates on, so it is
-the safe way to mark a build:
-
-```json
-"gui_ver": "32.01"
-```
-
-!!! tip "Use it as a build marker"
-
-    Re-flashing the same release changes no other version string, so there is otherwise no
-    way to confirm *which* build a unit is running. Bumping `GUI_VER` gives an unambiguous
-    on-screen answer. Note it edits the copy **inside `system.bin`** — the module-level
-    `NAV/smeg.inf` beside it is what the updater reads and is left alone. See
-    [Version strings](VERSION_STRINGS.md).
+`media.gui_ver` edits `GUI_VER` in the partition's `Data_base/smeg.inf`. It is harmless, but
+it is **not visible** on the unit: set to `32.01` on a real flash, it was not seen, and the
+Display-version screen read `cd 26482` from `media.inf` (observed, 2026-09-27). It is kept only
+for compatibility; there is no known safe on-screen build marker. See
+[Version strings](VERSION_STRINGS.md).
 
 !!! warning "Patch sets accumulate, in order"
 
@@ -195,8 +201,17 @@ Ready-made **schemes** live in `builds/`. Each is a whole build, so a scheme is 
 |---|---|---|
 | `builds/aux-only.json` | the AUX patches and nothing else — the closest thing to stock that still enables AUX, and the baseline to reach for when something behaves unexpectedly | nothing |
 | `builds/aux-boot.json` | AUX selectable, plus `aux-boot-default`, which was meant to resume AUX on every boot and **does not** (falsified on hardware, see [the AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen)) | nothing |
-| `builds/diagnostic.json` | turns the application's own logging back on, for establishing whether a message reaches the app at all | nothing |
-| `builds/force-aux-default.json` | AUX patches, custom tone and name, and `Last_Source` set so the unit starts on AUX | a tone file, and the `/USER_DATA` acknowledgement |
+| `builds/combined-aux-boot-ringtone.json` | `aux-only` + `aux-boot` + the ring-tone scheme in one package (the updater finds only one `SMEG_PLUS_UPG`). Its boot-to-AUX part is **falsified** (2026-09-27); kept for history | a tone file |
+| `builds/aux-boot-restore.json` | the current boot-to-AUX **candidate**: `aux-boot-default` + the three-edit `aux-boot-restore`. Not yet flashed | a tone file |
+| `builds/aux-signal-switch.json` | **candidate** switch-on-signal build: adds `aux-sticky` and `aux-signal-switch`. Emulated only; flash it after the `aux-boot-restore` test has been read | a tone file |
+| `builds/alien-piano-riff.json` | replaces the stock `Alien` ring tone and renames it (the rename did not show on the car) | a tone file |
+| `builds/diagnostic.json` | trace mask only — **incomplete, emits nothing** on its own | nothing |
+| `builds/diagnostic-logging.json` | the diagnostic build that should emit (mask + sink); where the output surfaces is issue #94 | nothing |
+| `builds/force-aux-default.json` | the `USER_DATA` `Last_Source` experiment — the route **did not change the boot source** on hardware ([Verification](VERIFICATION.md)) | a tone file, and the `/USER_DATA` acknowledgement |
+| `builds/aux-default-retry.json` | the retry of that experiment, flashed 2026-09-14: the payload **did not apply** and the unit still booted to FM ([Verification](VERIFICATION.md#second-flash-the-user_data-retry-2026-09-14)) | the `/USER_DATA` acknowledgement |
+
+Each manifest's own `_comment` gives its status in full, and its `package`/`out` paths are the
+author's — edit them before use.
 
 ```sh
 uv run tools/build_package.py --manifest builds/aux-only.json
@@ -214,7 +229,8 @@ Every section is optional. `gain_db` is worth setting: the stock tones sit at ab
 ## Pre-flight: check a package before it goes on a stick
 
 `tools/build_package.py` runs this automatically at the end of every build and **fails the
-build** if it reports a problem. You can also run it directly:
+build** if it reports a problem. It is step 1 of [the test loop](FLASHING.md#the-test-loop-end-to-end),
+which goes on to the stick, the car and reading a spy capture. You can also run it directly:
 
 ```sh
 uv run tools/preflight.py --package SMEG_PLUS_UPG_auxdefault
@@ -276,7 +292,7 @@ rsync -a overlay/ SMEG_PLUS_UPG_mod/
 uv run tools/patch_smeg.py --src SMEG_PLUS_UPG --out overlay
 rsync -a overlay/ SMEG_PLUS_UPG_mod/
 
-# brand splash: inspect, or swap the boot logo (also works in the GUI)
+# marque logo bundles (NOT the boot splash — see Media partition); also works in the GUI
 uv run tools/splash.py --tree media list
 uv run tools/splash.py --tree media replace --marque peugeot --image my-logo.png
 uv run tools/splash.py --tree media selftest     # proves the container model

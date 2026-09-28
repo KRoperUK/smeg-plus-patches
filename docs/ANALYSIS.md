@@ -10,6 +10,11 @@
     - [The AUX chain](AUX_CHAIN.md) — the auto-switch chain, gate by gate
     - [Emulating the firmware](EMULATION.md) — what was proven by running the code
     - [Patch reference](PATCHES.md) — the shipped patches and their bytes
+    - [The AUX signal path](AUX_SIGNAL.md) — how the signal is detected, and the
+      switch-on-signal candidate
+    - [The source scheduler](SCHEDULER.md) / [The audio module](AUDIO_MODULE.md) — close
+      readings
+    - [Firmware map](FIRMWARE_MAP.md) — what has been read, and how closely
 
     Where a section below has been corrected, an admonition points to the current page.
 

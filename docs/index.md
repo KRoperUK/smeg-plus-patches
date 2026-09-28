@@ -115,9 +115,15 @@ media check passed, the application image was written, and the unit came back up
   copied"*) never appeared, which was the blocker for the whole project.
 - [x] **`IsAUXSRCAvailable()`** — AUX no longer greys out without a signal, and it is back in
   the SRC cycle.
-- [x] **Custom ring tone** audio, and a custom ring tone *name*.
+- [x] **Custom ring tone** audio. A *renamed* tone still showed its stock name on the car
+  (2026-09-27), so names are not solved — see [Ring tones](RINGTONES.md#names).
 - [x] **`SPYSTORE` backs up `/USER_DATA`** — the `spy-dump-userdata` patch, confirmed on a car.
-- [ ] **The automatic AUX switch** — the remaining open question.
+- [ ] **The automatic AUX switch.** The original handler patch rested on a wrong premise: the
+  handler follows the saved AUX *setting*. `aux-signal-switch` routes the real signal event
+  instead — verified under emulation, not yet flashed. See [The AUX signal path](AUX_SIGNAL.md).
+- [ ] **Boot to AUX.** `aux-boot-default` alone is falsified on hardware; the three-edit
+  `aux-boot-restore` is the current candidate, not yet flashed. See
+  [The AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
 
 See [Hardware verification](VERIFICATION.md) for the full picture, and the
 [repository issues](https://github.com/KRoperUK/smeg-plus-patches/issues) for what is being

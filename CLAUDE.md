@@ -22,22 +22,32 @@ For the tests, lint and docs, create the venv the docs assume (Python 3.13 — H
 
 ```sh
 uv venv --seed --python 3.13 .venv
-uv pip install --python .venv/bin/python PySide6 pytest zensical ruff
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical
 ```
+
+`requirements-dev.txt` brings `unicorn` and `capstone`. Without them the emulator and
+disassembler tests skip rather than fail, so the suite looks green but is not what CI runs.
 
 ```sh
 .venv/bin/python -m pytest tests -q                       # full suite, no firmware needed
 .venv/bin/python -m pytest tests/test_patch_smeg.py -q    # one file
 .venv/bin/python -m pytest tests/test_studio.py -k preview -q # one test
 .venv/bin/python -m ruff check tools tests                # lint (E9 + F only)
+.venv/bin/python -m ruff format --check tools tests       # formatting, as CI checks it
 .venv/bin/python -m zensical build --strict               # docs; a broken anchor fails it
 .venv/bin/zensical serve                                  # live docs preview on :8000
 python3 tools/check_commit_msg.py --title "feat: ..."     # check a PR title before pushing
 ```
 
-CI runs exactly `ruff check tools tests`, `pytest tests -q` and `zensical build --clean`.
-Pre-commit additionally runs the tests, the strict docs build and `tools/check_no_firmware.sh`
-on every commit, so a commit that breaks any of them cannot be made locally.
+CI runs `ruff check tools tests`, `ruff format --check tools tests`, `pytest tests -q` and
+`zensical build --clean`. `pre-commit install` wires three hook stages:
+
+* **every commit:** whitespace/EOF/YAML hygiene, `ruff check --fix`, `ruff format`,
+  `tools/check_no_firmware.sh` and `tools/check_no_pii.py`;
+* **commit-msg:** `tools/check_commit_msg.py`;
+* **push:** `pytest`, `zensical build --strict` and `bandit`.
+
+So a push that would fail CI fails locally first.
 
 GUI tests skip without PySide6 and run headless via `QT_QPA_PLATFORM=offscreen`.
 
@@ -95,8 +105,9 @@ this ordering — prefer it over running the tools by hand.
 
 ### Data-driven layers
 
-* `patches/*.json` — one patch set per behaviour (`aux-autoswitch`, `aux-sticky`,
-  `aux-always-available`, `diagnostic-logging`). Keyed by `variants.<module>`, each giving
+* `patches/*.json` — one patch set per behaviour (e.g. `aux-always-available`,
+  `aux-boot-restore`, `aux-signal-switch`, `spy-dump-userdata-partition`; every set and its
+  hardware status is in the table in `docs/PATCHES.md`). Keyed by `variants.<module>`, each giving
   the file paths its cascade touches plus a list of `{addr, expect, bytes}` — `expect` is the
   original bytes, verified before anything is written. **A new `patches/*.json` beats new
   Python.**
@@ -115,9 +126,18 @@ this ordering — prefer it over running the tools by hand.
 | `ringtones.py` | audio → the unit's tone formats (ffmpeg for non-WAV) |
 | `patch_studio.py` | Qt front-end over ringtones + patch selection |
 | `splash.py` | the `Data_base/graphics/logo/*.pkg` marque bundles (**not** the boot splash) |
-| `unpack.py`, `mkelf.py`, `ppcdis.py`, `xref.py`, `callers.py` | the analysis tools every patch address was derived with; need `capstone`; untested |
+| `unpack.py`, `mkelf.py`, `ppcdis.py`, `xref.py`, `callers.py` | the analysis tools every patch address was derived with; `ppcdis` needs `capstone`; covered by `tests/test_analysis_tools.py` (except `unpack.py`). `callers.py` sees only `bl`, not the `bctrl` calls most of this firmware makes |
+| `ppcemu.py` | run one firmware function under Unicorn with its callees stubbed — how patch behaviour is checked before a car |
+| `prepare_usb.py` | copy a built package to a FAT32 stick, re-read every file, remove the AppleDouble `._*` shadows it created (including the package folder's own), refuse to copy over an existing package |
+| `verify_package.py` | audit a package's whole checksum cascade offline |
+| `fingerprint.py` | identify which build an image is; reports `AUDIO_BT`/`AUDIO_BT_256` as ambiguous rather than guessing |
+| `symdiff.py` | symbol-level diff between two releases; derives *candidate* addresses on another version |
+| `elfsyms.py`, `crc_recover.py` | symbol tables of the package's `*.out` updaters; recover CRC parameters from samples |
+| `assets.py` | human-readable names for the media partition's replaceable files |
+| `fix_userdata_case.py` | verify/fix the FAT long-filename entry a lowercase `sqlite` payload directory needs |
+| `appimage.py`, `symbols.py`, `smeglib.py` | shared leaf modules: the app container, the symbol-map reader (last name wins), the CRC/`.inf` helpers |
 | `survey.py` | inventory of every function in an image: family, size, `bl` callers, materialised (`lis`/`addi`) references, data pointers, strings; output stays local — see `docs/FIRMWARE_MAP.md` |
-| `check_commit_msg.py`, `check_no_firmware.sh` | the two enforcement hooks |
+| `check_commit_msg.py`, `check_no_firmware.sh`, `check_no_pii.py` | the three enforcement hooks |
 | `cartography.py` | the map metadata that *is* understood: name pools, `.inf` sidecars, `SCC` records, `CCT.DAT` (decrypt only — see the licensing note in `docs/CARTOGRAPHY.md`) |
 
 ### Reverse-engineering toolchain
@@ -159,9 +179,11 @@ synthetic fixture here, never a binary.
   database alone changes nothing on the car (confirmed on hardware). Shipping a `USER_DATA`
   payload does work, but overwrites state the car owns — paired phones, destinations, presets —
   and `build_package.py` refuses it without `accept_data_loss: true`.
-* **Version strings are not a safe marker.** The display reads `Data_base/smeg.inf` *inside*
-  the media partition; editing `media.inf` can block the update outright. `GUI_VER` is the
-  only safe visible field.
+* **Version strings are not a safe marker.** The Display-version screen reads `media.inf`
+  (observed on the car, 2026-09-27: it showed `cd 26482`), and editing `media.inf` can block
+  the update outright. `GUI_VER` was set on a real flash and was not seen on the unit, so
+  there is **no known safe visible build marker** — judge a flash by behaviour, a replaced
+  ring tone, or a `SPYTAKE` capture.
 * **The updater reboots the unit** mid-update. Never propose updating while driving.
 * Tone slot formats differ: ring/status tones are 16-bit **mono 44.1 kHz**, wait tones
   16-bit **stereo 8 kHz**.
@@ -172,3 +194,8 @@ Patches are verified statically, and only partially on hardware — a re-sealed 
 flashed and the `IsAUXSRCAvailable()` change is confirmed, but the automatic switch itself
 has not been observed working. Say what was verified and what still needs a car test; do not
 claim a patch "works". See [docs/VERIFICATION.md](docs/VERIFICATION.md).
+
+The AUX input handler reacts to the saved `Auxiliary_Status` setting, not the signal; read
+`docs/AUX_SIGNAL.md` before touching the auto-switch. How analysis is done here — evidence
+tiers, indirect calls, the shared Ghidra server, reading a spy capture — is in `AGENTS.md`
+("Analysis workflow").

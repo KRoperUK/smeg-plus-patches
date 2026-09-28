@@ -78,7 +78,7 @@ things, testing without firmware, and the firmware details that are easy to get 
 git clone https://github.com/KRoperUK/smeg-plus-patches
 cd smeg-plus-patches
 
-uv run python -m pytest tests -q      # 19 tests, no firmware required
+uv run python -m pytest tests -q      # no firmware required
 uv run ruff check tools tests
 uv run tools/patch_studio.py         # the GUI
 ```
@@ -121,7 +121,7 @@ no `--hook-type` to remember. They are split by how long they take:
 
 | stage | what runs | why there |
 |---|---|---|
-| `pre-commit` | whitespace, EOF, YAML, merge markers, large files, line endings, `ruff --fix`, and the no-firmware guard | fast enough that you never want to skip it |
+| `pre-commit` | whitespace, EOF, YAML, merge markers, large files, line endings, `ruff --fix`, `ruff format`, and the no-firmware and no-PII guards | fast enough that you never want to skip it |
 | `commit-msg` | `tools/check_commit_msg.py` | the message has to parse before it exists |
 | `pre-push` | `pytest`, `zensical build --strict`, `bandit` | this is what CI would tell you twenty minutes later |
 
@@ -169,12 +169,14 @@ Two shapes keep coming up:
 
 ### The USB stick, on macOS
 
-Writing to FAT32 makes macOS silently create an AppleDouble `._*` file **per file**, including
-for files you add in a later copy. They are invisible to the updater but they are junk, and
-they have caused confusion twice. After any copy:
+Writing to FAT32 makes macOS create an AppleDouble `._*` shadow **per file**, even on a plain
+data-only copy, because of the `com.apple.provenance` attribute. `tools/prepare_usb.py`
+removes the shadows it created, including the package folder's own, and fails if any junk is
+left; use it rather than `cp`. If you copied by hand:
 
 ```sh
-find /Volumes/SMEG -name '._*' -delete; find /Volumes/SMEG -name '.DS_Store' -delete
+dot_clean -m /Volumes/SMEG
+find /Volumes/SMEG -name '._*'     # should print nothing
 ```
 
 ### Working from Windows

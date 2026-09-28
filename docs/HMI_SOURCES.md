@@ -98,10 +98,12 @@ Two related paths bypass `ActivateSource(bool)`, so they carry no `PrOnly` argum
    - If the handler then fires while AUX is REQUESTED, its `ActivateSource` only logs "not IDLE",
      so the handler cannot re-send at boot. *(read)*
    - That agrees with car test 1, where the handler-only patch changed nothing.
-2. **AUX re-appearing later.** On removal, the handler always calls `ReleaseSource` (states 3–6
-   first make an extra virtual call through `+0xe28`), and `ReleaseSource` returns the state to
-   IDLE. *(read, `0x02303534`, `0x0273a008`)* On return, `ActivateSource(true)` therefore goes
-   IDLE→REQUESTED, and edit 2 (`0x02303474`) covers it. *(read)*
+2. **AUX input setting switched off and on again.** When the setting goes to zero, the handler
+   always calls `ReleaseSource` (states 3–6 first make an extra virtual call through `+0xe28`),
+   and `ReleaseSource` returns the state to IDLE. *(read, `0x02303534`, `0x0273a008`)* When it
+   goes non-zero again, `ActivateSource(true)` therefore goes IDLE→REQUESTED, and edit 2
+   (`0x02303474`) covers it. *(read)* With `aux-signal-switch`, the same path follows the
+   signal instead.
 3. **Uncovered, `PrOnly` still 1:**
    - `HandleSystemMessage` at `0x0230b6a4`, and `POPUP_ERR_DETECT::Close` at `0x0232b26c`.
      Both re-activate *the active media device* after releasing it, so they reach AUX only when

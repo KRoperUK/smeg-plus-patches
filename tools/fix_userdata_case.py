@@ -93,6 +93,9 @@ class Volume:
 
 
 def main(argv):
+    if "-h" in argv or "--help" in argv:
+        print(__doc__)
+        return
     dry = "--dry-run" in argv
     check = "--check" in argv
     if dry and check:

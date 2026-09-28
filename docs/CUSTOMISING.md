@@ -34,8 +34,10 @@ The phone ring tones, and the call/status tones.
 | `koRT.wav` | failure tone | same |
 
 The `RT` is part of the real filename. The names the **phone UI** shows are *not* here — they
-are rows in `up_common.sqlite` (see [Ring tones](RINGTONES.md)), which is why replacing a tone
-changes what you hear and renaming changes what you see.
+are rows in the seed `up_common.sqlite` (`UP_Keys`, section `phone`, `Ringing_List`). Replacing
+the audio works on the car; **a renamed tone kept its stock name** on a real unit *(observed,
+2026-09-27)*. The likely reason is that the unit reads its live copy in `/USER_DATA`
+*(inferred)*. See [Ring tones](RINGTONES.md#names).
 
 ### Wait tones — `wait_tones/` (13)
 

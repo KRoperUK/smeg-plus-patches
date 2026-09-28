@@ -17,6 +17,15 @@ turns out to follow the saved AUX input setting rather than the AUX signal (read
 disassembly; see [The AUX chain](docs/AUX_CHAIN.md#what-the-handler-actually-reacts-to)).
 See [Hardware verification](docs/VERIFICATION.md).
 
+Current work, none of it yet shown working on a car:
+
+- **Switch on signal:** `aux-signal-switch` routes the real AUX signal event to the handler
+  and makes it test the signal. It is verified under emulation, not flashed. See
+  [The AUX signal path](docs/AUX_SIGNAL.md).
+- **Boot to AUX:** `aux-boot-default` alone is **falsified on hardware** (still FM). The
+  current candidate is `aux-boot-restore` (three edits); its two-edit version also still
+  booted to FM. See [How the boot source is actually chosen](docs/AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+
 > ## No vendor firmware is included
 > This repository contains **only original reverse-engineering notes and scripts**.
 > It does **not** contain any Peugeot / Citroën / DS / Stellantis / Magneti Marelli
@@ -31,8 +40,8 @@ See [Hardware verification](docs/VERIFICATION.md).
 
 ## Background
 
-The head unit's application is delivered as `AppBin/f_BigQuick.bin`: a **0x801-byte
-header** followed by a **zlib stream** that inflates to a raw **PowerPC** image loaded
+The head unit's application is delivered as `AppBin/f_BigQuick.bin`: a **0x800-byte
+header**, a `0x08` marker at `0x800`, then a **zlib stream** from `0x801` that inflates to a raw **PowerPC** image loaded
 at `0x01000000`. The release also ships absolute symbol maps
 (`Application/PKG/abs_symbols_base.txt.gz`) which line up with that image, so the
 firmware can be patched by symbol rather than by blind search.
@@ -56,8 +65,8 @@ The original reading, and the patches built on it, identified two obstacles:
 2. `HandleAudioAuxInputStatusChnged()` **returns early if `GetMediaDevice(AUX)` fails**,
    before it ever calls `ActivateSource()`.
 
-The patch set addresses both. See [`docs/ANALYSIS.md`](docs/ANALYSIS.md) for the full
-write-up and [`docs/PATCHES.md`](docs/PATCHES.md) for exact addresses and bytes.
+The patch set addresses both. See [`docs/AUX_CHAIN.md`](docs/AUX_CHAIN.md) for the chain as it
+is now understood and [`docs/PATCHES.md`](docs/PATCHES.md) for exact addresses and bytes.
 
 ## Supported builds / patches
 
@@ -67,7 +76,13 @@ write-up and [`docs/PATCHES.md`](docs/PATCHES.md) for exact addresses and bytes.
 | `AUDIO_BT_256` | `AUDIO_BT_256/AppBin/f_BigQuick.bin` | `0x02247718` → `li r3,1 ; blr` | `0x023032e8` → `nop` |
 | `NAV` | `NAV/AppBin/f_BigQuick.bin` | `0x02247858` → `li r3,1 ; blr` | `0x02303428` → `nop` |
 
+The `+0x10c` edit is **inert**: the branch it removes is never taken (executed; see
+[Emulation](docs/EMULATION.md)). Only the `IsAUXSRCAvailable` edit changes behaviour, and
+that change is confirmed on hardware.
+
 Patches are data-driven — see [`patches/aux-autoswitch.json`](patches/aux-autoswitch.json).
+Every patch set, and its hardware status, is listed in
+[`docs/PATCHES.md`](docs/PATCHES.md#patch-sets-in-this-repository).
 
 ## Requirements
 
@@ -85,38 +100,41 @@ Patches are data-driven — see [`patches/aux-autoswitch.json`](patches/aux-auto
 python3 tools/unpack.py SMEG_PLUS_UPG/NAV/AppBin/f_BigQuick.bin app_nav.bin
 ```
 
-### 2. Patch a copy of the package
+### 2. Build a package
 
 ```sh
-uv run tools/patch_smeg.py --src SMEG_PLUS_UPG --out SMEG_PLUS_UPG_mod
+uv run tools/build_package.py --manifest builds/aux-only.json   # edit its package/out paths first
 ```
 
-```sh
-python3 tools/patch_smeg.py \
-    --src SMEG_PLUS_UPG \
-    --out SMEG_PLUS_UPG_mod
-```
-
-This inflates each app image, applies the patches (verifying the original bytes first),
-re-deflates it, and rebuilds the whole checksum cascade:
+This applies the patch sets (verifying the original bytes first), rebuilds the media
+partition, rebuilds the whole checksum cascade, re-seals `contract.dat`, and runs the
+pre-flight check — in that order, which is the part that fails silently by hand. Without the
+re-seal the unit refuses the package with string 2099.
 
 ```
 f_BigQuick.bin -> f_BigQuick.bin.inf + smeg.inf + <module>_ctrl.bin -> ctrl.bin
 ```
 
-Use `--only NAV` to patch a single variant, or `--patches my.json` for your own patch
-set.
+The individual tools (`patch_smeg.py`, `patch_media.py`, `patch_contract.py`) are described in
+[Running the tools](docs/RUNNING.md).
 
-### 3. Flash
+### 3. Copy to a stick and flash
 
-Put the modified package folder at the root of a **FAT32** USB stick and run the normal
-SMEG+ update on the car (engine running). See [`docs/FLASHING.md`](docs/FLASHING.md).
+```sh
+uv run tools/prepare_usb.py --package ~/Downloads/SMEG_PLUS_UPG_auxonly --target /Volumes/USB
+```
+
+This checks the stick is MBR + FAT32, copies, re-reads every file, and removes the macOS
+`._*` shadows. Then, **parked** with the engine running, run the normal SMEG+ update. See
+[`docs/FLASHING.md`](docs/FLASHING.md), including [the test loop](docs/FLASHING.md#the-test-loop-end-to-end).
 
 ## Tools
 
 | tool | purpose |
 |---|---|
-| `tools/unpack.py` | inflate `f_BigQuick.bin` → raw PPC image (and re-pack) |
+| `tools/build_package.py` | **start here** — manifest → patched, media-rebuilt, re-sealed and pre-flighted package |
+| `tools/preflight.py` | validate a built package offline before it goes on a stick |
+| `tools/unpack.py` | inflate `f_BigQuick.bin` → raw PPC image |
 | `tools/patch_contract.py` | regenerate `contract.dat` so a modified package is accepted |
 | `tools/patch_smeg.py` | apply a patch set and rebuild the CRC cascade |
 | `tools/mkelf.py` | wrap a raw image + symbol map into a disassemblable PPC ELF |
@@ -136,6 +154,10 @@ SMEG+ update on the car (engine running). See [`docs/FLASHING.md`](docs/FLASHING
 | `tools/verify_package.py` | audit a package's checksum cascade before flashing |
 | `tools/symdiff.py` | diff two releases by symbol, and locate a patch in another |
 | `tools/apply_files.sh` | overlay patched files onto a package copy |
+| `tools/survey.py` | inventory every function in an image: callers, indirect references, strings |
+| `tools/splash.py` | the marque logo bundles (not the boot splash) |
+| `tools/assets.py` | human-readable names for the media partition's replaceable files |
+| `tools/check_no_pii.py` | the hook that keeps personal data out of commits |
 
 ```sh
 pip install capstone
@@ -149,7 +171,7 @@ Also published as a docs site: <https://smeg.kroper.uk/> (Zensical, built and de
 
 | doc | contents |
 |---|---|
-| [`docs/ANALYSIS.md`](docs/ANALYSIS.md) | application image format, symbol maps, the AUX event chain, why the switch fails |
+| [`docs/ANALYSIS.md`](docs/ANALYSIS.md) | **archive** — the original notes, superseded by the AUX chain and emulation pages |
 | [`docs/RUNNING.md`](docs/RUNNING.md) | how to run everything with `uv` / `uvx` |
 | [`docs/PATCHES.md`](docs/PATCHES.md) | exact addresses and bytes per build |
 | [`docs/FLASHING.md`](docs/FLASHING.md) | preparing the USB stick and flashing |
@@ -163,6 +185,13 @@ Also published as a docs site: <https://smeg.kroper.uk/> (Zensical, built and de
 | [`docs/VERSION_STRINGS.md`](docs/VERSION_STRINGS.md) | what the version screens read, and how the updater gates on them |
 | [`docs/AUX_CHAIN.md`](docs/AUX_CHAIN.md) | the AUX auto-switch gate by gate: what has to happen, what is proven, what is still unknown |
 | [`docs/EMULATION.md`](docs/EMULATION.md) | executing firmware functions without a car — and what that proved about the AUX patches |
+| [`docs/AUX_SIGNAL.md`](docs/AUX_SIGNAL.md) | how the AUX signal is detected, and the switch-on-signal candidate |
+| [`docs/VERIFICATION.md`](docs/VERIFICATION.md) | what has been tested on a real unit, and what each test showed |
+| [`docs/RECOVERY.md`](docs/RECOVERY.md) | what to do when an update goes wrong |
+| [`docs/FIRMWARE_MAP.md`](docs/FIRMWARE_MAP.md) | where the image's code goes, and how much of it has been read |
+
+Every page, including the subsystem readings (scheduler, audio module, HMI sources, update
+flow), the glossary and the toolchain, is on the docs site.
 
 ## Development environment
 
@@ -173,15 +202,19 @@ The CLI tools need nothing but `uv` — each script declares its own dependencie
 
 ```sh
 uv venv --seed --python 3.13 .venv
-uv pip install --python .venv/bin/python PySide6 pytest zensical ruff
+uv pip install --python .venv/bin/python -r requirements-dev.txt -r requirements-gui.txt zensical
 ```
+
+`requirements-dev.txt` brings `unicorn` and `capstone`; without them the emulator tests skip
+rather than run.
 
 ```sh
 .venv/bin/python tools/patch_studio.py        # the GUI
 .venv/bin/python -m pytest tests -q           # the test suite
 ```
 
-Or use plain `pip install -r requirements-dev.txt` for the tests alone.
+Or use plain `pip install -r requirements-dev.txt` for the tests alone (the GUI tests then
+skip).
 
 Install the git hooks once — `pre-commit install` wires all three types:
 
@@ -189,7 +222,7 @@ Install the git hooks once — `pre-commit install` wires all three types:
 pre-commit install       # pre-commit, commit-msg and pre-push
 ```
 
-Lint, hygiene and the no-firmware guard run on every commit; the tests, a strict docs build
+Lint, formatting, hygiene and the no-firmware and no-PII guards run on every commit; the tests, a strict docs build
 and a `bandit` security scan run on push, so a push that would go red in CI fails locally
 first. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 

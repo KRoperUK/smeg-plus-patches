@@ -115,8 +115,9 @@ void HandleAudioAuxInputStatusChnged(this) {       // 0x0230331c
     app = this->0x50df4;                           // 0x022ad2c0, a plain getter
     if (app == NULL) return;                       // gate 1  @ 0x02303358
     ctor(&obj);                                    // zeroes obj, obj[0x10] included
-    GetAuxStatus(app, &signal);                    // 0x025cb258 — return value IGNORED
-    state = (signal != 0);
+    GetAuxStatus(app, &setting);                   // 0x025cb258 — the saved AUX input
+                                                   // setting; return value IGNORED
+    state = (setting != 0);
     if (state == this->0x51449) return;            // gate 2  @ 0x023033d4  (change detector)
     this->0x51449 = state;
     if (GetMediaDevice(mgr, AUX, &obj)) return;    // gate 3  @ 0x02303428  (never taken)
@@ -214,6 +215,41 @@ at Jukebox), the firmware as shipped can never register it.
 This is worth knowing mainly as a warning: a device type being absent from the table is not
 evidence about AUX, because at least one type is absent by construction.
 
+### 7. The boot restore: `AddRequest` with and without `PrOnly`
+
+`C_MGR_SRC::AddRequest` (`0x0169815c`) was run on the NAV image with AUX's request (`SrcId
+0xe200`, type 5, `Sched_Pos` 7, priority 20) and `Last_Source`/`Last_Source_Priority` set to
+(7, 20). Stubs: `memcpy` (`0x002cb648`) performs a real copy; the list-insert helper
+(`0x01695590`) returns a scratch node; the watchdog cancel, `ExecuteAllocation` and
+`ForceSchedulerPosition` return 0. *(executed)*
+
+| request | `ScheduledInit` table | restore flag (`+0x3c0`) | init timer |
+|---|---|---|---|
+| `PrOnly` set (stock AUX) | empty | 0 | left running → FM after 7.5 s |
+| `PrOnly` clear | (7, 20) | 1 | cancelled |
+| `PrOnly` clear, saved priority (`+0xac`) 10 instead of 20 | (7, 20) | 0 — no match against (7, 10) | not cancelled |
+| a second AUX request, table already (7, 20) | — | — | reaches `ForceSchedulerPosition` |
+
+This is why `aux-boot-restore` clears `PrOnly` and forces the restored priority to 20. See
+[How the boot source is actually chosen](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen).
+
+### 8. `aux-signal-switch`: the handler, and a window of the dispatch
+
+The handler was run with every callee stubbed — both status queries write the value under
+test, `GetMediaDevice` returns 0 with a fake source — and the cached state at
+`this+0x51449` set by hand. With the patch it queries the signal, activates AUX when the signal
+appears, releases it when the signal is lost, and ignores a setting-only change. With
+`aux-boot-restore` also applied the activation passes `PrOnly` 0; with `aux-sticky`, the release
+is suppressed. *(executed)*
+
+The dispatch change sits in the middle of `C_HMI_MEDIA_APP_BASE::HandleDBUSMessage`, so the
+whole function was not run. Instead, a **window** was: execution starts at the message-id load
+(`0x0230961c`) with `r31` pointing at a scratch frame, and a code hook stops at the first address
+outside `[0x0230961c, 0x02309650)`. That exit address is the case the message goes to. Stock
+sends `0xcc` to the default case; patched, to the AUX handler; every other id tested goes where
+stock sends it. `tests/test_aux_signal_switch.py` replays this window on a synthetic image, so CI
+checks it. Full tables: [Emulation results](AUX_SIGNAL.md#emulation-results).
+
 ## What this changes
 
 The conclusion in the [analysis notes](ANALYSIS.md) — that the patch is not the problem and the DBUS
@@ -222,7 +258,9 @@ the standing of the second edit: it is not "a fix that has not been confirmed", 
 that provably cannot fire. Effort spent flashing it is spent.
 
 The open question is upstream of this function entirely: is `HandleAudioAuxInputStatusChnged`
-ever entered, and if it is, does the status query return a signal? The handler logs its own
+ever entered, and if it is, does the status query return a non-zero setting? (It reads the
+saved AUX input setting, not the signal — see
+[What the handler actually reacts to](AUX_CHAIN.md#what-the-handler-actually-reacts-to).) The handler logs its own
 name on every exit, so a working log would answer the first half at once — but as finding 5
 above records, this build has no log output path, and giving it one is still open.
 

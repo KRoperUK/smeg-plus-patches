@@ -5,8 +5,7 @@
 | field | value on SMEG5.43.A.R2 | source |
 |---|---|---|
 | Main SMEG software | `5.43.A.R2` | `smeg.inf` -> `VER:` |
-| Display version | `32.00` | `smeg.inf` -> `GUI_VER:` |
-| CD / Media version | `26482` | `media.inf` -> `VER:` |
+| Display version | `cd 26482` | `media.inf` -> `VER:` (observed on the car, 2026-09-27) |
 | Bluetooth | `1.2.0` | Bluetooth firmware |
 | BootROM / uBoot / Renesas | as flashed | their own images |
 
@@ -17,9 +16,9 @@ path `/SYSTEM/Data_base/smeg.inf`, i.e. it reads the **media partition** copy. S
 - Changing `VER:`/`GUI_VER:` in a *module* `smeg.inf` (`AUDIO_BT/smeg.inf`) is used by
   the updater but does not change what the screen shows — the displayed copy is
   `Data_base/smeg.inf` **inside `system.bin`**.
-- A visible marker therefore requires a media-partition edit (see
-  [Media partition](MEDIA_PARTITION.md)). The `SIZE:` fields are no longer a blocker —
-  they are computable — but the packing tool is still to be written (issue #35).
+- A media-partition edit, which `tools/patch_media.py` (or `build_package.py`'s `media`
+  section) performs, changes that copy — but no on-screen field is known to reflect it (see
+  below).
 
 `AUDIO_BT/smeg.inf` and the tar's `Data_base/smeg.inf` currently hold identical content,
 which is why it is easy to assume editing one affects the other.
@@ -56,18 +55,13 @@ So versions are compared, and the comparisons drive more than "update or skip":
   "not allows an upgrade" path or, worse, triggering a harmony/BSP re-flash.
 - `media.inf` is the one with the hard gate; do not edit it as a marker.
 
-**If a visible marker is wanted, the safe field is `GUI_VER` (Display version)** — it is
-presentation-only and nothing gates on it. It still lives in the media partition, so it
-is the same rebuild job.
+!!! warning "There is no known safe on-screen build marker"
 
-!!! tip "The one safe visible marker"
+    `GUI_VER` was bumped to `32.01` on a real flash and was not seen on the unit; the
+    Display-version screen read `cd 26482`, which is `media.inf` verbatim *(observed, see
+    [Two display findings](AUX_CHAIN.md#two-display-findings))*. The only version the screen
+    is known to show comes from `media.inf`, which the updater gates on — do not edit it.
 
-    `GUI_VER` is the only version field that is both **shown on screen** and **not gated
-    on** by the updater. Everything else is either invisible (the app never displays it) or
-    dangerous to change (`media.inf` can block the whole package).
-
-    `build_package.py` can set it from a manifest — `"media": { "gui_ver": "32.01" }` — which
-    edits `Data_base/smeg.inf` **inside `system.bin`**, the copy the screen actually reads.
-    See [Running the tools](RUNNING.md#one-command-per-package-the-manifest-build). Otherwise,
-    rely on the updater's own progress screens as evidence the application was written, and
-    judge by behaviour — see [Hardware verification](VERIFICATION.md).
+    Judge a flash by behaviour instead: an audible replaced ring tone proves the media
+    partition landed, and `preflight.py` or a `SPYTAKE` capture proves the patched bytes.
+    See [Hardware verification](VERIFICATION.md).

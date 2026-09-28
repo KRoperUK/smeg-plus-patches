@@ -25,7 +25,9 @@ and has its own symbol map.
   embedded **WebKit** browser in a separate loadable image.
 - Modules talk over **DBUS** (`com/MM/...` interfaces) via generated
   `C_BCM_*_SERVER` / `C_BCM_*_CLIENT` pairs.
-- Persistent state lives in ~29 **SQLite** databases on the media partition.
+- Persistent state lives in ~29 **SQLite** databases. Their seeds ship read-only in the media
+  partition; the live copies are in the `USER_DATA` partition, which the car owns (confirmed on
+  hardware: editing a seed changes nothing on the unit).
 
 At a glance, the pieces and how they talk:
 
@@ -39,8 +41,9 @@ flowchart TB
   App -->|"DBUS (com/MM/…)"| Post
   App --> HMI["HMI apps · C_HMI_*<br/>audio · media · tuner · nav · config · …"]
   HMI --> SRC["C_MGR_SRC<br/>source scheduler"]
-  HMI --> Audio["C_MODULE_AUDIO<br/>DSP · AUX · gain"]
-  App --> DB[("~29 SQLite databases<br/>on the media partition")]
+  HMI -->|"DBUS Cmd_change_source"| SRV["C_SRV_AUDIO<br/>audio service"]
+  SRV --> Audio["C_MODULE_AUDIO<br/>DSP · AUX · gain"]
+  App --> DB[("~29 SQLite databases<br/>live on USER_DATA · seeds in the media partition")]
 ```
 
 ## 2. Code regions ("modules")
@@ -169,11 +172,15 @@ tuning, parking, failsoft, browser, connectivity.
   `AllocateSource` / `ReleaseSource` / `AddRequest` / `ExecuteAllocation` /
   `ForceSchedulerPosition`, and `ReadSupervisorData()`. Mirrored one-for-one on the
   server (`C_SRV_AUDIO_SERVER`) and HMI client (`C_BCM_HMI_AUDIO_CLIENT`:
-  `ActivateSourceByID`, `ActivateSourceByType`, `ActivateNextSource`, …).
+  `ActivateSourceByID`, `ActivateSourceByType`, `ActivateNextSource`, …). See
+  [The source scheduler](SCHEDULER.md) and [How HMI apps request sources](HMI_SOURCES.md).
 - **Audio module `C_MODULE_AUDIO`** — DSP/mixing/amplifier owner; source switching,
-  AUX status and gain, mute management. Detail in the [analysis notes](ANALYSIS.md).
+  AUX status and gain, mute management. It executes source changes that arrive over DBUS
+  through `C_SRV_AUDIO`; it never calls `C_MGR_SRC` (read). See
+  [The audio module](AUDIO_MODULE.md).
 - **Tuner `C_MODULE_TUNER`** + radio front-end `C_I2C_SMART_RADIO` (RDS/AF/DAB, and
-  `Get_AUX_signal_status`).
+  `Get_AUX_signal_status`). AUX signal detection lives here; see
+  [The AUX signal path](AUX_SIGNAL.md).
 - **Key interface `C_BCM_KIM`** — turns front-panel/AVR key events into HMI keyboard
   messages and desktop destinations (`SendKeyEvent`, `RegisterAsDestination`).
 - **Desktop / shell `C_HMI_ClientDesktopFsm` + `C_BCM_DesktopServices`** — the
@@ -186,7 +193,7 @@ tuning, parking, failsoft, browser, connectivity.
 
 ## 6. Data — SQLite databases
 
-29 databases ship in the media partition. The application reaches them through
+29 databases ship as seeds in the media partition; the unit's live copies are on `USER_DATA`. The application reaches them through
 `C_BCM_DB_MANAGER_SERVER` (`get_database_path`, `save_database`,
 `database_corruption_detected`) and `C_BCM_UP_SERVER` for the `up_*` settings stores.
 `db_manager.sqlite` is the registry of every database and its persistence policy.
