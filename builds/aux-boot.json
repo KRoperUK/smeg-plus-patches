@@ -1,16 +1,14 @@
 {
-  "_comment": "FALSIFIED ON HARDWARE 2026-09-27: flashed, still boots to FM - AUX's request is PrOnly, so it never reaches the restore, see docs/AUX_CHAIN.md#how-the-boot-source-is-actually-chosen. Original intent: boot straight to AUX, every time. Pairs aux-always-available (so AUX is a valid, selectable source) with aux-boot-default (which forces C_MGR_SRC::StartUp to restore scheduler position 7 / POS_AUX regardless of the saved Last_Source). Unlike a settings-database seed, this survives switching source - the firmware re-saves the active source via ImmediateSourceSave, but the restore ignores the saved value. App-image only, so no /USER_DATA payload and no data-loss risk. NAV only. LOCAL build manifest: edit the absolute paths below before reusing. CAVEAT: setting the restore target to 7 only switches if an AUX request node (Sched_Pos 7) is scheduled at StartUp - see docs/AUX_CHAIN.md; verify with tools/ppcemu.py before a car trip.",
+  "_comment": "BOOT TO AUX - the minimal build, CONFIRMED ON HARDWARE 2026-09-28 (NAV 5.43.A.R2): the same three patch sets as the car build that booted to AUX three times (builds/aux-boot-restore.json), without its ring tone and spy-dump extras. aux-autoswitch keeps AUX available (IsAUXSRCAvailable; its second edit is inert but kept so the bytes are exactly those confirmed), aux-boot-default forces the boot restore target to AUX, and aux-boot-restore lets AUX's boot request take part in that restore. They only work together: aux-boot-default alone, and the two-edit aux-boot-restore, both still booted to FM. App-image only: no /USER_DATA payload, so paired phones, destinations and presets are untouched. See docs/AUX_CHAIN.md#what-the-third-car-test-established. Edit `package` and `out` to your paths.",
   "package": "~/Downloads/SMEG_PLUS_UPG",
-  "out": "~/Downloads/SMEG_PLUS_UPG_auxboot",
+  "out": "~/smeg-builds/aux-boot/SMEG_PLUS_UPG",
   "module": "NAV",
   "app": {
     "patches": [
-      "aux-always-available",
-      "aux-boot-default"
+      "aux-autoswitch",
+      "aux-boot-default",
+      "aux-boot-restore"
     ]
-  },
-  "media": {
-    "gui_ver": "32.01"
   },
   "seal": true
 }

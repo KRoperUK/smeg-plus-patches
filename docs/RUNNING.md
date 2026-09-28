@@ -200,7 +200,7 @@ Ready-made **schemes** live in `builds/`. Each is a whole build, so a scheme is 
 | scheme | what it does | needs |
 |---|---|---|
 | `builds/aux-only.json` | the AUX patches and nothing else — the closest thing to stock that still enables AUX, and the baseline to reach for when something behaves unexpectedly | nothing |
-| `builds/aux-boot.json` | AUX selectable, plus `aux-boot-default`, which was meant to resume AUX on every boot and **does not** (falsified on hardware, see [the AUX chain](AUX_CHAIN.md#how-the-boot-source-is-actually-chosen)) | nothing |
+| `builds/aux-boot.json` | **boot to AUX, the minimal build**: `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore`, nothing else. The same image the car confirmed (2026-09-28) minus the spy-dump extra; start here | nothing |
 | `builds/combined-aux-boot-ringtone.json` | `aux-only` + `aux-boot` + the ring-tone scheme in one package (the updater finds only one `SMEG_PLUS_UPG`). Its boot-to-AUX part is **falsified** (2026-09-27); kept for history | a tone file |
 | `builds/aux-boot-restore.json` | the current boot-to-AUX **candidate**: `aux-boot-default` + the three-edit `aux-boot-restore`. Not yet flashed | a tone file |
 | `builds/aux-signal-switch.json` | **candidate** switch-on-signal build: adds `aux-sticky` and `aux-signal-switch`. Emulated only; flash it after the `aux-boot-restore` test has been read | a tone file |
