@@ -1,12 +1,16 @@
 {
-  "_comment": "Everything from aux-only, aux-boot and alien-piano-riff in ONE package. The updater looks for exactly one SMEG_PLUS_UPG at the stick root, so three side-by-side packages would not all be found - combining is the only way to have all three at once. NOT a tested combination on hardware.",
-  "_sources": ["builds/aux-only.json", "builds/aux-boot.json", "builds/alien-piano-riff.json"],
+  "_comment": "aux-only + aux-boot-default + alien-piano-riff in ONE package (the updater looks for exactly one SMEG_PLUS_UPG at the stick root). Flashed 2026-09-27: accepted, the custom tone played, and the unit booted to FM, because aux-boot-default needs aux-boot-restore - use builds/aux-boot-restore.json or builds/aux-boot.json for boot to AUX.",
+  "_sources": [
+    "builds/aux-only.json",
+    "builds/aux-boot.json",
+    "builds/alien-piano-riff.json"
+  ],
   "_pairs": {
-    "aux-autoswitch": "supersedes aux-always-available, which patches only IsAUXSRCAvailable; this also removes the GetMediaDevice bail-out",
-    "aux-boot-default": "meant to make C_MGR_SRC::StartUp restore AUX (position 7) on every boot; FALSIFIED on hardware 2026-09-27 - still boots to FM, see docs/AUX_CHAIN.md",
-    "spy-dump-userdata-partition": "from alien-piano-riff; a different address, no overlap with the AUX sites"
+    "aux-autoswitch": "supersedes aux-always-available, which patches only IsAUXSRCAvailable; this also carries the inert GetMediaDevice nop",
+    "aux-boot-default": "forces the restore target to AUX; does not boot to AUX without aux-boot-restore",
+    "spy-dump-userdata-partition": "carried here, but it does not work: no USER_DATA tree reached the stick after SPYSTORE (observed 2026-09-28); the dump loses the calibration *.log and *regen* files"
   },
-  "_beacon": "gui_ver 32.01 is the visible did-it-apply signal, and ring1 renamed to Piano (an application-image patch, #190)",
+  "_beacon": "gui_ver 32.01 (shown on System Information's GUI item page by the code; not confirmed on the car), and ring1 renamed to Piano (an application-image patch)",
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
   "package": "~/Downloads/SMEG_PLUS_UPG",
   "out": "~/Downloads/stick_combined/SMEG_PLUS_UPG",

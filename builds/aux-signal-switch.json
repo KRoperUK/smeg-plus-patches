@@ -1,13 +1,15 @@
 {
-  "_comment": "CANDIDATE car build for switching to AUX when its signal appears, on top of the aux-boot-restore build. NOT tested on hardware; aux-signal-switch is verified only under emulation (handler and dispatch window). Flash it only after the aux-boot-restore car test has been read. LOCAL build manifest: edit the paths below before reusing.",
-  "_sources": ["builds/aux-boot-restore.json"],
+  "_comment": "Candidate build for switching to AUX when its signal appears, on top of the confirmed boot-to-AUX build. Never flashed and not being pursued; aux-signal-switch is verified only under emulation (handler and dispatch window). Edit the paths before reusing.",
+  "_sources": [
+    "builds/aux-boot-restore.json"
+  ],
   "_pairs": {
     "aux-always-available": "AUX selectable and available (the first half of aux-autoswitch)",
-    "aux-sticky": "the second half of aux-autoswitch, plus: losing the signal no longer releases AUX, so a paused phone does not fall back to FM",
+    "aux-sticky": "the inert second half of aux-autoswitch, plus: turning the AUX setting off no longer releases AUX",
     "aux-boot-default": "forces the restored Last_Source to 7",
     "aux-boot-restore": "AUX's requests sent without PrOnly, and the restored priority forced to 20",
     "aux-signal-switch": "the AUX handler reads the signal instead of the setting, and the media dispatch sends the signal event (0xcc) to it",
-    "spy-dump-userdata-partition": "SPYSTORE also copies /USER_DATA"
+    "spy-dump-userdata-partition": "carried here, but it does not work: no USER_DATA tree reached the stick after SPYSTORE (observed 2026-09-28); the dump loses the calibration *.log and *regen* files"
   },
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
   "package": "~/Downloads/SMEG_PLUS_UPG",

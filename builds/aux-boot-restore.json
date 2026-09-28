@@ -1,13 +1,13 @@
 {
-  "_comment": "CONFIRMED ON HARDWARE 2026-09-28: this build (three-edit aux-boot-restore + aux-boot-default) booted to AUX three times; see docs/AUX_CHAIN.md#what-the-third-car-test-established. LOCAL build manifest: edit the paths below before reusing.",
+  "_comment": "Boot to AUX, as flashed on the car: aux-autoswitch + aux-boot-default + aux-boot-restore, plus spy-dump-userdata-partition and a piano ring tone. Confirmed on hardware 2026-09-28 (NAV): booted to AUX three times; see docs/VERIFICATION.md. builds/aux-boot.json is the same without the extras. Edit the paths before reusing.",
   "_sources": [
     "builds/combined-aux-boot-ringtone.json"
   ],
   "_pairs": {
     "aux-autoswitch": "AUX selectable and available",
-    "aux-boot-default": "forces the restored Last_Source to 7; falsified on its own, needed as half of the pair",
-    "aux-boot-restore": "AUX boot request (InitApp) and later requests (input handler) sent without PrOnly so they reach the restore, and the restored priority is forced to AUX's 20; the input handler follows the AUX input setting, not the signal, so no auto-switch on signal is expected",
-    "spy-dump-userdata-partition": "SPYSTORE also copies /USER_DATA; a different address, no overlap"
+    "aux-boot-default": "forces the restored Last_Source to 7; does not boot to AUX without aux-boot-restore",
+    "aux-boot-restore": "AUX's boot request (InitApp) and later requests (input handler) sent without PrOnly so they reach the restore, and the restored priority forced to AUX's 20",
+    "spy-dump-userdata-partition": "carried here, but it does not work: no USER_DATA tree reached the stick after SPYSTORE (observed 2026-09-28); the dump loses the calibration *.log and *regen* files"
   },
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
   "package": "~/Downloads/SMEG_PLUS_UPG",

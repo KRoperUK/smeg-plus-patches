@@ -161,8 +161,8 @@ cannot disagree with the patch reference.
 
 <!-- patch-status:panel -->
 - **Confirmed on hardware:** `aux-always-available`, `aux-autoswitch`, `aux-boot-default`, `aux-boot-restore`, `spy-dump-userdata`
-- **Flashed, effect not yet confirmed:** `spy-dump-userdata-partition`
 - **Candidates awaiting a car test:** `aux-signal-switch`, `aux-sticky`
+- **Falsified on hardware:** `spy-dump-userdata-partition`
 - **Diagnostic builds, not for driving:** `diagnostic-logging`, `diagnostic-logmask`, `diagnostic-logsink`
 
 Per-patch detail: [Patch reference](PATCHES.md#patch-sets-in-this-repository).
