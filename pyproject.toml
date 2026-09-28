@@ -44,6 +44,11 @@ skips = [
 ]
 exclude_dirs = ["tests", ".venv", "site"]
 
+[tool.pytest.ini_options]
+markers = [
+    "firmware: needs the user's own stock image via SMEG_NAV_IMAGE; skipped in CI",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

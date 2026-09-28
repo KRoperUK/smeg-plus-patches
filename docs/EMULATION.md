@@ -274,7 +274,34 @@ log.
 ## Reproducing this
 
 The tests in `tests/test_ppcemu.py` cover the emulator itself against assembled-in-test
-images, so they run without any firmware. The findings above need your own package:
+images, so they run without any firmware.
+
+### Firmware-in-the-loop tests (your own image, never CI)
+
+`tests/test_firmware_nav.py` runs the behavioural claims against **your own** stock NAV
+5.43.A.R2 image. Point `SMEG_NAV_IMAGE` at `f_BigQuick.bin` (or an inflated image):
+
+```sh
+SMEG_NAV_IMAGE=~/Downloads/SMEG_PLUS_UPG/NAV/AppBin/f_BigQuick.bin \
+    .venv/bin/python -m pytest -m firmware -q
+```
+
+Without the variable the tests are skipped, which is what happens in CI. They check:
+
+- every `expect` in every `patches/*.json` NAV set derived from 5.43.A.R2, against the real image;
+- `C_MGR_SRC::AddRequest`: PrOnly keeps AUX out of the boot restore, PrOnly 0 matches (7, 20),
+  sets the flag and cancels the timer, and a second request is forced;
+- the AUX handler: stock follows the setting, `aux-signal-switch` follows the signal,
+  `aux-boot-restore` makes the activation's PrOnly 0, and `aux-sticky` suppresses the release;
+- the media dispatch window: stock drops `0xcc`, and `aux-signal-switch` routes only `0xcc`
+  differently.
+
+Each test's docstring says what it stubs. A broken patch fails them: changing the
+`0xcc` compare in `aux-signal-switch` fails 8.
+
+### By hand
+
+The findings above can also be reproduced one command at a time:
 
 ```sh
 uv run tools/unpack.py SMEG_PLUS_UPG/NAV/AppBin/f_BigQuick.bin app_nav.bin
