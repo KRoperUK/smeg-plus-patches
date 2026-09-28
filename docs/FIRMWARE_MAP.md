@@ -70,22 +70,36 @@ instructions** out of eight million. Every AUX patch so far edits `C_MGR_SRC`,
   callers and 1 materialised reference, from `ExecuteAllocation`;
 - pointers to it held in data (vtables, callback tables). `C_HMI_MEDIA_APP_BASE::InitApp`
   and `C_MGR_SRC::StartUp` are reached this way only;
-- the strings whose address it builds, usually its trace text.
+- the strings whose address it builds, usually its trace text;
+- the **vtable slots** it occupies. A vtable is the `_ZTV` symbol: two zero words (offset to
+  top, and typeinfo, since there is no RTTI), then one function pointer per slot.
+
+Besides the per-function table it writes three more:
+
+- `vtables.tsv`: every slot of every vtable (class, slot offset, function). NAV 5.43.A.R2:
+  36 758 slots in 3 103 vtables.
+- `virtual_calls.tsv`: call sites of the form `lwz vptr,0(obj)` → `lwz rZ,off(vptr)` →
+  `mtctr rZ` → `bctrl`, with the slot offset each calls: 10 495 on NAV. The object's class is
+  not inferred, so a site is **not** attributed to one function. `StartUp` and `InitApp`
+  still show no direct callers for that reason.
+- `globals.tsv`: each data symbol, including BSS past the end of the image, with the
+  functions that read and write it through `lis rX,hi` + a load or store at `lo(rX)`: 3 199
+  on NAV. `C_MGR_SRC::m_Instance` has 3 readers and 3 writers.
 
 ```sh
 uv run tools/survey.py ~/Downloads/SMEG_PLUS_UPG/NAV/AppBin/f_BigQuick.bin \
-    abs_symbols_base.txt --out ~/smeg-survey
+    abs_symbols_base.txt.gz --out ~/smeg-survey
 ```
 
-It takes `f_BigQuick.bin` or an inflated image, and an unpacked `abs_symbols_base.txt.gz`
-from a `SPYSTORE` dump. The run takes a few seconds. It writes `functions.tsv`,
-`families.tsv` and `unreached.tsv` under `--out`. That output is derived from the vendor's
-symbol map, so it stays on your machine. Do not commit it; see `AGENTS.md`.
+It takes `f_BigQuick.bin` or an inflated image, and `abs_symbols_base.txt.gz` from a
+`SPYSTORE` dump, gzipped or not. The run takes a few seconds. The output is derived from the
+vendor's symbol map, so it stays on your machine. Do not commit it; see `AGENTS.md`.
 
 !!! note "Reference counts are lower bounds"
 
-    An address built with `addis`+`lwz`, taken from a register computed at run time, or
-    reached through a branch table is not counted. A function in `unreached.tsv` has no
+    An address taken from a register computed at run time, reached through a branch table,
+    or built further than 30 instructions from its `lis` is not counted. Nor is a virtual
+    call whose vtable pointer passes through a stack slot or another register first. A function in `unreached.tsv` has no
     reference *this scan recognises*; that does not prove it is dead. 4 100 of the 9 889
     are Qt, where unused library code is expected.
 

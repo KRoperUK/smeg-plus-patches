@@ -15,7 +15,9 @@ One pass over the whole image produces, for each code symbol in the map:
     `callers.py` cannot see,
   * pointers to it stored in data (vtables, callback tables), and
   * the strings it materialises the address of - usually trace or log text naming what the
-    function does.
+    function does,
+  * the vtable slots it occupies, and
+  * the globals it reads and writes (`lis rX,hi` + a load or store at `lo(rX)`).
 
 The output is local analysis, written under `--out` and never into this repository: it is
 derived from the vendor's symbol map, which AGENTS.md keeps out of the tree.
@@ -24,16 +26,22 @@ derived from the vendor's symbol map, which AGENTS.md keeps out of the tree.
   families.tsv    one row per family: count, instructions, share of the image
   unreached.tsv   functions with no caller, reference or pointer found - dead code, or
                   reached some way this scan does not model (computed branch tables)
+  vtables.tsv     one row per vtable slot: class, slot offset, function
+  virtual_calls.tsv  call sites of the form `lwz vptr,0(obj); lwz rZ,off(vptr); mtctr rZ;
+                  bctrl`, with the slot offset they call. The receiver's class is not inferred,
+                  so a site is not attributed to one function
+  globals.tsv     data symbols with the functions that read and write them
 
 The reference counts are lower bounds. An address built with `addis`+`lwz`, or computed at
 run time, is not counted. A function with no references found is not proved unreachable.
 
 usage:
-    python3 tools/survey.py NAV.img abs_symbols_base.txt --out ~/smeg-survey
+    python3 tools/survey.py NAV.img abs_symbols_base.txt.gz --out ~/smeg-survey
     python3 tools/survey.py NAV/AppBin/f_BigQuick.bin abs_symbols_base.txt --out ~/smeg-survey
 """
 
 import argparse
+import bisect
 import collections
 import os
 import re
@@ -50,6 +58,12 @@ from appimage import DEFAULT_BASE, inflate  # noqa: E402
 from symbols import load_typed_symbols  # noqa: E402
 
 CODE_TYPES = {"T", "t", "W", "w"}
+VTABLE_PREFIX = "_ZTV"
+VTABLE_HEADER = 8  # offset-to-top and typeinfo (0: no RTTI) before the first slot
+LOAD_OPS = {32, 33, 34, 35, 40, 41, 42, 43}  # lwz lwzu lbz lbzu lhz lhzu lha lhau
+STORE_OPS = {36, 37, 38, 39, 44, 45}  # stw stwu stb stbu sth sthu
+MTCTR_MASK, MTCTR = 0xFC1FFFFF, 0x7C0903A6
+BCTRL = 0x4E800421
 # how far back an `addi`/`ori` may look for its `lis`; the compiler schedules them apart
 LIS_WINDOW = 30
 # prefixes whose names identify a library; labels are inferred from the names alone
@@ -177,6 +191,21 @@ def survey(img, typed, base=DEFAULT_BASE):
     pointers = collections.defaultdict(int)
     callees = collections.defaultdict(set)
     strings = collections.defaultdict(list)
+    readers = collections.defaultdict(set)
+    writers = collections.defaultdict(set)
+    virtual_calls = []  # (caller, site, slot offset)
+    # globals include BSS, which lies past the end of the image and is not in the file
+    all_data = sorted(a for a in typed if a >= base and typed[a][0] not in CODE_TYPES)
+    data_ends = {
+        a: all_data[i + 1] if i + 1 < len(all_data) else a + 4 for i, a in enumerate(all_data)
+    }
+    data_top = data_ends[all_data[-1]] if all_data else top
+
+    def data_symbol(addr):
+        k = bisect.bisect_right(all_data, addr) - 1
+        if k >= 0 and addr < data_ends[all_data[k]]:
+            return all_data[k]
+        return None
 
     code = []
     for f in funcs:
@@ -187,9 +216,43 @@ def survey(img, typed, base=DEFAULT_BASE):
 
     for lo, hi, f in code:
         lis = {}
+        vptr = set()  # registers holding an object's vtable pointer
+        slot = {}  # register -> slot offset loaded through a vtable pointer
+        ctr_slot = None
         for i in range(lo, hi):
             w = words[i]
             op = w >> 26
+            if w == BCTRL and ctr_slot is not None:
+                virtual_calls.append((f, base + i * 4, ctr_slot))
+            if w & MTCTR_MASK == MTCTR:
+                ctr_slot = slot.get((w >> 21) & 31)
+            elif op == 19 and w & 1:
+                ctr_slot = None
+            if op in LOAD_OPS or op in STORE_OPS:
+                rd, ra, d = (w >> 21) & 31, (w >> 16) & 31, w & 0xFFFF
+                # decided before any register state changes: `lwz r9,4(r9)` reads the vtable
+                # pointer in r9 and overwrites it with the slot in the same instruction
+                is_vptr = op == 32 and d == 0
+                is_slot = op == 32 and ra in vptr and not d & 0x8000 and not is_vptr
+                hit = lis.get(ra)
+                if hit and ra and i - hit[1] <= LIS_WINDOW:
+                    addr = ((hit[0] << 16) + (d - 0x10000 if d & 0x8000 else d)) & 0xFFFFFFFF
+                    g = data_symbol(addr) if base <= addr < data_top else None
+                    if g is not None:
+                        (readers if op in LOAD_OPS else writers)[g].add(f)
+                if op & 1:  # the update forms (lwzu, stwu, ...) also write the base register
+                    lis.pop(ra, None)
+                    vptr.discard(ra)
+                    slot.pop(ra, None)
+                if op in LOAD_OPS:
+                    lis.pop(rd, None)
+                    vptr.discard(rd)
+                    slot.pop(rd, None)
+                    if is_vptr:
+                        vptr.add(rd)
+                    elif is_slot:
+                        slot[rd] = d
+                continue
             if op == 18 and w & 3 == 1:  # bl
                 off = w & 0x03FFFFFC
                 if off & 0x02000000:
@@ -201,6 +264,8 @@ def survey(img, typed, base=DEFAULT_BASE):
                 clobber_volatile(lis)
             elif op == 19 and w & 1:  # bctrl / blrl
                 clobber_volatile(lis)
+                vptr.clear()
+                slot.clear()
             elif op == 15 and (w >> 16) & 31 == 0:  # lis rD,hi
                 lis[(w >> 21) & 31] = (w & 0xFFFF, i)
             elif op in (14, 24):  # addi rD,rA,lo / ori rA,rS,lo
@@ -228,6 +293,21 @@ def survey(img, typed, base=DEFAULT_BASE):
             else:
                 for r in written(w, op):
                     lis.pop(r, None)
+                    vptr.discard(r)
+                    slot.pop(r, None)
+
+    # vtables: the slots after the header, for as long as they point at functions
+    vtables = []
+    vslots = collections.Counter()
+    for a in addrs:
+        if not typed[a][1].startswith(VTABLE_PREFIX) or typed[a][0] in CODE_TYPES:
+            continue
+        k = (a + VTABLE_HEADER - base) // 4
+        stop = (ends[a] - base) // 4
+        while k < stop and words[k] in fset:
+            vtables.append((a, base + k * 4 - a - VTABLE_HEADER, words[k]))
+            vslots[words[k]] += 1
+            k += 1
 
     for i in range(n):
         if not in_code[i]:
@@ -257,6 +337,7 @@ def survey(img, typed, base=DEFAULT_BASE):
                 "pointers": pointers[f],
                 "callees": len(callees[f]),
                 "strings": strings[f],
+                "vslots": vslots[f],
             }
         )
     total = sum(fam_insns.values()) or 1
@@ -270,21 +351,36 @@ def survey(img, typed, base=DEFAULT_BASE):
         }
         for k, v in fam_insns.most_common()
     ]
-    return rows, fams
+    extras = {
+        "vtables": [(a, typed[a][1], off, fn, typed[fn][1]) for a, off, fn in vtables],
+        "virtual_calls": [(c, site, off, typed[c][1]) for c, site, off in virtual_calls],
+        "globals": [
+            (
+                g,
+                typed[g][1],
+                sorted(typed[f][1] for f in readers[g]),
+                sorted(typed[f][1] for f in writers[g]),
+            )
+            for g in sorted(set(readers) | set(writers))
+        ],
+    }
+    return rows, fams, extras
 
 
 def clean(s):
     return s.replace("\t", " ").replace("\n", "\\n")
 
 
-def write(out, rows, fams):
+def write(out, rows, fams, extras=None):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     with open(out / "functions.tsv", "w") as fh:
-        fh.write("addr\tinsns\tfamily\tcallers\tmaterialised\tpointers\tcallees\tname\tstrings\n")
+        fh.write(
+            "addr\tinsns\tfamily\tcallers\tmaterialised\tpointers\tcallees\tname\tstrings\tvslots\n"
+        )
         for r in rows:
             fh.write(
-                "%08x\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n"
+                "%08x\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%d\n"
                 % (
                     r["addr"],
                     r["insns"],
@@ -295,6 +391,7 @@ def write(out, rows, fams):
                     r["callees"],
                     clean(r["name"]),
                     " | ".join(clean(s) for s in r["strings"][:5]),
+                    r["vslots"],
                 )
             )
     with open(out / "families.tsv", "w") as fh:
@@ -311,6 +408,23 @@ def write(out, rows, fams):
                 fh.write(
                     "%08x\t%d\t%s\t%s\n" % (r["addr"], r["insns"], r["family"], clean(r["name"]))
                 )
+    if extras is None:
+        return
+    with open(out / "vtables.tsv", "w") as fh:
+        fh.write("vtable\tclass_symbol\tslot_offset\tfunction\tname\n")
+        for vt, vname, off, fn, fname in extras["vtables"]:
+            fh.write("%08x\t%s\t%d\t%08x\t%s\n" % (vt, vname, off, fn, fname))
+    with open(out / "virtual_calls.tsv", "w") as fh:
+        fh.write("site\tslot_offset\tcaller\n")
+        for caller, site, off, cname in extras["virtual_calls"]:
+            fh.write("%08x\t%d\t%s\n" % (site, off, cname))
+    with open(out / "globals.tsv", "w") as fh:
+        fh.write("addr\tsymbol\treaders\twriters\treader_names\twriter_names\n")
+        for g, gname, rd, wr in extras["globals"]:
+            fh.write(
+                "%08x\t%s\t%d\t%d\t%s\t%s\n"
+                % (g, gname, len(rd), len(wr), " ".join(rd[:10]), " ".join(wr[:10]))
+            )
 
 
 def main():
@@ -318,17 +432,17 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("image", help="f_BigQuick.bin or an already-inflated image")
-    ap.add_argument("symbols", help="abs_symbols_base.txt (or the .gz, unpacked)")
+    ap.add_argument("symbols", help="abs_symbols_base.txt, or the .gz as SPYSTORE copies it")
     ap.add_argument("--out", required=True, help="directory for the TSV files")
     ap.add_argument("--base", default="0x01000000")
     args = ap.parse_args()
 
     img = load_image(args.image)
     typed = load_typed_symbols(args.symbols)
-    rows, fams = survey(img, typed, int(args.base, 16))
+    rows, fams, extras = survey(img, typed, int(args.base, 16))
     if not rows:
         sys.exit("no code symbols fall inside the image - wrong map or --base?")
-    write(args.out, rows, fams)
+    write(args.out, rows, fams, extras)
 
     insns = sum(r["insns"] for r in rows)
     reached = sum(1 for r in rows if r["callers"] or r["materialised"] or r["pointers"])
@@ -336,6 +450,10 @@ def main():
     print(
         "%d with at least one caller, reference or pointer; %d with none found"
         % (reached, len(rows) - reached)
+    )
+    print(
+        "%d vtable slots, %d virtual call sites, %d globals referenced"
+        % (len(extras["vtables"]), len(extras["virtual_calls"]), len(extras["globals"]))
     )
     for f in fams[:15]:
         print(
