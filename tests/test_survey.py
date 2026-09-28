@@ -109,3 +109,31 @@ def test_a_map_that_misses_the_image_is_refused(tmp_path):
     )
     assert r.returncode != 0
     assert "no code symbols" in r.stderr
+
+
+def scan(words, tmp_path):
+    """Survey a single function made of `words`, with a target function after it."""
+    img = bytearray(0x100)
+    for k, w in enumerate(words):
+        img[k * 4 : k * 4 + 4] = struct.pack(">I", w)
+    img[0x80:0x84] = struct.pack(">I", 0x4E800020)  # blr
+    sym = tmp_path / "s.txt"
+    sym.write_text("%08x T caller\n%08x T target\n" % (BASE, BASE + 0x80))
+    rows, _ = survey.survey(bytes(img), load_typed_symbols(str(sym)), BASE)
+    return {r["mangled"]: r for r in rows}["target"]["materialised"]
+
+
+def test_a_lis_is_forgotten_once_its_register_is_overwritten(tmp_path):
+    """`lis r3,hi; lwz r3,0(r4); addi r3,r3,lo` builds no address from `hi`."""
+    words = [0x3C600100, 0x80640000, 0x38630080]
+    assert scan(words, tmp_path) == 0
+    assert scan([words[0], words[2]], tmp_path) == 1, "the pair alone is still found"
+
+
+def test_a_call_clobbers_volatile_registers(tmp_path):
+    assert scan([0x3C600100, 0x4E800421, 0x38630080], tmp_path) == 0  # lis; bctrl; addi
+
+
+def test_ori_reads_its_source_from_the_rs_field(tmp_path):
+    """`ori r4,r3,lo` combines the `lis r3`; the destination field names r4."""
+    assert scan([0x3C600100, 0x60640080], tmp_path) == 1
