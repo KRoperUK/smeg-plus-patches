@@ -159,7 +159,7 @@ that.
 
 | date | build | outcome | detail |
 |---|---|---|---|
-| 2026-09-27 | `aux-autoswitch` + `aux-boot-default` (+ `spy-dump-userdata-partition`, piano ring tone) | accepted and flashed; the custom tone played; **boots to FM** — `aux-boot-default` falsified; `GUI_VER` 32.01 not seen on the unit; a renamed tone kept its stock name | [first car test](AUX_CHAIN.md#what-the-first-car-test-established) |
+| 2026-09-27 | `aux-autoswitch` + `aux-boot-default` (+ `spy-dump-userdata-partition`, piano ring tone) | accepted and flashed; the custom tone played; **boots to FM** — `aux-boot-default` falsified; `GUI_VER` 32.01 not seen on the page looked at (the code shows it on the GUI item's page, #191); a renamed tone kept its stock name | [first car test](AUX_CHAIN.md#what-the-first-car-test-established) |
 | 2026-09-28 | the same + `aux-boot-restore`, handler edit only | **still FM**. The `SPYTAKE` trace: `Last_Source` 7 at 8847 ms, AUX's request with `PrOnly` true at 10109 ms, the tuner ACK at 16347 ms = 8847 + 7500 (the init timer) | [second car test](AUX_CHAIN.md#what-the-second-car-test-established) |
 
 The three-edit `aux-boot-restore` build is on a stick and not yet flashed. `aux-signal-switch`
@@ -298,10 +298,11 @@ figures change as partitions are rewritten:
     flash, if the log went anywhere: `Log_msg`'s sink is stubbed out in this build, so the
     message is formatted and discarded. Giving the firmware an output path is the
     prerequisite, and is still open — see [Patch reference](PATCHES.md).
-- **Version strings are not a marker.** System Information still reads `SMEG5.43.A.R2` /
-  `CD 26482` after a successful patched flash. See
-  [Version strings](VERSION_STRINGS.md) for why. Do not use them to decide whether a
-  patch is installed — use behaviour.
+- **Version strings are not a marker yet.** System Information still reads `SMEG5.43.A.R2` /
+  `CD 26482` after a successful patched flash: the first is an application-image literal and
+  the second the media partition's `media.inf`, neither of which a patch changes. `GUI_VER` is
+  shown on the GUI item's page by the code but has not been seen. See
+  [Version strings](VERSION_STRINGS.md). Until a marker is confirmed, use behaviour.
 - **Single unit, single build.** All of the above is `NAV` on one car. The `AUDIO_BT`
   and `AUDIO_BT_256` patch sets are verified against their images but have not been
   flashed.

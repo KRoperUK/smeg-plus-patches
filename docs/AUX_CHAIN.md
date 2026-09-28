@@ -610,6 +610,11 @@ at `+0xd4`, it moves the old `+0xb4` into `+0xe4`, stores a literal **1** into `
 (`0x01697b44`–`0x01697b48`), and runs allocation. Position 1 is `POS_TUNER`. If it finds none,
 the flag is cleared again and a 5 s retry timer is started.
 
+The position it computes before storing 1 is discarded, and it would be the *highest* queued
+position, not the next one, so patching the literal does not help. Releasing the current
+source already tries the **previous** position first. Both are in
+[The source scheduler](SCHEDULER.md#changetonextschedulerposition-in-full).
+
 **AUX's request has `+0x28` set, so AUX never enters the table.** *Executed* — the spy's
 request-list dump. The last column, `PrOnly`, is the byte at `+0x28`:
 
@@ -754,6 +759,14 @@ flashed**.
 
 ## Two display findings
 
+!!! failure "Partly withdrawn (#191)"
+
+    The first finding below overreached. By the code, `GUI_VER` *is* shown, on the GUI item's
+    page of System Information; what was observed is that `32.01` was not seen on the page
+    looked at. The `cd` value comes from the media partition's `Data_base/media.inf`, and the
+    main software version from the application image. See
+    [Version strings](VERSION_STRINGS.md#is-gui_ver-visible) for the details and the car check.
+
 **The version shown on the unit is not `GUI_VER`.** `GUI_VER` was set to `32.01` for this build,
 and it appears nowhere on the unit. The "Display version" screen reads `cd 26482`, which is
 `Data_base/media.inf` verbatim — a file this build did not touch. The claim in `AGENTS.md` that
@@ -818,5 +831,5 @@ confirmed that the unit reads the name from its own copy rather than from the pa
 | the vtable for `C_MGR_SRC` holds exactly one pointer to `StartUp`, at `0x0307aa74` | **read from the image** |
 | `callers.py` finds direct `bl` callers | **executed** — 108,907 sites, 12,982 targets; virtual methods return 0 by design |
 | most `C_MGR_SRC` calls are `lis`/`addi` + `bctrl`, invisible to `callers.py` | **executed** — an address-materialisation scan finds the callers `callers.py` misses |
-| the Display-version screen reads `media.inf`, so `GUI_VER` is not a visible beacon | **executed on hardware** — `cd 26482` is `media.inf` verbatim |
+| the Display-version screen reads `media.inf`, so `GUI_VER` is not a visible beacon | **partly withdrawn** — `cd 26482` is `media.inf` verbatim (executed on hardware), but the code shows `GUI_VER` on the GUI item's page (read, #191); see [Version strings](VERSION_STRINGS.md#is-gui_ver-visible) |
 | a renamed ringtone keeps its old name after a package update | **executed on hardware**; the settings-database reason is **inferred** |

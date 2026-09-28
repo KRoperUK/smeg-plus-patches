@@ -51,9 +51,8 @@ Renesas MCU
 
 `smeg.inf`
 :   The version-marker file **inside** the media partition. It holds `GUI_VER`,
-    which was not seen on the unit when changed; the Display-version screen reads
-    `media.inf` instead (observed, 2026-09-27). See
-    [Version strings](VERSION_STRINGS.md).
+    which System Information shows on the GUI item's page (read); `32.01` was not seen on
+    the one page looked at (2026-09-27). See [Version strings](VERSION_STRINGS.md).
 
 `UpgPlugin.out`
 :   The updater plugin on the stick. The unit loads and calls it **before** it
@@ -202,8 +201,9 @@ Evidence tiers
 
 `GUI_VER`
 :   A version field in the partition's `smeg.inf`. Harmless to change, but it was
-    **not seen on the unit** when changed (observed, 2026-09-27), so there is no
-    known safe visible build marker. See [Version strings](VERSION_STRINGS.md).
+    shown on the GUI item's page of System Information by the code *(read)*, but `32.01`
+    was not seen on the page looked at (2026-09-27), so it is not yet a confirmed build
+    marker. See [Version strings](VERSION_STRINGS.md#is-gui_ver-visible).
 
 Release Please
 :   The automation that turns Conventional Commit titles on `main` into releases.
