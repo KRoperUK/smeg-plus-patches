@@ -183,6 +183,27 @@ def test_dry_run_writes_nothing(tmp_path, fake_pkg):
     assert "dry run" in r.stdout
 
 
+def test_preflight_checks_the_module_that_was_built(tmp_path, fake_pkg, monkeypatch):
+    import types
+
+    bp = load_build()
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(bp.subprocess, "run", fake_run)
+    m = manifest(tmp_path, package=str(fake_pkg), module="AUDIO_BT", seal=False)
+    monkeypatch.setattr(sys, "argv", ["build_package.py", "--manifest", str(m)])
+
+    bp.main()
+
+    preflight = [c for c in calls if any(str(a).endswith("preflight.py") for a in c)]
+    assert len(preflight) == 1
+    assert preflight[0][-2:] == ["--module", "AUDIO_BT"]
+
+
 def test_dry_run_shows_the_order(tmp_path, fake_pkg):
     """The ordering is the reason this tool exists, so assert it is what gets printed."""
     m = manifest(
