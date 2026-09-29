@@ -248,6 +248,16 @@ Without the variable the tests are skipped, which is what happens in CI. They ch
 Each test's docstring says what it stubs. A broken patch fails them: changing the `0xcc` compare
 in `aux-signal-switch` fails 8.
 
+`tests/test_firmware_audio_bt.py` does the same for the `AUDIO_BT` variants, one image per
+module: the `expect` bytes, the two `AddRequest` runs, and the handler's `PrOnly` stock and
+with `aux-boot-restore`.
+
+```sh
+SMEG_AUDIO_BT_IMAGE=~/Downloads/SMEG_PLUS_UPG/AUDIO_BT/AppBin/f_BigQuick.bin \
+SMEG_AUDIO_BT_256_IMAGE=~/Downloads/SMEG_PLUS_UPG/AUDIO_BT_256/AppBin/f_BigQuick.bin \
+    .venv/bin/python -m pytest -m firmware -q
+```
+
 ### By hand
 
 The findings above can also be reproduced one command at a time:

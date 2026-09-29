@@ -132,7 +132,9 @@ line. Every call site and its argument is in [How HMI apps request sources](HMI_
 
 ## The boot-to-AUX patches
 
-Three patch sets, NAV only, all needed; `builds/aux-boot.json` applies exactly these.
+Three patch sets, all needed; `builds/aux-boot.json` applies exactly these. The addresses
+below are NAV's; all three sets also have `AUDIO_BT`/`AUDIO_BT_256` variants, derived and
+emulated but never flashed ([Patches](PATCHES.md#boot-to-aux-aux-boot-default-aux-boot-restore)).
 
 | set | site | original | patched | effect |
 |---|---|---|---|---|

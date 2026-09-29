@@ -270,6 +270,7 @@ Replacing the load with a constant pins the restore to position **7 (`POS_AUX`)*
 | build | address | original | patched |
 |---|---|---|---|
 | `NAV` | `0x0169948c` | `81 21 00 08` (`lwz r9,8(r1)`) | `39 20 00 07` (`li r9,7`) |
+| `AUDIO_BT`, `AUDIO_BT_256` | `0x01699334` | `81 21 00 08` (`lwz r9,8(r1)`) | `39 20 00 07` (`li r9,7`) |
 
 Emulated on the NAV image, with the saved value set to `1` (radio) *(executed)*:
 
@@ -280,8 +281,8 @@ Emulated on the NAV image, with the saved value set to `1` (radio) *(executed)*:
 
 The `Last_Source` line in the `C_MGR_SRC` spy trace is written just before this store
 (`WriteMgrSrcSpy` at `0x01699488`), so it shows the **saved** value, not the patched one
-*(read)*. NAV only — the `StartUp` address differs on the `AUDIO_BT` builds and must be
-re-derived.
+*(read)*. The `AUDIO_BT` variants are the same instruction at the same offset in `StartUp`,
+located with each build's own symbol map *(read)*; they have never been flashed.
 
 ### `aux-boot-restore` — let AUX's request take part in the restore
 
@@ -296,11 +297,21 @@ pair (7, 20) matches:
 | `NAV` | `0x022c0678` | `38 80 00 01` (`li r4,1`: the boot-time `ActivateSource(aux, true)` in `InitApp`) | `38 80 00 00` (`li r4,0`) |
 | `NAV` | `0x02303474` | `38 80 00 01` (`li r4,1`: `ActivateSource(aux, true)` in `HandleAudioAuxInputStatusChnged`) | `38 80 00 00` (`li r4,0`) |
 | `NAV` | `0x01699444` | `80 01 00 08` (`lwz r0,8(r1)`, the saved `Last_Source_Priority`) | `38 00 00 14` (`li r0,20`) |
+| `AUDIO_BT`, `AUDIO_BT_256` | `0x022c0538` | `38 80 00 01` (`InitApp`) | `38 80 00 00` |
+| `AUDIO_BT`, `AUDIO_BT_256` | `0x02303334` | `38 80 00 01` (the handler) | `38 80 00 00` |
+| `AUDIO_BT`, `AUDIO_BT_256` | `0x016992ec` | `80 01 00 08` (`StartUp`) | `38 00 00 14` |
 
 The `InitApp` site is the only one of `InitApp`'s six activations that passes `true`, so no
 other source changes. Under emulation, `AddRequest` with `PrOnly` clear fills `ScheduledInit`
 with (7, 20), sets the restore flag (`+0x3c0`) and cancels the init timer, and does none of that
 with `PrOnly` set *(executed; `tests/test_firmware_nav.py`)*.
+
+The `AUDIO_BT` addresses are not the NAV ones moved by the image-wide shift (−344): the media
+app's functions sit at −320, so each site is the same offset in the same function, found with
+the build's own symbol map. `InitApp` has the same six activations with only the fifth passing
+`true`. On both `AUDIO_BT` images the same `AddRequest` runs give the same results, and the
+patched handler passes `PrOnly` 0 where stock passes 1 *(executed;
+`tests/test_firmware_audio_bt.py`)*. Neither variant has been flashed.
 
 On the car, the capture of a boot with both sets shows AUX's request with `PrOnly` false,
 `POS_AUX` (7, 20) in `ScheduledInit`, and AUX acknowledged in the same millisecond it asked,

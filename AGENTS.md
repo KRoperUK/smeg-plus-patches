@@ -107,7 +107,10 @@ headless via `QT_QPA_PLATFORM=offscreen`.
 
 Behavioural claims about the NAV image are tested against **your own** image, never in CI:
 `SMEG_NAV_IMAGE=<your f_BigQuick.bin> .venv/bin/python -m pytest -m firmware -q`
-(`tests/test_firmware_nav.py`; skipped when the variable is unset).
+(`tests/test_firmware_nav.py`; skipped when the variable is unset). The `AUDIO_BT` variants
+have the same in `tests/test_firmware_audio_bt.py`, via `SMEG_AUDIO_BT_IMAGE` and
+`SMEG_AUDIO_BT_256_IMAGE`. Each module's own symbol map ships in its `system.bin` under
+`Application/PKG/`.
 
 ## Platforms: macOS and Windows
 
