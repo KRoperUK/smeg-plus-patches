@@ -518,7 +518,9 @@ def main():
     #    than on a stick in a car.
     if not args.dry_run and not args.skip_preflight:
         r = subprocess.run(
-            [PY, tool("preflight.py"), "--package", out], capture_output=True, text=True
+            [PY, tool("preflight.py"), "--package", out, "--module", module],
+            capture_output=True,
+            text=True,
         )
         print(r.stdout.rstrip())
         if r.returncode != 0:
