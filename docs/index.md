@@ -45,11 +45,12 @@ partitions — applies to any patch you want to make to one of these units.
     How the application image is built, what has been read closely, and how claims are
     checked.
 
-    1. [Architecture](ARCHITECTURE.md) and the [Firmware map](FIRMWARE_MAP.md)
-    2. [The source scheduler](SCHEDULER.md), [the audio module](AUDIO_MODULE.md),
+    1. [The hardware](HARDWARE.md) and [the kernel & partitions](PLATFORM.md)
+    2. [Architecture](ARCHITECTURE.md) and the [Firmware map](FIRMWARE_MAP.md)
+    3. [The source scheduler](SCHEDULER.md), [the audio module](AUDIO_MODULE.md),
        [the AUX chain](AUX_CHAIN.md)
-    3. [Emulation](EMULATION.md): running firmware functions on a desktop
-    4. [Verification](VERIFICATION.md): what was proven, and how
+    4. [Emulation](EMULATION.md): running firmware functions on a desktop
+    5. [Verification](VERIFICATION.md): what was proven, and how
 
 </div>
 
@@ -118,14 +119,25 @@ card matches what you are trying to do.
     [Flashing](FLASHING.md) ·
     [Hardware verification](VERIFICATION.md)
 
+-   :lucide-hard-drive:{ .lg .middle } __The unit itself__
+
+    ---
+
+    The box under the software: the SoC and memory, U-Boot and the VxWorks kernel, the
+    address map and flash partitions, and where the AUX and speaker pins are.
+
+    [:lucide-arrow-right: Hardware](HARDWARE.md) ·
+    [Kernel & partitions](PLATFORM.md)
+
 -   :lucide-book-open:{ .lg .middle } __Reference__
 
     ---
 
-    The vocabulary of these units in one place, and the repository's own release
-    process.
+    The vocabulary of these units in one place, the sources and prior art this site builds
+    on, and the repository's own release process.
 
     [:lucide-arrow-right: Glossary](GLOSSARY.md) ·
+    [Sources & prior art](REFERENCES.md) ·
     [Releasing](RELEASING.md)
 
 </div>

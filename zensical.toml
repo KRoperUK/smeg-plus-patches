@@ -22,6 +22,10 @@ nav = [
     { "Architecture" = "ARCHITECTURE.md" },
     { "Firmware map" = "FIRMWARE_MAP.md" },
   ] },
+  { "The unit" = [
+    { "Hardware" = "HARDWARE.md" },
+    { "Kernel & partitions" = "PLATFORM.md" },
+  ] },
   { "Flash chain & protections" = [
     { "Boot & update chain" = "FLASH_CHAIN.md" },
     { "Media protection" = "MEDIA_PROTECTION.md" },
@@ -54,6 +58,7 @@ nav = [
   ] },
   { "Project" = [
     { "Releasing" = "RELEASING.md" },
+    { "Sources & prior art" = "REFERENCES.md" },
   ] },
   { "Glossary" = "GLOSSARY.md" },
 ]

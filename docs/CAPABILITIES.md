@@ -285,6 +285,21 @@ Seen in `up_common.sqlite` or the application image, all data rather than code:
 Four settings databases have not been opened at all: `up_config.sqlite`, `up_user_hmi.sqlite`,
 `desktopServices.sqlite`, `config_options.sqlite`. Feature flags hide in exactly such places.
 
+### The user guide is a web app
+
+The `USERGUIDE/<model>/*.rcc` files are **Qt resource bundles** (`qres` magic) holding the
+unit's built-in manual as HTML/CSS/JavaScript plus images and JSON, rendered by the unit's
+embedded browser. Nothing about the container is specific to a manual, so a custom `.rcc`
+*in principle* could carry a homebrew page launched by opening the guide. *(inferred, from
+the format description in [bousqi/SMEG_PLUS](https://github.com/bousqi/SMEG_PLUS); see
+[Sources and prior art](REFERENCES.md).)*
+
+**Caveats.** The `USERGUIDE/` payloads are inside the media contract's coverage
+([The update flow](UPGRADE_FLOW.md)), so replacing one means rebuilding the checksum cascade
+and re-sealing like any other edit — routine for the tooling here, but there is no `.rcc`
+builder and nothing has been tested on a car. The browser is the generation's WebKit; treat
+this as a curiosity, not a platform.
+
 ## The hard boundary
 
 **We can change behaviour, configuration and data. We cannot add hardware capability.** That

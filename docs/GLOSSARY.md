@@ -7,7 +7,14 @@ once; the rest of the site links back rather than re-explaining them.
 
 `SMEG+`
 :   The Magneti Marelli infotainment head unit fitted to Peugeot, Citroën and DS
-    vehicles roughly 2012–2017. The subject of this whole site.
+    vehicles roughly 2012–2017. The subject of this whole site. See
+    [The hardware](HARDWARE.md).
+
+SMEG / SMEG+I / SMEG+Iv2
+:   The three **generations**, told apart by the firmware version's leading number:
+    SMEG is `3.x/4.x`, **SMEG+I is `5.x`** (this site's target), SMEG+Iv2 is `6.x`
+    — a different board and firmware. "SMEG+" in public writing usually means the
+    `5.x` unit. *(read, smeg-rce wiki; see [Sources and prior art](REFERENCES.md).)*
 
 `NAV` / `AUDIO_BT` / `AUDIO_BT_256`
 :   The three build variants of the firmware. `NAV` has navigation; the two
@@ -26,8 +33,25 @@ e300 / MPC5121e
 
 VxWorks / BSP
 :   The real-time operating system and its Board Support Package — the low-level
-    layer that boots the unit before the application starts. See
+    layer that boots the unit before the application starts. **VxWorks 6.7** built
+    for a Freescale `MPC5121E ADS` reference board; it loads at `0x00200000` and
+    carries its own symbol table. See [Kernel and partitions](PLATFORM.md) and
     [Boot & update chain](FLASH_CHAIN.md).
+
+U-Boot
+:   The first-stage bootloader, flashed separately from the kernel by the updater's
+    `ManageUBootUpdateAndReboot()`. Its internals are not documented here. See
+    [Kernel and partitions](PLATFORM.md).
+
+TFFS
+:   The flash translation layer the kernel mounts its flash volumes through
+    (`/SYSTEM`, `/USER_DATA`, `/sdhc:0`, `/bd0`, …). The layout is in
+    [Kernel and partitions](PLATFORM.md#flash-partitions).
+
+`DIRANA2`
+:   The NXP audio DSP at the heart of the radio/AUX front end. AUX signal detection
+    runs through it; see [The AUX signal path](AUX_SIGNAL.md). Its stereo AUX input
+    is the half-differential three-line pair the unit switches on.
 
 Renesas MCU
 :   The front-panel microcontroller. The updater reflashes it as one of its
