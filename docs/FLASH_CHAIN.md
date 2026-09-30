@@ -186,7 +186,8 @@ these docs:
 
 `BSP/SMEG_PLUS_512/vxWorks.bin` is not an ELF — it is a raw PowerPC image that begins with
 a function prologue at offset 0 — but it carries a **VxWorks symbol table** near the end.
-The entries are 20 bytes: a pointer to the name, then the address.
+The entries are **20 bytes**, and "a pointer to the name, then the address" is the middle of
+the five words in the struct below.
 
 It loads at **`0x00200000`**, and that is not a guess. Read at that base the table's name
 pointers resolve to readable strings, and the application's own call into the kernel at
@@ -195,8 +196,55 @@ by the table at exactly that address. The application and the kernel therefore s
 address space, which is what makes a branch from the application into a kernel function
 possible at all; `patches/diagnostic-logsink.json` relies on it.
 
-`tools/elfsyms.py` does not read this format — it is not ELF. Recovering a symbol means
-finding its name in the table and taking the word after the name pointer.
+**The format is readable — `tools/symbols.py`.** `load_vxworks_symtab(blob, base=0x00200000)`
+returns `{address: name}`, the same shape `load_symbols()` gives for a vendor map, so
+`extents()` and `name_at()` take it unchanged and a kernel address can be named the way an
+application one is:
+
+```python
+import symbols
+
+kernel = open("BSP/SMEG_PLUS_512/vxWorks.bin", "rb").read()
+symbols.load_vxworks_symtab(kernel)[0x0058C248]  # -> 'tickGet'
+```
+
+The entry *(read, bousqi/SMEG_PLUS — `VXWORKS.md`, `struct s_Symbol`)*:
+
+```
+struct s_Symbol {
+  int unk1;        /*  0 */
+  u32 name;        /*  4  pointer into the image's string area */
+  u32 address;     /*  8 */
+  int unk2;        /* 12 */
+  int type;        /* 16  0x100 unk, 0x400 func, 0x800 data, 0x1000 ext */
+};
+```
+
+!!! warning "What this project established, and what bousqi did"
+
+    **This project's own, read from the image:** the base and the stride. At `0x00200000` the
+    name pointers resolve, the entries are 20 bytes apart, and the address the application
+    calls is named `tickGet`. The 20-byte size was already this page's own reading. Note the
+    tier — that is an inspection of the table, not a run, so it is *read* and not *executed*.
+
+    **Read, from bousqi/SMEG_PLUS (`VXWORKS.md`, `struct s_Symbol`):** the five-field struct
+    around those two words, the two `unk` fields and the four `type` codes. None of it is
+    confirmed against a vendor image here, and none of it is acted on:
+    `load_vxworks_symtab` reports the type rather than trusting it, so an entry whose code
+    nobody has described still gets its name. bousqi also records the table at `0x00822024`
+    holding 13 853 symbols on their unit *(read)* — the offset is a property of their build,
+    not of the format, which is why the reader locates the table by scanning for resolving
+    name pointers instead of taking an address.
+
+The reader is **tolerant by design**, because the table's length is not recorded anywhere it
+points at: an entry whose name pointer does not resolve to a printable string is skipped
+rather than ending the walk, since one unreadable entry in a table of thousands should not
+cost the other thousands. The walk gives up after a run of misses, which is what the end of
+the table looks like.
+
+`tools/elfsyms.py` does not read this format — it is not ELF. See
+[Kernel and partitions](PLATFORM.md) for the table's address on the analyser's unit and the
+other structures found beside it.
 
 ### The phases
 
