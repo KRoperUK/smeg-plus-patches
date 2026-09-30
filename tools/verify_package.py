@@ -41,17 +41,13 @@ sys.path.insert(0, HERE)
 import struct  # noqa: E402
 
 from appimage import crc32_file  # noqa: E402
-from smeglib import stale_trailers  # noqa: E402
+from smeglib import s32, stale_trailers  # noqa: E402
 
 # `smeg.inf` carries BSP_CRC32 and BIGQUICK_CRC32, which are different things entirely, so
 # the sidecar match has to be a bare CRC32 field and not a suffix of another key
 INF_SIDECAR_RE = re.compile(rb"(?<![A-Z_])CRC32: (-?\d+)")
 SMEG_CRC_RE = re.compile(rb"BIGQUICK_CRC32: (-?\d+)")
 MODULE_IMAGE = os.path.join("AppBin", "f_BigQuick.bin")
-
-
-def as_signed(v):
-    return struct.unpack(">i", struct.pack(">I", v & 0xFFFFFFFF))[0]
 
 
 def read_field(path, regex):
@@ -106,12 +102,12 @@ def audit(root):
                 )
                 continue
             actual = crc32_file(sibling)
-            if declared != as_signed(actual):
+            if declared != s32(actual):
                 bad(
                     "inf-sidecar",
                     rel,
                     "declares CRC32 %d, but %s hashes to %d"
-                    % (declared, os.path.basename(sibling), as_signed(actual)),
+                    % (declared, os.path.basename(sibling), s32(actual)),
                 )
 
     # 2. each *application* module's smeg.inf and its own manifest.
@@ -132,12 +128,12 @@ def audit(root):
             declared = read_field(smeg, SMEG_CRC_RE)
             if declared is None:
                 bad("smeg-inf", os.path.join(mod, "smeg.inf"), "no BIGQUICK_CRC32 field")
-            elif declared != as_signed(image_crc):
+            elif declared != s32(image_crc):
                 bad(
                     "smeg-inf",
                     os.path.join(mod, "smeg.inf"),
                     "declares BIGQUICK_CRC32 %d, but the image hashes to %d"
-                    % (declared, as_signed(image_crc)),
+                    % (declared, s32(image_crc)),
                 )
 
         manifest = os.path.join(root, "%s_ctrl.bin" % mod)

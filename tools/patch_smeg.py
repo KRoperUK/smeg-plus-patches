@@ -48,23 +48,17 @@ sys.path.insert(0, HERE)
 
 from appimage import DEFAULT_BASE, inflate  # noqa: E402
 from fingerprint import identify, variants_from_spec  # noqa: E402
-from smeglib import crc32, refresh_trailer, s32, swap_crc  # noqa: E402
+from smeglib import crc32, refresh_trailer, rewrite_inf_field, s32, swap_crc  # noqa: E402
 
 
 def rewrite_inf(blob, new_crc):
-    out, n = re.subn(rb"CRC32: -?\d+", ("CRC32: %d" % s32(new_crc)).encode(), blob, count=1)
-    if n != 1:
-        raise SystemExit("no 'CRC32:' field found in .inf")
-    return out
+    """Rewrite the `.inf` sidecar's own CRC32, in the signed form stock writes it."""
+    return rewrite_inf_field(blob, "CRC32", new_crc)
 
 
 def rewrite_smeg_inf(blob, new_crc):
-    out, n = re.subn(
-        rb"BIGQUICK_CRC32: -?\d+", ("BIGQUICK_CRC32: %d" % s32(new_crc)).encode(), blob, count=1
-    )
-    if n != 1:
-        raise SystemExit("no 'BIGQUICK_CRC32:' field found in smeg.inf")
-    return out
+    """Rewrite `smeg.inf`'s BIGQUICK_CRC32, which names the module image's CRC32."""
+    return rewrite_inf_field(blob, "BIGQUICK_CRC32", new_crc)
 
 
 def load(path):
