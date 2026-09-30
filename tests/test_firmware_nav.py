@@ -322,6 +322,7 @@ def container():
     if len(raw) > 0x801 and raw[:4] == CONTAINER_MAGIC and raw[0x800] == 0x08:
         return raw
     pytest.skip("%s is an inflated image, not a container" % IMAGE_ENV)
+    return None
 
 
 def test_the_container_header_has_two_used_entries(container):
