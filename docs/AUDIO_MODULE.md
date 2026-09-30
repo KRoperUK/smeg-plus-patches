@@ -42,7 +42,11 @@ the family in the stock NAV `SMEG5.43.A.R2` image.
    ends with `setAUXGain(+0x8c, 1)`, which raises `AUDIO_AUX_INPUT_STATUS_CHANGED`. Whether the
    media app is listening by then is **not known**.
 4. **Signal changes before the radio has started are dropped**, and AUX is kept muted while it
-   is the current source with no signal (`+0x168`). *Read.*
+   is the current source with no signal: the flag at `+0x168`, which the vendor's own log text
+   calls `AUXSign_mute`. `RadioMuteManager` is its only functional reader, so the mute goes
+   with one instruction — `patches/aux-no-idle-mute.json`
+   ([the AUX idle mute](PATCHES.md#the-aux-idle-mute-aux-no-idle-mute)). *Read, and the flag's
+   path executed.*
 
 What this means for the patches is in
 [The AUX chain](AUX_CHAIN.md#what-the-handler-actually-reacts-to) and
@@ -86,7 +90,7 @@ What this means for the patches is in
 | `+0x15c` | system mute flag | read |
 | `+0x15d` | user mute flag (applies with `+0x1ac`) | read |
 | `+0x15e` | resulting radio mute | read |
-| `+0x168` | **AUX no-signal mute** (`m_bAuxSignalMute`, from the log text) | read |
+| `+0x168` | **AUX no-signal mute** — `AUXSign_mute` in the `GetMuteParameters` dump and `aux_mute` in `RadioMuteManager`'s own line; read only by `RadioMuteManager` | read |
 | `+0x169` | timed mute | read |
 | `+0x1a4` | current `MGR_SRC_Source_t` | read |
 | `+0x1a8` | current `AUDIO_SOURCES_TYPES` (5 = AUX) | read |
@@ -187,6 +191,11 @@ Everything in this section is **inferred** from the reading above.
   flashed; see [The AUX signal path](AUX_SIGNAL.md#emulation-results). A detection before
   `st_audio` = 10 is still lost, and `aux-sticky` is paired with it so silence does not
   release AUX.
+- **Dropping the idle mute is independent of all of that.** `+0x168` has exactly one reader
+  that acts on it, `RadioMuteManager`, so `patches/aux-no-idle-mute.json` removes the mute with
+  one `nop` and touches no signal routing and no source switching
+  ([the AUX idle mute](PATCHES.md#the-aux-idle-mute-aux-no-idle-mute)). *Inferred from the
+  reading, and the resulting mute decision executed.*
 - **Boot to AUX.** The boot-time `AUDIO_AUX_INPUT_STATUS_CHANGED` from
   `ElabRADIO_READY_FOR_INIT_0` means `HandleAudioAuxInputStatusChnged` may also run at boot.
   `aux-boot-restore` clears `PrOnly` both there (`0x02303474`) and in `InitApp`
@@ -202,7 +211,7 @@ Addresses are symbol starts in NAV `5.43.A.R2`.
 | address | function | insns | what it does | tier |
 |---|---|---:|---|---|
 | `013b1a88` | `Set_hifi_mode(TYPE_HIFI_AUDIO_MODE)` | 2 | Writes the HiFi mode `+0x90` | read |
-| `013b3c5c` | `RadioMuteManager(bool, short)` | 271 | Computes the radio (DSP) mute: muted unless every mute flag (`+0x15c` system, `+0x15d`/`+0x1ac` user, `+0x168` AUX no-signal, `+0x169` timed) is clear and the source volume is non-zero; arms the radio-mute timer (40 ms for source type 10, else 200 ms) | read |
+| `013b3c5c` | `RadioMuteManager(bool, short)` | 271 | Computes the radio (DSP) mute: muted unless every mute flag (`+0x15c` system, `+0x15d`/`+0x1ac` user, `+0x168` AUX no-signal, `+0x169` timed) is clear and the source volume is non-zero; arms the radio-mute timer (40 ms for source type 10, else 200 ms). The **only** functional reader of `+0x168` — every other reader of that offset is spy or log telemetry — so `aux-no-idle-mute` nops the `+0x168` test at `0x013b3dfc` (`+0x1a0` in the function) | read; the `+0x168` term executed |
 | `013b4e24` | `Get_ext_audio_src_req(bool&)` | 2 | Stub: returns 0 without writing its out-parameter | read |
 | `013b8478` | `Cmd_change_source(MGR_SRC_Source_t, AUDIO_SOURCES_TYPES, bool, bool, u` | 870 | Applies a source change from the server's slot table: bounds and stores per-source vol/bass/treble/loudness/EQ pointers (`+0x1b0`..`+0x1c0`), current MGR source `+0x1a4`, audio source type `+0x1a8`; when the new type is AUX (5) sets the no-signal mute `+0x168` from `Get_AUX_signal_status`; system mute, DSP routing (`CmdSendComAud`), `Call_action(2)` = `AUDIO_SOURCE_SWITCH` | read (partly) |
 | `013b9c8c` | `Get_aux_status(TYPE_AUDIO_AUX_STATUS&)` | 69 | Returns the stored AUX input **setting** `+0x8c` (the `audio/Auxiliary_Status` user key, 0..3) - not signal presence; -1 if the module is closed | read |
@@ -217,7 +226,7 @@ Addresses are symbol starts in NAV `5.43.A.R2`.
 | `013cbda0` | `Elab_event_AUDIO_AUX_SIGNAL_STATUS_CHANGED()` | 18 | Queues internal event 5 on the module message queue (`+0x64`); called by `Audio_event_handler` for radio event `0x3d` | read |
 | `013cbf08` | `Audio_event_handler(C_MODULE_AUDIO*, AUDIO_MY_EVENT)` | 135 | Maps a subscribed radio/VAN event to one of 16 `Elab_event_*` queue posts (0 init_2 ... 4 AUX signal ... 0xf ext audio src) | read |
 | `013cc124` | `Module_routine()` | 1069 | Task loop: subscribes the remaining radio events (3,4,5,`0x3c`,`0x3d`,`0x40`-`0x42`) and VAN event `0x1b`, then receives internal events and dispatches (5 -> `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED`, 6 -> init_0, 1 -> init_2, `0x11`.. mute timers, `0x18`/`0x19` rear volume, `0x1d`-`0x21` spy beeps ...) | read (dispatch only) |
-| `013ce870` | `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED()` | 153 | Handles the internal AUX-signal event: ignored until `st_audio` (`+0x74`) reaches 10; when the current source (`+0x1a8`) is AUX (5), reads `Radio::Get_AUX_signal_status` and sets or clears the no-signal mute flag `+0x168`, re-running `RadioMuteManager`; always ends with `Call_action(4)`, the DBUS `AUDIO_AUX_SIGNAL_STATUS_CHANGED` | read |
+| `013ce870` | `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED()` | 153 | Handles the internal AUX-signal event: ignored until `st_audio` (`+0x74`) reaches 10; when the current source (`+0x1a8`) is AUX (5), reads `Radio::Get_AUX_signal_status` and sets `+0x168` while there is no signal, clears it when the signal returns, re-running `RadioMuteManager` **only when the flag actually changed**; always ends with `Call_action(4)`, the DBUS `AUDIO_AUX_SIGNAL_STATUS_CHANGED` | read; the flag's four arms executed |
 | `013cf0fc` | `CheckStatus()` | 99 | Refuses commands while `st_audio` is 0 (closed) or `0x28` (error) | read |
 | `013d4514` | `ElabRADIO_RESTART()` | 41 | Radio restart: `st_audio` back to 1, or 2 if the radio had started before (`+0x70`) | read |
 | `013d565c` | `ElabRADIO_STARTED()` | 195 | Radio started: `st_audio`=10, `+0x70`=1; if the current source is AUX, refreshes the no-signal mute `+0x168`; raises actions 0, 2, `0xb`, `0xc` | read (partly) |

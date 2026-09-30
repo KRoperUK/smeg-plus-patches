@@ -1,0 +1,63 @@
+{
+  "name": "aux-no-idle-mute",
+  "description": "Stop the AUX input being muted while the unit sees no signal on it. C_MODULE_AUDIO+0x168 is the AUX no-signal mute flag: the vendor's own log text names it 'AUXSign_mute' (the GetMuteParameters dump, 0x02f94da8) and 'aux_mute' (RadioMuteManager's own line, 0x02f957e0). Three functions arm it from Radio::Get_AUX_signal_status (0x0131ae40) - Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED (0x013ce870), ElabRADIO_STARTED (0x013d565c) and Cmd_change_source (0x013b8478) - and the constructors zero it. A scan of every access to that offset in the image shows exactly one functional reader: C_MODULE_AUDIO::RadioMuteManager (0x013b3c5c), where the flag is ORed into the DSP mute decision and becomes CmdMute(muted=1). Its every other reader is spy or log telemetry (GetMuteParameters, CmdSystemMute, Set_amplifier_mute, generateAudioSpy), so leaving the flag set and disarming its one consumer is enough. This set replaces that one test with a nop: `bne cr7,+0x6c` -> `nop` where RadioMuteManager tests +0x168, so the flag can no longer mute the radio. Executed under tools/ppcemu.py on the stock NAV, AUDIO_BT and AUDIO_BT_256 images: with the flag set, stock reaches CmdMute(muted=1) and the patched build reaches CmdMute(muted=0); with the flag clear both reach CmdMute(muted=0). Chained, the real AUX signal handler run first with no signal leaves the flag set, and the mutated object then mutes stock and does not mute patched. Not executed: the DSP's own behaviour when the AUX input is silent (the DIRANA2's detector is armed by SetCfgAuxPrimary, and whether it can gate the audio independently of this flag was not read), and the car. The condition is kept and only the target is replaced, so no other mute source changes: +0x168 is only ever set while the current source is AUX (type 5). This does NOT switch to AUX when a signal appears - that is not being pursued; see docs/AUX_SIGNAL.md.",
+  "summary": "drops the no-signal mute on AUX: `RadioMuteManager` stops treating `C_MODULE_AUDIO+0x168` as a mute source",
+  "status": {
+    "state": "never-flashed",
+    "label": "Never flashed",
+    "note": "the mute decision verified under emulation on all three builds; no car has run it"
+  },
+  "variants": {
+    "NAV": {
+      "app_image": "NAV/AppBin/f_BigQuick.bin",
+      "inf": "NAV/AppBin/f_BigQuick.bin.inf",
+      "smeg_inf": "NAV/smeg.inf",
+      "ctrl": "NAV_ctrl.bin",
+      "base": "0x01000000",
+      "firmware": "5.43.A.R2",
+      "patches": [
+        {
+          "addr": "0x013b3dfc",
+          "expect": "40befecc",
+          "bytes": "60000000",
+          "why": "C_MODULE_AUDIO::RadioMuteManager: the test of the AUX no-signal mute flag at +0x168. `bne cr7,+0x6c` branches to `li r31,1` (muted), and is one of the terms that force that result - the user mute, the system mute, the timed mute and a null or zero source volume are the others - so replacing it with a `nop` drops exactly the idle AUX mute and leaves every other mute intact.",
+          "disasm": "nop"
+        }
+      ]
+    },
+    "AUDIO_BT": {
+      "app_image": "AUDIO_BT/AppBin/f_BigQuick.bin",
+      "inf": "AUDIO_BT/AppBin/f_BigQuick.bin.inf",
+      "smeg_inf": "AUDIO_BT/smeg.inf",
+      "ctrl": "AUDIO_BT_ctrl.bin",
+      "base": "0x01000000",
+      "firmware": "5.43.A.R2",
+      "patches": [
+        {
+          "addr": "0x013b3ca4",
+          "expect": "40befecc",
+          "bytes": "60000000",
+          "why": "C_MODULE_AUDIO::RadioMuteManager, the NAV edit at 0x013b3dfc, carried over. Derived statically for AUDIO_BT/AUDIO_BT_256 5.43.A.R2: RadioMuteManager is at 0x013b3b04 in this build (NAV 0x013b3c5c, a shift of -0x158) and the gate is the same instruction at the same offset within it (+0x1a0), with the same expect bytes and the same relative branch target (function+0x6c). Executed under tools/ppcemu.py against the AUDIO_BT image it mutes stock and not patched, exactly as NAV does (tests/test_firmware_audio_bt.py). Never flashed.",
+          "disasm": "nop"
+        }
+      ]
+    },
+    "AUDIO_BT_256": {
+      "app_image": "AUDIO_BT_256/AppBin/f_BigQuick.bin",
+      "inf": "AUDIO_BT_256/AppBin/f_BigQuick.bin.inf",
+      "smeg_inf": "AUDIO_BT_256/smeg.inf",
+      "ctrl": "AUDIO_BT_256_ctrl.bin",
+      "base": "0x01000000",
+      "firmware": "5.43.A.R2",
+      "patches": [
+        {
+          "addr": "0x013b3ca4",
+          "expect": "40befecc",
+          "bytes": "60000000",
+          "why": "C_MODULE_AUDIO::RadioMuteManager, the NAV edit at 0x013b3dfc, carried over. Derived statically for AUDIO_BT/AUDIO_BT_256 5.43.A.R2: the two builds ship byte-identical symbol maps and identical function addresses, so this is the same site as the AUDIO_BT variant. Executed under tools/ppcemu.py against the AUDIO_BT_256 image it mutes stock and not patched (tests/test_firmware_audio_bt.py); note that AUDIO_BT and AUDIO_BT_256 cannot be told apart from recorded bytes alone, which is what tools/fingerprint.py reports rather than guessing. Never flashed.",
+          "disasm": "nop"
+        }
+      ]
+    }
+  }
+}

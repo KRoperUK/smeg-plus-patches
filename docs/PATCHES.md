@@ -17,6 +17,7 @@ edit the JSON, not this table.
 | `patches/aux-autoswitch.json` | `IsAUXSRCAvailable()` true **and** the inert `GetMediaDevice` bail-out nop | **Confirmed**{ .pill .pill-ok } the first edit on hardware; part of the confirmed boot-to-AUX build (the second edit is inert) |
 | `patches/aux-boot-default.json` | forces `C_MGR_SRC::StartUp` to restore AUX (position 7) on every boot, ignoring the saved `Last_Source` | **Confirmed with aux-boot-restore**{ .pill .pill-ok } boots to AUX with aux-boot-restore (2026-09-28, NAV); alone it still boots to FM |
 | `patches/aux-boot-restore.json` | lets AUX's `PrOnly` request reach the boot restore, and forces the restored priority to AUX's 20; pair with `aux-boot-default` | **Confirmed with aux-boot-default**{ .pill .pill-ok } booted to AUX three times (2026-09-28, NAV); the spy capture shows AUX restored and acknowledged at request time |
+| `patches/aux-no-idle-mute.json` | drops the no-signal mute on AUX: `RadioMuteManager` stops treating `C_MODULE_AUDIO+0x168` as a mute source | **Never flashed**{ .pill .pill-wip } the mute decision verified under emulation on all three builds; no car has run it |
 | `patches/aux-signal-switch.json` | the AUX handler reads the **signal** instead of the setting, and the media dispatch sends the signal event (`0xcc`) to it; pair with `aux-boot-restore` and `aux-sticky` | **Never flashed**{ .pill .pill-wip } both functions verified under emulation; not being pursued |
 | `patches/aux-sticky.json` | removes the bail-out **and** turns "AUX setting switched off" into a no-op | **Never flashed**{ .pill .pill-wip } control flow verified under emulation; not being pursued |
 | `patches/diagnostic-logging.json` | redirects the logging stub to the real logger | **Not for driving**{ .pill .pill-no } diagnostic build; needs the mask patch too |
@@ -338,6 +339,114 @@ to AUX when audio starts. One more AUX activation path exists outside this set:
 `HandleMediaStateReady`, with a computed `PrOnly` at `0x02306a18`. Whether it ever runs for AUX
 is *not known*; boot to AUX works without touching it. See
 [How HMI apps request sources](HMI_SOURCES.md).
+
+## The AUX idle mute: `aux-no-idle-mute`
+
+**Never flashed** — one edit, verified under emulation on all three builds and never on a car.
+A CarPlay/Android-Auto piggyback plays into the AUX input, and the unit mutes AUX while it sees
+no signal there, so AUX is silent until something plays. This set stops that idle mute, and
+only that: it does **not** switch to AUX when a signal appears, which the project is not
+pursuing ([The AUX signal path](AUX_SIGNAL.md)).
+
+### What the mute actually is
+
+`C_MODULE_AUDIO+0x168` is the AUX no-signal mute, and the vendor's own log text names it: the
+`GetMuteParameters` dump prints it as `AUXSign_mute` (`0x02f94da8`), and `RadioMuteManager`'s
+own line prints it as `aux_mute` (`0x02f957e0`). *(read)*
+
+Three functions arm it from `Radio::Get_AUX_signal_status` (`0x0131ae40`); both constructors
+zero it. All four are *read*:
+
+| function | address | when |
+|---|---|---|
+| `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED` | `0x013ce870` | radio event `0x3d`, the AUX signal change: sets it to 1 while the current source is AUX and the signal is absent, clears it when the signal returns |
+| `ElabRADIO_STARTED` | `0x013d565c` | radio start, if the current source is AUX |
+| `Cmd_change_source` | `0x013b8478` | a source change to AUX (type 5) |
+
+It has **one functional reader**. Scanning every instruction in the image whose displacement is
+`0x168`, and grouping by the function each belongs to, leaves `C_MODULE_AUDIO::RadioMuteManager`
+(`0x013b3c5c`) as the only one that turns the flag into anything: there it is one term in the
+DSP mute decision,
+
+```
+013b3df4  lbz   r0, 0x168(r30)      ; aux_mute
+013b3df8  cmpwi cr7, r0, 0
+013b3dfc  bne   cr7, +0x6c          ; -> li r31,1 : muted
+```
+
+alongside every other term that forces the same muted result — the user mute (`+0x15d` with
+`+0x1ac`), the system mute (`+0x15c`), the timed mute (`+0x169`) and a null or zero source
+volume. Every other reader is spy or log telemetry — `GetMuteParameters`
+(`0x013b1a90`), `CmdSystemMute` (`0x013b4098`), `Set_amplifier_mute` (`0x013b272c`) and
+`generateAudioSpy` (`0x013d05ac`) — confirmed from the format strings each passes to
+`spyRegEv`/`Log_msg`. *(read)*
+
+So this is a **software flag feeding one decision**, not a DSP-side gate we cannot reach:
+`RadioMuteManager` ends in `CmdMute(muted)` to the radio. Dropping the flag's one consumer
+drops the mute.
+
+### The edit
+
+| build | address | original | patched |
+|---|---|---|---|
+| `NAV` | `0x013b3dfc` | `40 be fe cc` (`bne cr7,+0x6c`) | `60 00 00 00` (`nop`) |
+| `AUDIO_BT`, `AUDIO_BT_256` | `0x013b3ca4` | `40 be fe cc` | `60 00 00 00` |
+
+The condition is kept and only the test is replaced, so no other mute term changes. `+0x168` is
+only ever set while the current source is AUX, so nothing else is affected; the flag is still
+computed and still appears in the spy, it just no longer mutes.
+
+The `AUDIO_BT` address is the same instruction at the same offset (`+0x1a0`) inside the same
+function, which sits at `0x013b3b04` in that build (NAV `0x013b3c5c`, a shift of −0x158). Both
+`AUDIO_BT` builds ship byte-identical symbol maps and identical addresses, which is why
+`tools/fingerprint.py` reports them `AMBIGUOUS` rather than choosing.
+
+### Emulated
+
+`tools/ppcemu.py` on the stock NAV, `AUDIO_BT` and `AUDIO_BT_256` images; the same runs are in
+`tests/test_firmware_nav.py` and `tests/test_firmware_audio_bt.py`. Every callee is stubbed —
+`Radio::Get_AUX_signal_status` (writing the signal under test), `CmdMute` (recording its
+`muted` argument), `Call_action`, `RadioMuteManager` where the handler is the subject, the
+watchdog helpers and `AmplifierMuteManager`. All three builds give the same table:
+
+| `+0x168` | `CmdMute(muted)` stock | `CmdMute(muted)` patched |
+|---|---|---|
+| 1 | **1** | **0** |
+| 0 | 0 | 0 |
+
+Each of the other terms still mutes with the patch applied — user mute, system mute, timed
+mute and a source volume of zero all reach `CmdMute(muted=1)` on the patched image, which is
+what says the edit removed one term and not the decision. *(executed)*
+
+Chained, which is the claim rather than the mechanism: `Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED`
+run first with no signal on AUX leaves `+0x168` = 1 and calls `RadioMuteManager`; the same
+object then reaches `CmdMute(muted=1)` stock and `CmdMute(muted=0)` patched. The other arms are
+executed too: with the signal present and the flag clear the handler changes nothing and does
+not call `RadioMuteManager` at all, and with the signal present and the flag set it clears the
+flag before re-running the decision. *(executed)*
+
+### What is not verified
+
+- **The car.** No build carrying this set has been flashed. `status` is `never-flashed` and no
+  claim is made that it works.
+- **The DSP.** The DIRANA2's detector is armed by `SetCfgAuxPrimary`; whether it can gate the
+  AUX audio independently of this flag was **not read**. This set removes the software mute
+  path only.
+- **That the input is then audible.** Emulation proves which command the unit sends, not what
+  comes out of the speakers.
+
+### What a car test would have to show
+
+1. `builds/aux-boot-no-idle-mute.json` is boot to AUX plus this set: the unit must still **boot
+   to AUX**, so the change did not disturb the boot path (`builds/aux-boot.json` is the
+   confirmed baseline).
+2. On AUX with the source connected and nothing playing, the input is currently silent. With
+   this set it should not be gated: the input's own noise floor should be audible, and a track
+   should start from its first moment rather than after a delay.
+3. Pause and resume: AUX must not drop out between the two, and the unit must not fall back to
+   the tuner.
+4. The other mutes must still work: the audio menu's system mute, user mute, and a source
+   volume of zero must each still silence the unit.
 
 ## Not pursued: `aux-sticky`, `aux-signal-switch`
 

@@ -232,6 +232,101 @@ def test_losing_the_signal_releases_aux_unless_sticky(image):
     assert not out["release"] and out["cached"] == 0
 
 
+# ------------------------------------------ the AUX no-signal mute (aux-no-idle-mute)
+
+MUTE_MGR = 0x013B3C5C
+CMD_MUTE = 0x013B1E40
+AUX_EVENT = 0x013CE870
+RADIO_SIGNAL = 0x0131AE40
+
+
+def mute_decision(image, patches, aux_mute, sys_mute=0, user_mute=0, timed_mute=0, volume=30):
+    """C_MODULE_AUDIO::RadioMuteManager with every callee stubbed.
+
+    CmdMute (recording the `muted` argument it is handed), the watchdog cancel and start,
+    tickGet and AmplifierMuteManager. `this` is a synthetic module carrying only the flags
+    under test, a source volume and a started radio (st_audio 10). The user mute needs +0x1ac
+    as well as +0x15d, which is how the shipped code tests it.
+    """
+    ppcemu, e = emulator(image)
+    for name in patches:
+        e.apply_patch_file(patch_file(name), "NAV")
+    e.stub_all = True
+    this, vol, wd = ppcemu.SCRATCH, ppcemu.SCRATCH + 0x3000, ppcemu.SCRATCH + 0x4000
+    e.write(this, b"\0" * 0x400)
+    e.write_u32(this + 0x74, 10)  # st_audio: the radio has started
+    e.write_u32(this + 0x174, wd)  # what the radio-mute watchdog acts on
+    e.write_u32(this + 0x1B0, vol)  # the current source's volume
+    e.write(vol, struct.pack(">h", volume))
+    e.write(this + 0x15C, bytes([sys_mute]))
+    e.write(this + 0x15D, bytes([user_mute]))
+    e.write(this + 0x1AC, bytes([user_mute]))
+    e.write(this + 0x168, bytes([aux_mute]))
+    e.write(this + 0x169, bytes([timed_mute]))
+    muted = []
+    e.stub(CMD_MUTE, lambda uc: muted.append(reg(uc, 4)))
+    e.call(MUTE_MGR, [this, 0, 0xFFFFFFFF])
+    assert e.error is None, e.error
+    return {"cmd_mute": muted, "radio_mute": e.read(this + 0x15E, 1)[0]}
+
+
+def test_stock_mutes_aux_while_the_no_signal_flag_is_set(image):
+    assert mute_decision(image, [], aux_mute=1)["cmd_mute"] == [1]
+    assert mute_decision(image, [], aux_mute=0)["cmd_mute"] == [0]
+
+
+def test_aux_no_idle_mute_drops_the_no_signal_mute(image):
+    assert mute_decision(image, ["aux-no-idle-mute"], aux_mute=1)["cmd_mute"] == [0]
+    assert mute_decision(image, ["aux-no-idle-mute"], aux_mute=0)["cmd_mute"] == [0]
+
+
+@pytest.mark.parametrize("kill", ["sys_mute", "user_mute", "timed_mute", "volume"])
+def test_aux_no_idle_mute_leaves_the_other_mutes_alone(image, kill):
+    """Only the `+0x168` term goes: every other term in the same decision still mutes."""
+    term = {"volume": 0} if kill == "volume" else {kill: 1}
+    out = mute_decision(image, ["aux-no-idle-mute"], aux_mute=1, **term)
+    assert out["cmd_mute"] == [1] and out["radio_mute"] == 1
+
+
+def idle_mute_chain(image, patched):
+    """The whole chain on one object: the handler arms `+0x168`, then the decision follows it.
+
+    Stubbed: `Radio::Get_AUX_signal_status` (writing "no signal"), CmdMute (recorded),
+    Call_action, and RadioMuteManager's own callees. Returns the flag the handler left and the
+    `muted` argument the decision then passed to CmdMute.
+    """
+    ppcemu, e = emulator(image)
+    if patched:
+        e.apply_patch_file(patch_file("aux-no-idle-mute"), "NAV")
+    e.stub_all = True
+    this, radio, vol, wd = (
+        ppcemu.SCRATCH,
+        ppcemu.SCRATCH + 0x1000,
+        ppcemu.SCRATCH + 0x3000,
+        ppcemu.SCRATCH + 0x4000,
+    )
+    e.write(this, b"\0" * 0x400)
+    e.write_u32(this + 0x54, radio)  # the Radio object
+    e.write_u32(this + 0x74, 10)  # st_audio: the radio has started
+    e.write_u32(this + 0x1A8, 5)  # the current source is AUX
+    e.write_u32(this + 0x174, wd)
+    e.write_u32(this + 0x1B0, vol)  # a non-zero source volume
+    e.write(vol, struct.pack(">h", 30))
+    muted = []
+    e.stub(RADIO_SIGNAL, lambda uc: uc.mem_write(reg(uc, 4), b"\0"))
+    e.stub(CMD_MUTE, lambda uc: muted.append(reg(uc, 4)))
+    e.call(AUX_EVENT, [this])
+    flag = e.read(this + 0x168, 1)[0]
+    e.call(MUTE_MGR, [this, 0, 0xFFFFFFFF])
+    assert e.error is None, e.error
+    return flag, muted
+
+
+def test_no_signal_on_aux_mutes_stock_and_not_with_the_patch(image):
+    assert idle_mute_chain(image, patched=False) == (1, [1])
+    assert idle_mute_chain(image, patched=True) == (1, [0])
+
+
 # ------------------------------------------------ the media dispatch window (0xcc)
 
 WINDOW = 0x0230961C, 0x02309650

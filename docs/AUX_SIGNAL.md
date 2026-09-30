@@ -25,6 +25,11 @@ Ghidra decompiles and `tools/ppcdis.py`. Evidence tiers are as in
 - **A switch-on-signal patch is feasible** *(inferred)*: route `0xcc` into the existing AUX
   handler, and make that handler read the signal instead of the setting. Both halves are
   emulated.
+- **The idle mute is separable, and drops on its own** *(executed)*. The no-signal mute at
+  `C_MODULE_AUDIO+0x168` has one functional reader, `RadioMuteManager`, so
+  `patches/aux-no-idle-mute.json` removes it with one `nop` and changes none of the routing
+  below — which is what keeps AUX audible while the phone is quiet. See
+  [the AUX idle mute](PATCHES.md#the-aux-idle-mute-aux-no-idle-mute).
 - **Not known:** whether the detector measures the AUX input while another source is playing
   ([below](#is-the-signal-measured-while-another-source-plays)).
 
@@ -71,7 +76,9 @@ CallBackDirana(0x12)
   -> i2c message 0x77 -> i2c_MainTunerTask -> Call_action_do(0x3d)
   -> C_MODULE_AUDIO::Elab_AUDIO_AUX_SIGNAL_STATUS_CHANGED (0x013ce870)
        drops the event while the module's state +0x74 is below 10 (radio not started)
-       if the current source is AUX (type 5): update the no-signal mute (+0x168)
+       if the current source is AUX (type 5): set the no-signal mute (+0x168) while
+             the signal is absent, clear it when it returns, and only then re-run
+             C_MODULE_AUDIO::RadioMuteManager - the flag's one functional reader
        Call_action(4) - whatever the current source
   -> C_SRV_AUDIO: action 4 -> DBUS AUDIO_AUX_SIGNAL_STATUS_CHANGED
 ```
