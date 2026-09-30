@@ -438,6 +438,7 @@ options:
 | [`assets.py`](#assets) | The customisable assets in a SMEG+ media partition, with human-readable names. |
 | [`splash.py`](#splash) | Brand logo images for SMEG+ — inspect and replace the `Data_base/graphics/logo/*.pkg` bundles. |
 | [`patch_studio.py`](#patch-studio) | Ringtone Studio — a Qt front-end for SMEG+ ring tones and firmware patches. |
+| [`dbschema.py`](#dbschema) | Dump the schema of the SQLite databases a SMEG+ unit keeps its state in. |
 
 ### ringtones
 
@@ -608,6 +609,52 @@ usage:
     .venv/bin/python tools/patch_studio.py          # PySide6 + ffmpeg already present
     uv run tools/patch_studio.py                    # fetches PySide6
     python3 tools/patch_studio.py --help            # this text; needs no PySide6
+```
+
+### dbschema
+
+`tools/dbschema.py`: Dump the schema of the SQLite databases a SMEG+ unit keeps its state in.
+
+```text
+usage: dbschema.py [-h] {schema,from-package} ...
+
+Dump the schema of the SQLite databases a SMEG+ unit keeps its state in.
+
+A unit keeps its settings in ~29 SQLite databases. The seeds ship read-only in the media
+partition (`Data_base/sqlite/*.sqlite`, inside `<module>/system.bin`); the live copies are on
+the `/USER_DATA` partition the car owns, one `.sqlite` with a `.inf` CRC sidecar. Editing a
+seed changes nothing on the unit — see docs/DATABASES.md and docs/MEDIA_PARTITION.md.
+
+This reads a database and prints what is *in* it structurally: tables, columns and their types,
+NOT NULL / defaults, the primary key, indexes and foreign keys. It reads **your own** databases
+or the ones in **your own** package; it ships no vendor data. The live `up_common`/`up_user`
+stores are gzip'd on disk, which is handled transparently.
+
+Because it only reads, it never writes to the file it is given: the bytes are copied to a
+throwaway location first, so a live database on `USER_DATA` is not touched and no `-wal`/`-shm`
+is created beside it.
+
+usage:
+    # a database, or several
+    python3 tools/dbschema.py schema path/to/up_common.sqlite
+
+    # every Data_base/sqlite/*.sqlite inside your own media partition, straight from the
+    # gzipped tar (a system.bin file) or from an extracted package/module directory
+    python3 tools/dbschema.py from-package SMEG_PLUS_UPG/NAV/system.bin
+    python3 tools/dbschema.py from-package SMEG_PLUS_UPG/NAV
+    python3 tools/dbschema.py from-package media/
+
+    # machine-readable, and with the original CREATE statements
+    python3 tools/dbschema.py schema up_common.sqlite --json
+    python3 tools/dbschema.py schema up_common.sqlite --sql
+
+positional arguments:
+  {schema,from-package}
+    schema              dump one or more .sqlite files
+    from-package        dump every Data_base/sqlite/*.sqlite in your own media partition
+
+options:
+  -h, --help            show this help message and exit
 ```
 
 ## Diagnostics

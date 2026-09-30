@@ -100,13 +100,15 @@ card matches what you are trying to do.
     ---
 
     `system.bin`: ring tones, fonts, logos, strings, the cheatcode list — every
-    replaceable asset and its risk level.
+    replaceable asset and its risk level, and the SQLite databases the unit keeps its
+    state in.
 
     [:lucide-arrow-right: Media partition](MEDIA_PARTITION.md) ·
     [Ring tones](RINGTONES.md) ·
     [Customising](CUSTOMISING.md) ·
     [Cheatcodes & spy](CHEATCODES.md) ·
-    [Cartography](CARTOGRAPHY.md)
+    [Cartography](CARTOGRAPHY.md) ·
+    [Databases & settings](DATABASES.md)
 
 -   :lucide-terminal:{ .lg .middle } __Build & flash__
 

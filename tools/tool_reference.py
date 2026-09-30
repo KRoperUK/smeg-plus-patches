@@ -44,7 +44,13 @@ GROUPS = {
         "fix_userdata_case",
         "patch_status",
     ],
-    "Media: tones, logos, settings": ["ringtones", "assets", "splash", "patch_studio"],
+    "Media: tones, logos, settings": [
+        "ringtones",
+        "assets",
+        "splash",
+        "patch_studio",
+        "dbschema",
+    ],
     "Diagnostics": ["spy_read"],
     "Firmware analysis": [
         "unpack",
