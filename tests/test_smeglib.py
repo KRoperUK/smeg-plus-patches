@@ -156,3 +156,27 @@ def test_crc_recover_agrees_with_the_shared_crc32_on_iso_hdlc():
     iso_hdlc = (0x04C11DB7, 32, True, True, 0xFFFFFFFF, 0xFFFFFFFF)
     for data in (b"", b"123456789", bytes(range(256))):
         assert crc_recover.crc(data, *iso_hdlc) == smeglib.crc32(data)
+
+
+def test_sqlite_inf_is_the_signed_crc32_line_the_sidecar_carries():
+    """The one `.sqlite.inf` writer (#68): a signed-decimal `CRC32:` line with a CRLF.
+
+    `build_package` writes it and `preflight` compares against it, so both must produce the
+    same bytes. The negative case is the point — most CRCs here are above 0x7fffffff.
+    """
+    assert smeglib.sqlite_inf(b"") == b"CRC32: 0\r\n"
+    data = b"a database that does not exist"
+    assert smeglib.sqlite_inf(data) == ("CRC32: %d\r\n" % smeglib.s32(smeglib.crc32(data))).encode()
+    assert smeglib.sqlite_inf(b"\x00\x00\x00\x00") == b"CRC32: 558161692\r\n"
+    crc = smeglib.crc32(data)
+    assert (crc & 0x80000000) != 0, "expected a high-bit CRC so the signed branch is exercised"
+    assert smeglib.sqlite_inf(data) == b"CRC32: -1149269496\r\n"
+
+
+def test_build_package_and_preflight_share_one_sqlite_inf():
+    """Both callers must be the shared function, not their own copy (#68)."""
+    import build_package
+    import preflight
+
+    assert build_package.sqlite_inf is smeglib.sqlite_inf
+    assert preflight.sqlite_inf is smeglib.sqlite_inf

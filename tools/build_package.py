@@ -55,12 +55,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import zlib
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PY = sys.executable
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from smeglib import sqlite_inf  # noqa: E402
 
 
 def tool(name):
@@ -229,12 +232,6 @@ USER_DATA_WARNING = """
 
 def warn_user_data(names):
     return USER_DATA_WARNING.format(files="\n".join("    - %s" % n for n in names))
-
-
-def sqlite_inf(data):
-    crc = zlib.crc32(data) & 0xFFFFFFFF
-    signed = crc - 0x100000000 if crc & 0x80000000 else crc
-    return ("CRC32: %d\r\n" % signed).encode()
 
 
 def ship_user_data(out, tree, names, module):
