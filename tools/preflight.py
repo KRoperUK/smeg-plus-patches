@@ -38,6 +38,11 @@ import zlib
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from smeglib import crc32, read_inf_field, s32, stale_trailers  # noqa: E402
+
 MODULES = ("NAV", "AUDIO_BT", "AUDIO_BT_256")
 
 # Recovered from C_HMI_AUDIO_APP_BASE's per-source OnEventSelect* handlers - the value each
@@ -164,8 +169,6 @@ def check_structure(rep, pkg):
 
 
 def check_trailers(rep, pkg):
-    from smeglib import stale_trailers
-
     stale = stale_trailers(pkg)
     for rel in stale:
         rep.add(
@@ -179,22 +182,17 @@ def check_trailers(rep, pkg):
 
 
 def check_cascade(rep, pkg, module):
-    def crc(p):
-        return zlib.crc32(Path(p).read_bytes()) & 0xFFFFFFFF
-
     img = os.path.join(pkg, module, "AppBin", "f_BigQuick.bin")
     inf = img + ".inf"
     smeg = os.path.join(pkg, module, "smeg.inf")
     if not (os.path.exists(img) and os.path.exists(inf)):
         return
-    want = crc(img)
-    import re
+    want = crc32(Path(img).read_bytes())
 
     got = []
-    for path, pattern in ((inf, r"CRC32:\s*(-?\d+)"), (smeg, r"BIGQUICK_CRC32:\s*(-?\d+)")):
+    for path, field in ((inf, "CRC32"), (smeg, "BIGQUICK_CRC32")):
         if os.path.exists(path):
-            m = re.search(pattern, Path(path).read_text())
-            got.append((os.path.basename(path), int(m.group(1)) & 0xFFFFFFFF if m else None))
+            got.append((os.path.basename(path), read_inf_field(Path(path).read_bytes(), field)))
     for label, value in got:
         rep.add(
             OK if value == want else BAD,
@@ -260,9 +258,7 @@ def check_settings(rep, keys, area="settings"):
 
 
 def sqlite_inf(data):
-    crc = zlib.crc32(data) & 0xFFFFFFFF
-    signed = crc - 0x100000000 if crc & 0x80000000 else crc
-    return ("CRC32: %d\r\n" % signed).encode()
+    return ("CRC32: %d\r\n" % s32(crc32(data))).encode()
 
 
 def check_user_data(rep, pkg, module):

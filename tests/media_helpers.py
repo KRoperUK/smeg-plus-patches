@@ -1,20 +1,19 @@
 import io
 import os
-import struct
+import sys
 import tarfile
 import wave
-import zlib
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+TOOLS = os.path.join(os.path.dirname(HERE), "tools")
+if TOOLS not in sys.path:
+    sys.path.insert(0, TOOLS)
+
+# the fixture writes `ctrl` records with the same builder the tools read them with (#68)
+from smeglib import build_ctrl, crc32, roundup, s32  # noqa: E402
+
 # --- media partition (for patch_media.py) ----------------------------------
-
-CTRL_RECORD = 264  # system_ctrl.bin record stride
-CTRL_CRC_OFF = 260
-CTRL_HEADER = 0x30
-
-
-def s32(v):
-    return struct.unpack(">i", struct.pack(">I", v))[0]
 
 
 def wav_bytes(channels=1, rate=44100, frames=441):
@@ -27,21 +26,9 @@ def wav_bytes(channels=1, rate=44100, frames=441):
     return buf.getvalue()
 
 
-def roundup(v, b):
-    return (v + b - 1) // b * b
-
-
 def build_system_ctrl(files):
-    """264-byte records: [path][pad][type][crc32], preceded by a 0x30-byte header."""
-    out = bytearray(b"19/09/2017\x00\x002.1.0.0".ljust(CTRL_HEADER, b"\x00"))
-    for name, data in files.items():
-        rec = bytearray(CTRL_RECORD)
-        path = ("/SYSTEM/" + name).encode()
-        rec[0 : len(path)] = path
-        rec[259] = 2
-        struct.pack_into(">I", rec, CTRL_CRC_OFF, zlib.crc32(data) & 0xFFFFFFFF)
-        out += rec
-    return bytes(out)
+    """A stock-shaped `system_ctrl.bin`: header, u32 count, 264-byte records."""
+    return build_ctrl([("/SYSTEM/" + name, 2, crc32(data)) for name, data in files.items()])
 
 
 def up_common_bytes(names=None):
@@ -121,7 +108,7 @@ def build_media_package(root, module="NAV", extra_constant=True, extra_files=Non
         if extra_constant:
             v += {1: 29696, 2: 18432, 4: 8192}.get(n, 0)
         sizes["SIZE_%d" % n] = v
-    lines = ["CRC32: %d" % s32(zlib.crc32(bin_bytes) & 0xFFFFFFFF)]
+    lines = ["CRC32: %d" % s32(crc32(bin_bytes))]
     lines += ["%s: %d" % (k, v) for k, v in sizes.items()]
     Path(os.path.join(mod_dir, "system.bin.inf")).write_bytes(
         ("\r\n".join(lines) + "\r\n").encode()
@@ -130,33 +117,22 @@ def build_media_package(root, module="NAV", extra_constant=True, extra_files=Non
     ctrl = build_system_ctrl(files)
     Path(os.path.join(mod_dir, "system_ctrl.bin")).write_bytes(ctrl)
 
-    # module + root manifests (same shape as ctrl.bin: header, count, records)
-    def manifest(entries):
-        out = bytearray(b"19/09/2017  2.1.0.0".ljust(CTRL_HEADER, b"\x00"))
-        out += bytes([len(entries)])
-        for check, crc, path in entries:
-            out += bytes([check]) + struct.pack(">I", crc) + path.encode() + b"\x00"
-        return bytes(out)
-
+    # module + root manifests (same shape as ctrl.bin: header, u32 count, records)
     mod_ctrl_path = os.path.join(root, "%s_ctrl.bin" % module)
-    mod_ctrl = manifest(
+    mod_ctrl = build_ctrl(
         [
-            (1, zlib.crc32(bin_bytes) & 0xFFFFFFFF, "/%s/system.bin" % module),
+            ("/%s/system.bin" % module, 1, crc32(bin_bytes)),
             (
-                1,
-                zlib.crc32(Path(os.path.join(mod_dir, "system.bin.inf")).read_bytes()) & 0xFFFFFFFF,
                 "/%s/system.bin.inf" % module,
+                1,
+                crc32(Path(os.path.join(mod_dir, "system.bin.inf")).read_bytes()),
             ),
-            (1, zlib.crc32(ctrl) & 0xFFFFFFFF, "/%s/system_ctrl.bin" % module),
+            ("/%s/system_ctrl.bin" % module, 1, crc32(ctrl)),
         ]
     )
     Path(mod_ctrl_path).write_bytes(mod_ctrl)
     Path(os.path.join(root, "ctrl.bin")).write_bytes(
-        manifest(
-            [
-                (1, zlib.crc32(mod_ctrl) & 0xFFFFFFFF, "/%s_ctrl.bin" % module),
-            ]
-        )
+        build_ctrl([("/%s_ctrl.bin" % module, 1, crc32(mod_ctrl))])
     )
 
     return {

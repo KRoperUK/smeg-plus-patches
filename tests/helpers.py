@@ -7,23 +7,24 @@ the point: the patch tools must be testable without any copyrighted files.
 import gzip
 import io
 import os
-import re
 import struct
+import sys
 import tarfile
 import zlib
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+TOOLS = os.path.join(os.path.dirname(HERE), "tools")
+if TOOLS not in sys.path:
+    sys.path.insert(0, TOOLS)
+
+# the fixtures use the same primitives the tools do, so a fixture cannot quietly disagree
+# with the chain it is meant to exercise (#68)
+from smeglib import build_ctrl, crc32, read_inf_field, s32  # noqa: E402
+
 BASE = 0x01000000
 STREAM_OFFSET = 0x801  # where the zlib stream starts
 HEADER_LEN = 0x800  # the byte at 0x800 is the 0x08 compression marker
-
-
-def crc32(b):
-    return zlib.crc32(b) & 0xFFFFFFFF
-
-
-def s32(v):
-    return struct.unpack(">i", struct.pack(">I", v))[0]
 
 
 def make_image(size=0x200000, fill=0xAA):
@@ -62,17 +63,13 @@ def write_smeg_inf(path, bigquick_crc, ver="SMEG0.0.0.A.R0", gui_ver="00.00"):
 
 
 def write_ctrl(path, entries):
-    """entries: list of (check_type, crc32, path)."""
-    out = bytearray()
-    out += b"19/09/2017  2.1.0.0".ljust(0x30, b"\x00")
-    out += bytes([len(entries)])
-    for check, crc, rel in entries:
-        out += bytes([check])
-        out += struct.pack(">I", crc)
-        out += rel.encode() + b"\x00"
-        out += b"\x00" * ((-len(rel) - 1) % 8)  # pad to a stride
-    with open(path, "wb") as fh:
-        fh.write(bytes(out))
+    """entries: list of (check_type, crc32, path), written in the stock `ctrl` shape.
+
+    A u32 record count at 0x2c and 264-byte records, as `smeglib.has_ctrl_layout` reads it.
+    The trailing CRC32 is deliberately left off — the tools must handle a file that has never
+    had one, and `tests/test_ctrl_trailer.py` is what adds it back.
+    """
+    Path(path).write_bytes(build_ctrl([(rel, check, crc) for check, crc, rel in entries]))
 
 
 OTHER_MODULES = ("BSP", "HARMONY", "RENESAS", "USERGUIDE")
@@ -225,8 +222,7 @@ def inflate_container(raw):
 
 
 def read_crc_field(text, field="CRC32"):
-    m = re.search((field + r": (-?\d+)").encode(), text)
-    return int(m.group(1)) & 0xFFFFFFFF
+    return read_inf_field(text, field)
 
 
 # --- media partition helper (for the ringtone tool tests) -------------------

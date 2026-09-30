@@ -49,9 +49,7 @@ import argparse
 import gzip
 import io
 import os
-import re
 import shutil
-import struct
 import sys
 import tarfile
 from pathlib import Path
@@ -60,21 +58,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from smeglib import crc32, refresh_trailer, s32, swap_crc  # noqa: E402
+from smeglib import (  # noqa: E402
+    crc32,
+    die,
+    patch_ctrl_record,
+    read_inf_fields,
+    refresh_trailer,
+    rewrite_inf_field,
+    roundup,
+    swap_crc,
+)
 
 SYSTEM_PREFIX = "/SYSTEM/"
-RECORD_SIZE = 264  # system_ctrl.bin record stride
-RECORD_CRC_OFF = 260  # CRC32 sits at path_offset + 260
 MODULES = ("AUDIO_BT", "AUDIO_BT_256", "NAV")
 TONE_DIRS = ("ring_tones", "wait_tones")
-
-
-def die(msg):
-    sys.exit(msg)
-
-
-def roundup(v, b):
-    return (v + b - 1) // b * b
 
 
 # --------------------------------------------------------------------- partition
@@ -155,8 +152,8 @@ SIZE_KEYS = ("SIZE",) + tuple("SIZE_%d" % n for n in (1, 2, 4, 8, 16, 32))
 
 
 def read_size_fields(inf_bytes):
-    found = re.findall(rb"(SIZE(?:_\d+)?): (\d+)", inf_bytes)
-    return {k.decode(): int(v) for k, v in found}
+    """Every `SIZE`/`SIZE_n` field the `.inf` carries, in the order we look for them."""
+    return read_inf_fields(inf_bytes, SIZE_KEYS)
 
 
 def adjusted_size_fields(old_data, new_data, old_fields):
@@ -184,38 +181,28 @@ def adjusted_size_fields(old_data, new_data, old_fields):
 
 
 def patch_system_ctrl(ctrl_bytes, changes, old_data):
+    """Point each changed file's `system_ctrl.bin` record at its new CRC32."""
     buf = bytearray(ctrl_bytes)
     for name, new in changes.items():
-        # the path is NUL-terminated inside the record, so require the terminator: without
-        # it "x.pkg" also matches a "x.pkg.inf" record and looks like a duplicate
-        needle = (SYSTEM_PREFIX + name).encode() + b"\x00"
-        off = buf.find(needle)
-        if off < 0:
-            die("system_ctrl.bin has no record for %s — cannot replace it" % name)
-        if buf.find(needle, off + 1) >= 0:
-            die("system_ctrl.bin has more than one record for %s" % name)
-        pos = off + RECORD_CRC_OFF
-        old_crc, new_crc = crc32(old_data[name]), crc32(new)
-        have = struct.unpack_from(">I", buf, pos)[0]
-        if have != old_crc:
-            die(
-                "system_ctrl.bin record for %s holds %#010x, expected %#010x"
-                % (name, have, old_crc)
-            )
-        struct.pack_into(">I", buf, pos, new_crc)
+        patch_ctrl_record(
+            buf,
+            SYSTEM_PREFIX + name,
+            crc32(old_data[name]),
+            crc32(new),
+            where="system_ctrl.bin",
+            name=name,
+        )
     return bytes(buf)
 
 
 def patch_inf(inf_bytes, new_crc, size_fields):
-    # signed, as every stock .inf writes it: above 0x7fffffff the value is negative
-    out, n = re.subn(rb"CRC32: -?\d+", b"CRC32: %d" % s32(new_crc), inf_bytes, count=1)
-    if n != 1:
-        die("no CRC32 field in system.bin.inf")
+    """Write the new container CRC and SIZE values into `system.bin.inf`.
+
+    The CRC is signed, as every stock `.inf` writes it; the SIZE fields stay unsigned.
+    """
+    out = rewrite_inf_field(inf_bytes, "CRC32", new_crc)
     for key, val in size_fields.items():
-        k = key.encode()
-        out, n = re.subn(k + rb": \d+", k + b": %d" % val, out, count=1)
-        if n != 1:
-            die("no %s field in system.bin.inf" % key)
+        out = rewrite_inf_field(out, key, val)
     return out
 
 
