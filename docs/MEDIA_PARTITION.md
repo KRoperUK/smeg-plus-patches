@@ -58,7 +58,7 @@ media space-check (`C_APPLI_UPG_PLUGIN::CheckMediaTask`).
 rather than recomputing them: an untouched partition keeps its numbers byte-for-byte, and a
 changed file moves each field by exactly its own size change.
 
-### `system_ctrl.bin`
+### `system_ctrl.bin` { #system-ctrl-bin }
 
 ```
 0x00   header, 48 bytes
@@ -164,6 +164,24 @@ MM_HoldOn_HRH_8kHz.wav  18.46 s
 
 Path helper: `C_FS_STORAGE_CTRL_PATH::GetWaitTonesDir`. The suffixes are PSA language
 codes (`CRC` Czech, `ENG` English, `FRF` French, `GED` German, `ITI` Italian, … ).
+
+## GUI text strings — `/SYSTEM/Data_base/boardfs/GUI_STYLE/GUIS_RESSOURCES/gui_texts/`
+
+The unit's user-visible wording, one binary file per language
+(`gui_text_strings_<LANG>.xml.bin`, **not** XML). The format — a 16-byte header, a 12-byte
+`(id, offset, length)` record per string, then the strings as UTF-16BE with no terminator — is
+decoded, and `tools/guistrings.py` dumps and rebuilds them so a label can be overridden:
+
+```sh
+python3 tools/guistrings.py dump media/.../gui_text_strings_GB.xml.bin --json > edits.json
+python3 tools/guistrings.py build --base media/.../gui_text_strings_GB.xml.bin \
+        --out media/.../gui_text_strings_GB.xml.bin.new --overrides edits.json
+```
+
+Nothing inside the file is checksummed; it is the type-2 record in `system_ctrl.bin`
+[above](#system-ctrl-bin) that protects it, and a changed file size moves the `.inf` `SIZE`
+fields by its own delta. See [GUI string tables](GUI_STRINGS.md) for the layout, the limits and
+the worked edit.
 
 ## Application/ (inside the partition)
 

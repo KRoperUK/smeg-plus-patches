@@ -48,6 +48,7 @@ GROUPS = {
         "ringtones",
         "assets",
         "splash",
+        "guistrings",
         "patch_studio",
         "dbschema",
     ],
