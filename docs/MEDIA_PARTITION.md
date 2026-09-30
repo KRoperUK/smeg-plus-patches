@@ -295,8 +295,26 @@ HARMONY/
 `BIG_HARMONY.bin` starts with the ASCII magic `BIGHARMONY` and a zero-padded header;
 the `.inf` describes the structure (`HEADER_SIZE:900`, `HEADER_CRC32:…`,
 `VERSION_BIGHARMONY_STRUCT:01.00.00.b`, `VERSION:5.4.A.5`, and a `BigHarmony_1:1;2;3;5`
-style mapping of groups to harmony ids). The payload is opaque (compressed/encrypted)
-and has not been decoded.
+style mapping of groups to harmony ids).
+
+An external teardown of the format describes it as a sequence of **2 KiB blocks**
+*(read, bousqi/SMEG_PLUS; not verified in this project)*:
+
+```
+0x0000  "BIGHARMONY" magic, zero-padded to the block
+0x0800  36-byte header (version; entry count at 0x23) then 216-byte entries,
+        the whole header being the .inf's HEADER_SIZE (900 here)
+0x1000  the data: files concatenated, each padded to a 2 KiB boundary
+```
+
+Each 216-byte header entry names a file packed into the data region — a name at `0x00`, a
+constant `0x3130` at `0x64`, a 32-byte version at `0x84`, a 32-byte filename at `0xA4`, a
+harmony id at `0xC8`, an offset **in 2 KiB blocks** at `0xCC`, a size at `0xD0`, and the
+file's CRC32 at `0xD4`.
+
+What that does not settle is the payload itself: the files underneath do not inflate at any
+candidate zlib offset *(executed, this project)*, so they remain compressed or encrypted by
+a means the container header does not describe.
 
 The `.bigharmony.ini` files map vehicle type and build to harmony groups, e.g.
 `A9: LIST_NAV:2,0,0,3,0,0 / LIST_AUDIO_BT:4,5` and `G7: LIST:1,0,2,0,3,0`. So which

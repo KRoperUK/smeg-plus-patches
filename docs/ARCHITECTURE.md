@@ -13,12 +13,13 @@ and has its own symbol map.
 
 ## 1. System shape
 
-- **VxWorks** RTOS on a **Freescale MPC5121e** PowerPC SoC — an **e300** core, which is
+- **VxWorks 6.7** RTOS on a **Freescale MPC5121e** PowerPC SoC — an **e300** core, which is
   plain 32-bit big-endian PowerPC with no vendor instruction set extensions. That is why
-  the shipped image can be executed on a desktop; see
-  [Emulating the firmware](EMULATION.md). The part number comes from
-  [bousqi/SMEG_PLUS](https://github.com/bousqi/SMEG_PLUS), which also documents the
-  U-Boot/VxWorks side and the TFFS partition layout.
+  the shipped image can be executed on a desktop; see [Emulating the firmware](EMULATION.md).
+  The board is described in [The hardware](HARDWARE.md) and the kernel, address map and
+  flash partitions in [Kernel and partitions](PLATFORM.md). The MPC5121e part number and
+  the TFFS partition layout come from
+  [bousqi/SMEG_PLUS](https://github.com/bousqi/SMEG_PLUS); see [Sources and prior art](REFERENCES.md).
 - Alongside it, a **Renesas** front-panel MCU (display / touch / audio-adjacent) and a
   **Blackfin/Maxim** DAB chipset.
 - The HMI is a custom C++ framework (`C_HMI_*`) over **Qt** middleware, with an

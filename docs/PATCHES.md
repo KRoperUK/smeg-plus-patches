@@ -52,6 +52,13 @@ symbol-level patching possible. `tools/unpack.py` inflates it; `patch_smeg.py` r
 walks the checksum cascade (`f_BigQuick.bin` → `.inf` → `smeg.inf` → `<module>_ctrl.bin` →
 `ctrl.bin`, see [Boot and update chain](FLASH_CHAIN.md)).
 
+An external teardown reads the `0x800` header more finely — as **32-byte entries**, of which
+the first is the constant `0x00010004` and the second is the data's offset **in 2 KiB
+blocks** (file offset = `(blocks + 1) × 2048`); a size at `+0x04`, a data size at `+0x14`,
+and `0xdeadbeef` at `+0x1C`. *(read, bousqi/SMEG_PLUS. It agrees with our own reading of the
+inflated size at `0x04` and the `0xdeadbeef` markers, but the entry structure is not
+confirmed here; see [Sources and prior art](REFERENCES.md).)*
+
 ## Addresses are per firmware version, not only per build
 
 Every address on this page was read out of the **`SMEG_5.43.A.R2`** NAV image. `AGENTS.md`

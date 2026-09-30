@@ -445,6 +445,12 @@ GetUncryptedVIN : GetKeyInt uncrypted VIN faile…
 with `/Licence`, `/CCT.DAT.inf` and `C_MEDIA_MANAGER` alongside. The file itself is 456 bytes
 at ~6.0 bits/byte of entropy — encoded, not a plain certificate.
 
+**There is a plain-file shortcut for the key prompt.** Before asking for the activation key
+on screen, the map updater looks for `SMEG_PLUS_UPG/DATA/Licence`; if that text file exists
+and holds the 16-character key, the prompt is skipped. It needs **no CRC sidecar**, unlike
+everything else in the package. *(read, bousqi/SMEG_PLUS, where it is reported "tested and
+approved"; this project has not verified it. See [Sources and prior art](REFERENCES.md).)*
+
 **There are region gates too.** The updater carries `CheckEuropeContinent`,
 `ReadContinentFromGruppoRoot`, `CONTINENT_ID`, and a `Crimea_Manager` with
 `CheckIf_RUSSIA__UKRAINE_Key` — so the package declares a continent (`MEDIA_MAP.INI` says

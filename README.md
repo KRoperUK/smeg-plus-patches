@@ -102,7 +102,9 @@ The main tools are below. Every tool, with its `--help`, is on the generated
 
 The docs site has two starting points: **car owners** (what is reachable → running the tools →
 flashing → recovery) and **researchers** (architecture → firmware map → the scheduler, audio
-module and AUX chain → emulation → verification). Start at <https://smeg.kroper.uk/>.
+module and AUX chain → emulation → verification). Start at <https://smeg.kroper.uk/>. For the
+platform underneath — [the hardware](docs/HARDWARE.md), [the kernel and partitions](docs/PLATFORM.md),
+and the public [prior art](docs/REFERENCES.md) this work builds on — the same site has those too.
 
 ## Development
 
