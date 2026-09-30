@@ -215,23 +215,28 @@ def test_the_last_name_at_a_kernel_address_wins():
     }
 
 
-def test_the_type_codes_come_back_from_the_iterator():
-    """The four codes are a third party's, so they are reported, never filtered on."""
+def test_the_type_words_come_back_from_the_iterator():
+    """The four codes are a third party's, so they are reported, never filtered on.
+
+    The words used are the four the shipped image actually carries — bousqi's kind bits with
+    `0x100` set (`VXWORKS_TYPE_NAMES`) — plus a word nobody has described, which must still come
+    back rather than have its name hidden.
+    """
     image = build_vxworks_image(
         [
-            ("unk_one", KERNEL_BASE + 0x200, 0x100),
-            ("func_one", KERNEL_BASE + 0x300, 0x400),
-            ("data_one", KERNEL_BASE + 0x400, 0x800),
-            ("ext_one", KERNEL_BASE + 0x500, 0x1000),
-            ("odd_type", KERNEL_BASE + 0x600, 0x2000),  # not in the enum; still a name
+            ("unk_one", KERNEL_BASE + 0x200, 0x300),
+            ("func_one", KERNEL_BASE + 0x300, 0x500),
+            ("data_one", KERNEL_BASE + 0x400, 0x900),
+            ("ext_one", KERNEL_BASE + 0x500, 0x1100),
+            ("odd_type", KERNEL_BASE + 0x600, 0x2000),  # not one of the four; still a name
         ]
     )
     got = list(symbols.iter_vxworks_symtab(image, TABLE_AT))
     assert got == [
-        (KERNEL_BASE + 0x200, "unk_one", 0x100),
-        (KERNEL_BASE + 0x300, "func_one", 0x400),
-        (KERNEL_BASE + 0x400, "data_one", 0x800),
-        (KERNEL_BASE + 0x500, "ext_one", 0x1000),
+        (KERNEL_BASE + 0x200, "unk_one", 0x300),
+        (KERNEL_BASE + 0x300, "func_one", 0x500),
+        (KERNEL_BASE + 0x400, "data_one", 0x900),
+        (KERNEL_BASE + 0x500, "ext_one", 0x1100),
         (KERNEL_BASE + 0x600, "odd_type", 0x2000),
     ]
     assert [symbols.VXWORKS_TYPE_NAMES[t] for _, _, t in got[:4]] == [
@@ -240,6 +245,47 @@ def test_the_type_codes_come_back_from_the_iterator():
         "data",
         "ext",
     ]
+    assert 0x2000 not in symbols.VXWORKS_TYPE_NAMES
+
+
+def test_a_table_with_internal_gaps_is_found_from_its_first_entry():
+    """The shipped table is not one unbroken run, and the scan must not start mid-table.
+
+    *(executed)* 33 of the real image's 13 854 entries have a name pointer that resolves to
+    nothing, in gaps of up to 11 entries. A scan that returned the longest *unbroken* run would
+    start thousands of entries in and silently drop a third of the symbols; the seed run is
+    therefore only a starting point, and the start is walked back over the gaps.
+    """
+    names = [("sym_%02d" % i, KERNEL_BASE + 0x100 * i, 0x500) for i in range(20)]
+    # three consecutive unreadable entries in the middle: the run that follows is 9 long, the
+    # run before it is 8 - the longest strict run is neither, once the walk can bridge the gap
+    image = build_vxworks_image(names[:8] + [(None, 0, 0x500)] * 3 + names[11:])
+
+    assert symbols.find_vxworks_symtab(image) == TABLE_AT
+    syms = symbols.load_vxworks_symtab(image)
+    assert len(syms) == 17
+    assert syms[KERNEL_BASE] == "sym_00"
+    assert syms[KERNEL_BASE + 0x100 * 19] == "sym_19"
+
+
+def test_the_backward_walk_does_not_latch_onto_the_string_area():
+    """The words immediately before a real table point at strings by construction.
+
+    A string area's words are the offsets of its strings, so they resolve as name pointers, and
+    its first word is not the 0 an entry carries. That is what stops the walk back from the seed
+    at the table's first entry: without the shape check it would keep going into the string area
+    and return an offset that is not the table's.
+    """
+    names = [("sym_%02d" % i, KERNEL_BASE + 0x100 * i, 0x500) for i in range(12)]
+    image = bytearray(build_vxworks_image(names))
+    for k in range(
+        2, 12
+    ):  # ten slots ending one entry short of the table, so the seed is the table
+        at = TABLE_AT - 20 * k
+        # first word 1 (not 0, and it resolves nothing), name pointer into the string area
+        image[at : at + 20] = struct.pack(">5I", 1, KERNEL_BASE + STRINGS_AT, 0, 0, 0x500)
+
+    assert symbols.find_vxworks_symtab(bytes(image)) == TABLE_AT
 
 
 def test_the_map_feeds_extents_and_name_at():

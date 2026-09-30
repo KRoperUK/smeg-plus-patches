@@ -185,16 +185,19 @@ these docs:
 ### The BSP image has a symbol table as well
 
 `BSP/SMEG_PLUS_512/vxWorks.bin` is not an ELF — it is a raw PowerPC image that begins with
-a function prologue at offset 0 — but it carries a **VxWorks symbol table** near the end.
-The entries are **20 bytes**, and "a pointer to the name, then the address" is the middle of
-the five words in the struct below.
+a function prologue at offset 0 — but it carries a **VxWorks symbol table**. *(executed,
+`tests/test_firmware_bsp.py`)* On the shipped image it sits at file offset **`0x622024`** — the
+address **`0x00822024`**, which is the `vxSymTbl` that bousqi/SMEG_PLUS records — and it holds
+**13 854 entries of 20 bytes**.
 
 It loads at **`0x00200000`**, and that is not a guess. Read at that base the table's name
-pointers resolve to readable strings, and the application's own call into the kernel at
-`0x0058c248` — the one `IsAUXSRCAvailable()` makes on its failure path — is named `tickGet`
-by the table at exactly that address. The application and the kernel therefore share one
-address space, which is what makes a branch from the application into a kernel function
-possible at all; `patches/diagnostic-logsink.json` relies on it.
+pointers resolve to readable strings, and the two kernel addresses the patches use land on
+names: `0x0058c248` — the one `IsAUXSRCAvailable()` calls on its failure path — is **`tickGet`**,
+and **`0x00484a94` is `logMsg`**, which `patches/diagnostic-logsink.json` branches to. The
+application and the kernel therefore share one address space, which is what makes a branch from
+the application into a kernel function possible at all. Both are read off the shipped image
+*(executed)*; reading the same table at the application's base of `0x01000000` resolves nothing
+at all, which is what makes the base a measurement rather than an assumption.
 
 **The format is readable — `tools/symbols.py`.** `load_vxworks_symtab(blob, base=0x00200000)`
 returns `{address: name}`, the same shape `load_symbols()` gives for a vendor map, so
@@ -205,7 +208,9 @@ application one is:
 import symbols
 
 kernel = open("BSP/SMEG_PLUS_512/vxWorks.bin", "rb").read()
-symbols.load_vxworks_symtab(kernel)[0x0058C248]  # -> 'tickGet'
+syms = symbols.load_vxworks_symtab(kernel)  # 13 564 names from the 13 854 entries
+syms[0x0058C248]  # -> 'tickGet'
+syms[0x00484A94]  # -> 'logMsg'
 ```
 
 The entry *(read, bousqi/SMEG_PLUS — `VXWORKS.md`, `struct s_Symbol`)*:
@@ -216,25 +221,40 @@ struct s_Symbol {
   u32 name;        /*  4  pointer into the image's string area */
   u32 address;     /*  8 */
   int unk2;        /* 12 */
-  int type;        /* 16  0x100 unk, 0x400 func, 0x800 data, 0x1000 ext */
+  int type;        /* 16  bousqi: 0x100 unk, 0x400 func, 0x800 data, 0x1000 ext */
 };
 ```
 
+*(executed)* Every one of the 13 854 entries carries **0** in `unk1` and `unk2`, so on this
+image those two words are placeholders rather than fields. They are also what tells a real entry
+apart from the **string area immediately in front of the table**, whose words are string offsets
+and therefore point at printable text by construction — which is why the reader requires the
+shape and not only a resolving name pointer.
+
+**The `type` word as the image actually carries it** *(executed)*: one of exactly four values —
+`0x300` (376 entries), `0x500` (11 279), `0x900` (1 436), `0x1100` (763) — which is bousqi's
+`0x100`/`0x400`/`0x800`/`0x1000` **kind bits with `0x100` always set**. As a bare word none of
+`0x100`, `0x400`, `0x800` or `0x1000` ever appears. The kind bits do hold up where they can be
+checked against the bytes: `tickGet`, `logMsg` and `getUBootVersion` are 0x400-kind and their
+addresses begin with an instruction, `g_UBootVersion` is 0x800-kind and its address is `.bss`
+(zeros in the file), and 0x1000-kind addresses lie outside the image, which is what "ext" means.
+
 !!! warning "What this project established, and what bousqi did"
 
-    **This project's own, read from the image:** the base and the stride. At `0x00200000` the
-    name pointers resolve, the entries are 20 bytes apart, and the address the application
-    calls is named `tickGet`. The 20-byte size was already this page's own reading. Note the
-    tier — that is an inspection of the table, not a run, so it is *read* and not *executed*.
+    **This project's own, executed on the shipped image:** the base, the stride, the table's
+    extent and its two named addresses. The table is **not** one unbroken run of readable
+    entries — 33 of its 13 854 entries have a name pointer that resolves to nothing, in gaps of
+    up to 11 entries — so a scan for the *longest unbroken run* starts thousands of entries in
+    and returns about two thirds of the symbols. The reader therefore seeds on that run and walks
+    the start back over the gaps, with the entry shape as the stopping rule.
 
-    **Read, from bousqi/SMEG_PLUS (`VXWORKS.md`, `struct s_Symbol`):** the five-field struct
-    around those two words, the two `unk` fields and the four `type` codes. None of it is
-    confirmed against a vendor image here, and none of it is acted on:
-    `load_vxworks_symtab` reports the type rather than trusting it, so an entry whose code
-    nobody has described still gets its name. bousqi also records the table at `0x00822024`
-    holding 13 853 symbols on their unit *(read)* — the offset is a property of their build,
-    not of the format, which is why the reader locates the table by scanning for resolving
-    name pointers instead of taking an address.
+    **Read, from bousqi/SMEG_PLUS (`VXWORKS.md`, `struct s_Symbol`):** the five-field struct, its
+    two `unk` fields and the four `type` codes. bousqi recorded the table at `0x00822024` with
+    13 853 symbols; on this image the same address holds 13 854 entries (13 564 distinct names,
+    which is fewer because **the last name at an address wins**), and the `SMEG_PLUS_256` build
+    carries it at the same offset — so the address bousqi gives is the format's, not one unit's.
+    The reader still locates the table by scanning rather than taking the address, so a build
+    that does move it is still read.
 
 The reader is **tolerant by design**, because the table's length is not recorded anywhere it
 points at: an entry whose name pointer does not resolve to a printable string is skipped
