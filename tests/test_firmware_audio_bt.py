@@ -187,3 +187,85 @@ def test_stock_handler_activates_aux_with_pronly(build):
 
 def test_boot_restore_makes_the_handler_pass_pronly_zero(build):
     assert handler_activations(build, ["aux-boot-restore"]) == [0]
+
+
+# ------------------------------------------ the AUX no-signal mute (aux-no-idle-mute)
+
+# Both builds ship the same symbol map, so these are the same addresses in each.
+MUTE_MGR = 0x013B3B04
+CMD_MUTE = 0x013B1CE8
+AUX_EVENT = 0x013CE718
+RADIO_SIGNAL = 0x0131ACE8
+
+
+def mute_decision(build, aux_mute, patches=("aux-no-idle-mute",)):
+    """C_MODULE_AUDIO::RadioMuteManager with every callee stubbed.
+
+    CmdMute (recording the `muted` argument it is handed), the watchdog cancel and start,
+    tickGet and AmplifierMuteManager. `this` is a synthetic module carrying only the AUX
+    no-signal flag, a non-zero source volume and a started radio (st_audio 10).
+    """
+    module, image = build
+    ppcemu, e = emulator(image)
+    for name in patches:
+        e.apply_patch_file(patch_file(name), module)
+    e.stub_all = True
+    this, vol, wd = ppcemu.SCRATCH, ppcemu.SCRATCH + 0x3000, ppcemu.SCRATCH + 0x4000
+    e.write(this, b"\0" * 0x400)
+    e.write_u32(this + 0x74, 10)
+    e.write_u32(this + 0x174, wd)
+    e.write_u32(this + 0x1B0, vol)
+    e.write(vol, struct.pack(">h", 30))
+    e.write(this + 0x168, bytes([aux_mute]))
+    muted = []
+    e.stub(CMD_MUTE, lambda uc: muted.append(reg(uc, 4)))
+    e.call(MUTE_MGR, [this, 0, 0xFFFFFFFF])
+    assert e.error is None, e.error
+    return muted
+
+
+def idle_mute_chain(build):
+    """No signal on AUX: the handler arms `+0x168`, then the same object goes to the decision.
+
+    Stubbed: `Radio::Get_AUX_signal_status` (writing "no signal"), CmdMute (recorded) and
+    Call_action. Returns the flag the handler left and the `muted` argument CmdMute got.
+    """
+    module, image = build
+    ppcemu, e = emulator(image)
+    e.apply_patch_file(patch_file("aux-no-idle-mute"), module)
+    e.stub_all = True
+    this, radio, vol, wd = (
+        ppcemu.SCRATCH,
+        ppcemu.SCRATCH + 0x1000,
+        ppcemu.SCRATCH + 0x3000,
+        ppcemu.SCRATCH + 0x4000,
+    )
+    e.write(this, b"\0" * 0x400)
+    e.write_u32(this + 0x54, radio)
+    e.write_u32(this + 0x74, 10)
+    e.write_u32(this + 0x1A8, 5)  # the current source is AUX
+    e.write_u32(this + 0x174, wd)
+    e.write_u32(this + 0x1B0, vol)
+    e.write(vol, struct.pack(">h", 30))
+    muted = []
+    e.stub(RADIO_SIGNAL, lambda uc: uc.mem_write(reg(uc, 4), b"\0"))
+    e.stub(CMD_MUTE, lambda uc: muted.append(reg(uc, 4)))
+    e.call(AUX_EVENT, [this])
+    flag = e.read(this + 0x168, 1)[0]
+    e.call(MUTE_MGR, [this, 0, 0xFFFFFFFF])
+    assert e.error is None, e.error
+    return flag, muted
+
+
+def test_stock_mutes_aux_while_the_no_signal_flag_is_set(build):
+    assert mute_decision(build, aux_mute=1, patches=()) == [1]
+    assert mute_decision(build, aux_mute=0, patches=()) == [0]
+
+
+def test_aux_no_idle_mute_drops_the_no_signal_mute(build):
+    assert mute_decision(build, aux_mute=1) == [0]
+    assert mute_decision(build, aux_mute=0) == [0]
+
+
+def test_no_signal_on_aux_mutes_stock_and_not_with_the_patch(build):
+    assert idle_mute_chain(build) == (1, [0])

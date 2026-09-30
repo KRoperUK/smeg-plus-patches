@@ -1,0 +1,15 @@
+{
+  "_comment": "BOOT TO AUX + NO IDLE MUTE - the build for a CarPlay/Android-Auto piggyback, never flashed. builds/aux-boot.json (aux-autoswitch + aux-boot-default + aux-boot-restore) is the confirmed boot-to-AUX baseline and is unchanged here; aux-no-idle-mute adds one edit that stops C_MODULE_AUDIO::RadioMuteManager treating the AUX no-signal flag (+0x168) as a mute source, so the AUX input is not held muted while the piggyback is quiet. It does not switch to AUX when a signal appears - nothing does, and that is not pursued (docs/AUX_SIGNAL.md). App-image only: no /USER_DATA payload, so paired phones, destinations and presets are untouched. Edit `package` and `out` to your paths.",
+  "package": "~/Downloads/SMEG_PLUS_UPG",
+  "out": "~/smeg-builds/aux-boot-no-idle-mute/SMEG_PLUS_UPG",
+  "module": "NAV",
+  "app": {
+    "patches": [
+      "aux-autoswitch",
+      "aux-boot-default",
+      "aux-boot-restore",
+      "aux-no-idle-mute"
+    ]
+  },
+  "seal": true
+}

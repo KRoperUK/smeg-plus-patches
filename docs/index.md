@@ -160,6 +160,10 @@ with its own symbol map and patch addresses.
   update file is protected and cannot be copied"*) does not appear.
 - [x] **AUX is always available** (`IsAUXSRCAvailable()`): it no longer greys out without a
   signal, and it is in the SRC cycle.
+- [ ] **No idle mute on AUX.** The unit mutes the AUX input while it sees no signal there, so
+  the piggyback's audio is gated until something plays. `aux-no-idle-mute` removes that one
+  mute decision — one `nop`, verified under emulation on all three builds, no car has run it.
+  See [Patch reference](PATCHES.md#the-aux-idle-mute-aux-no-idle-mute).
 - [x] **Custom ring tone audio.**
 - [ ] **Custom ring tone names.** The names are literals in the application image, and
   `media.names` patches them in place; built and verified offline, not yet confirmed on a car.
@@ -176,7 +180,7 @@ cannot disagree with the patch reference.
 
 <!-- patch-status:panel -->
 - **Confirmed on hardware:** `aux-always-available`, `aux-autoswitch`, `aux-boot-default`, `aux-boot-restore`, `spy-dump-userdata`
-- **Candidates awaiting a car test:** `aux-signal-switch`, `aux-sticky`
+- **Candidates awaiting a car test:** `aux-no-idle-mute`, `aux-signal-switch`, `aux-sticky`
 - **Falsified on hardware:** `spy-dump-userdata-partition`
 - **Diagnostic builds, not for driving:** `diagnostic-logging`, `diagnostic-logmask`, `diagnostic-logsink`
 
