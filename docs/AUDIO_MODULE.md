@@ -167,9 +167,62 @@ AUX input setting (read):
   - The module never calls `C_MGR_SRC`. How the slot table is filled (presumably
     `AllocateSource`) was not read.
 - **`C_I2C_SMART_RADIO`** carries every DSP command. `SendCmdRadio` is the single choke point
-  (2 070 instructions), and command `0x33` is the AUX gain. It is also the source of all radio
-  events, including AUX signal `0x3d`. The module reads signal presence only through
+  (2 070 instructions), and command `0x33` carries the AUX **input selection**, not a level (see
+  [the level trim](#the-per-source-level-trim-where-the-aux-gain-is) below). It is also the source
+  of all radio events, including AUX signal `0x3d`. The module reads signal presence only through
   `Radio::Get_AUX_signal_status` (`0x0131ae40`) -> `C_I2C_SMART_RADIO::Get_AUX_signal_status`.
+
+
+## The per-source level trim — where the AUX gain is
+
+Issue #8 asks for the default AUX gain. There is no single "AUX gain" knob: the module has two
+unrelated mechanisms, and only one of them is a level.
+
+**Input selection.** `C_MODULE_AUDIO::setAUXGain(TYPE_AUDIO_AUX_STATUS, bool)` (`0x013bb7ec`)
+maps the saved AUX *setting* (0..3) to a radio command — `SendCmdRadio(TYPE_COMMAND, 0x33,
+{u16 1, u16 <sel>})` — with one branch per setting. That chooses which AUX input the front end
+listens to. It sets no level. *(read)*
+
+**Level.** The level is a per-source trim held in the audio-parameters object.
+`C_RI_AUDIO_PARAMETERS_CLASS` keeps **five floats per `AUDIO_SOURCES_TYPES`**, and
+`GetSourceScalers(t, float&)` (`0x0133b668`) reads one of them at:
+
+```
+object + 0x348 + 4 * (5*t + K)          K = the u8 at +0x260 (4 on this image)
+```
+
+so a source's group starts at `0x358 + 20*t` and the slot `GetSourceScalers` returns is `5t + 4`
+— for AUX (`AUDIO_SOURCES_TYPES` 5) that is `object + 0x3bc`. *(read)*
+
+`InitSourceScalers_in_dB()` (`0x01334764`) -> `C_RI_AUDIO_PARAMETERS_CLASS::InitSourceScalers`
+(`0x0133a390`) fills it from `.rodata` floats. Which set of floats is used is chosen by a
+**project-label jump table** at `0x02F445E8` (16 entries, indexed by the label). *(read)*
+
+**On the NAV 5.43.A.R2 image** the label global at `0x035DA760` reads **1**, selecting the block
+at `0x0133a3cc`. For AUX that block writes `+0x3bc..+0x3cc`; the slot `GetSourceScalers` returns
+(`+0x3bc`) comes from the float at **`0x03071C34` = −13.95 dB**. The neighbours are −11.48 and
++4.12. *(read from the image — this is static, not emulated.)*
+
+So the AUX input is trimmed roughly **14 dB below full scale** by default, which is the number
+issue #8 is looking for and is consistent with a piggyback landing quiet.
+
+!!! warning "There is no patch for this yet, deliberately"
+
+    What a patch would change is a `.rodata` float, and three things are not established:
+
+    - **Which of the five floats is the level.** `GetSourceScalers` returns `5t + 4`, but that
+      the DSP treats it as a gain rather than a tonal/support parameter was not read.
+    - **Whether `0x03071C34` is used only for AUX.** A shared constant would move another
+      source too. `tools/xref.py` does not see `lfs`-style references, so uniqueness is *not
+      known*.
+    - **Whether raising it clips.** This trim sits ahead of the DIRANA2 input, which is a
+      hardware limit. Nothing here models the DSP's gain structure, so "does it clip" cannot be
+      answered offline — it needs a unit and a signal generator, or a smaller step with listening
+      tests.
+
+    So this section records the finding and stops. A patch is worth writing once the two
+    unknowns above are settled; a guess at the float would be an unverified change to audio
+    gain, which is exactly the kind of claim this project refuses to make.
 
 
 ## Bearing on the AUX patches
