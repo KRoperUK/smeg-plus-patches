@@ -1,9 +1,11 @@
 """Tests for the shared application-image container reader.
 
-No firmware is involved: `tests/helpers.pack_bigquick` builds the container. That is the point
-here more than usual — the header layout `parse_container_header` implements is a third
-party's description, not a measurement of this repository's, so the only thing these tests can
-pin is that the parse matches the description and that it changed nothing about `inflate()`.
+No firmware is involved: `tests/helpers.pack_bigquick` builds the container. Part of the header
+layout is a third party's description and part is this repository's own reading of the shipped
+images, so these tests pin the shape the shipped images settled — a used entry, a `0xdeadbeef`
+filler, and a second segment that is not the main stream — and that `inflate()` is still what
+decides where a stream is. The vendor numbers themselves are asserted in
+`tests/test_firmware_nav.py`, which needs the owner's image.
 """
 
 import os
@@ -46,6 +48,25 @@ def moved_container(img, blocks):
     return bq[:0x800] + bytes(at - 0x800) + b"\x08" + bq[0x801:]
 
 
+def shipped_layout(img, blocks=511, second=None):
+    """A container shaped like a real one: a main stream at `0x801` and a second segment.
+
+    `moved_container` moves the only stream; this keeps one where `inflate()` looks and puts a
+    second where the header points, which is what NAV, AUDIO_BT and AUDIO_BT_256 all do. The
+    filler entries 2..63 carry the shipped images' `0xdeadbeef`, and the gap between the two
+    segments is the `0xEE` pad they use.
+    """
+    second = helpers.make_image(size=0x10000, fill=0xBB) if second is None else second
+    at = (blocks + 1) * 2048
+    bq = bytearray(pack_bigquick_with_fields(img, blocks=blocks))
+    struct.pack_into(">I", bq, 0x24, len(second))  # entry 1, +0x04: the second segment's size
+    for i in range(2, 64):
+        bq[i * 32 : (i + 1) * 32] = struct.pack(">8I", *([0xDEADBEEF] * 8))
+    out = bytes(bq[:0x800]) + b"\x08" + zlib.compress(img, 6)
+    assert len(out) <= at, "blocks too small: the main stream runs past the second segment"
+    return out + b"\xee" * (at - len(out)) + b"\x08" + zlib.compress(second, 6)
+
+
 def test_the_header_parses_into_named_fields():
     img = helpers.make_image()
     h = appimage.parse_container_header(pack_bigquick_with_fields(img, blocks=0, data_size=0x1234))
@@ -68,12 +89,13 @@ def test_the_two_live_entries_are_the_ones_carrying_the_markers():
     ]
 
 
-def test_the_parsed_stream_offset_is_where_inflate_starts():
-    """The reconciliation, on the shipped layout.
+def test_with_block_zero_the_parsed_offset_coincides_with_inflate():
+    """Only a header that says block 0 puts the two offsets on top of each other.
 
-    `blocks` 0 puts the data at `0x800`, which holds the `0x08` compression marker, so the
-    stream begins at `0x801` - the first offset `inflate()` tries. The parse describes the
-    stream; it does not decide where it is.
+    On `blocks` 0 the entry-1 offset is `0x800`, which holds the `0x08` marker, so the parsed
+    stream starts at `0x801` - the first offset `inflate()` tries. A shipped image is *not* this
+    shape (see `test_the_header_points_at_a_second_segment_not_the_main_stream` and
+    `tests/test_firmware_nav.py`); this pins the narrow case, not the shipped one.
     """
     img = helpers.make_image()
     bq = pack_bigquick_with_fields(img, blocks=0)
@@ -85,10 +107,42 @@ def test_the_parsed_stream_offset_is_where_inflate_starts():
 
 
 def test_a_nonzero_block_count_moves_the_data_offset():
-    """Entry 1's first word in 2 KiB blocks: `(blocks + 1) x 2048` *(read, bousqi/SMEG_PLUS)*."""
+    """Entry 1's first word in 2 KiB blocks: `(blocks + 1) x 2048` *(read and now executed)*."""
     h = appimage.parse_container_header(moved_container(helpers.make_image(), blocks=3))
     assert h.data_offset == 4 * 2048
     assert h.stream_offset == 4 * 2048 + 1
+
+
+def test_the_filler_entries_are_not_segments():
+    """Entries 2..63 are eight `0xdeadbeef` words on a shipped image, not sixty-two segments.
+
+    They are not zero, which is what "blank" used to mean here, so a parse that only asked
+    `any(self.words)` reported 62 segments that are not in the file.
+    """
+    h = appimage.parse_container_header(shipped_layout(helpers.make_image()))
+    assert [(e.index, e.first_word) for e in h.entries] == [(0, 0x00010004), (1, 511)]
+
+
+def test_the_header_points_at_a_second_segment_not_the_main_stream():
+    """What the shipped images settled: entry 1's offset is not where `inflate()` looks.
+
+    `blocks` is non-zero on every shipped image, so `data_offset` is a *second* segment's `0x08`
+    marker and `stream_offset` a second zlib stream, while the main image's stream stays at
+    `0x801`. The two numbers are different, which is exactly what the old "they coincide on the
+    shipped layout" docstring got wrong.
+    """
+    img = helpers.make_image()
+    second = helpers.make_image(size=0x10000, fill=0xBB)
+    blob = shipped_layout(img, blocks=511, second=second)
+    h = appimage.parse_container_header(blob)
+    start, out = appimage.inflate(blob)
+
+    assert (h.blocks, h.data_offset, h.stream_offset) == (511, 0x100000, 0x100001)
+    assert blob[h.data_offset] == 0x08
+    assert (start, out) == (0x801, img)
+    assert h.data_offset != start
+    assert zlib.decompress(blob[h.stream_offset :]) == second
+    assert h.entries[1].inflated_size == len(second)
 
 
 def test_inflate_still_only_handles_the_shipped_layout():

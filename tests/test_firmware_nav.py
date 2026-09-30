@@ -15,6 +15,7 @@ import json
 import os
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 import pytest
@@ -307,3 +308,71 @@ def test_next_position_is_always_one_whatever_is_queued(image):
 def test_next_position_with_nothing_schedulable_changes_nothing(image):
     r3, pos, _ = change_to_next(image, [(0xFF, 2)], 7)
     assert (r3 & 0xFFFFFFFF, pos) == (0xFFFFFFFF, 7)
+
+
+# -------------------------------------------------- the container header (tools/appimage.py)
+
+CONTAINER_MAGIC = b"\x00\x01\x00\x04"
+
+
+@pytest.fixture(scope="module")
+def container():
+    """The raw `f_BigQuick.bin`, or a skip when the variable points at an inflated image."""
+    raw = Path(os.path.expanduser(os.environ[IMAGE_ENV])).read_bytes()
+    if len(raw) > 0x801 and raw[:4] == CONTAINER_MAGIC and raw[0x800] == 0x08:
+        return raw
+    pytest.skip("%s is an inflated image, not a container" % IMAGE_ENV)
+    return None
+
+
+def test_the_container_header_has_two_used_entries(container):
+    """*(executed)* Entries 0 and 1 are used; 2..63 are `0xdeadbeef` filler, not 62 segments.
+
+    The parse used to call an all-*zero* entry blank, which the shipped header is not, so it
+    reported all 64.
+    """
+    from appimage import parse_container_header
+
+    h = parse_container_header(container)
+    assert h.magic_ok
+    assert [e.index for e in h.entries] == [0, 1]
+    assert all(e.marker == 0xDEADBEEF for e in h.entries)
+    assert not any(e.is_unused for e in h.entries)
+
+
+def test_the_container_sizes_are_the_sizes_it_carries(container):
+    """*(executed)* `+0x04` is the inflated size exactly; `+0x14` is the stored span, not it."""
+    from appimage import inflate, parse_container_header
+
+    h = parse_container_header(container)
+    start, img = inflate(container)
+
+    assert h.inflated_size == len(img)
+    assert 0 < h.data_size < h.inflated_size
+    d = zlib.decompressobj()
+    d.decompress(container[start:])
+    compressed = len(container) - start - len(d.unused_data)
+    assert h.data_size == 1 + compressed + 2  # the 0x08 marker + the stream + two trailing bytes
+
+
+def test_entry_one_points_at_a_second_segment_not_the_main_stream(container):
+    """*(executed)* The main image's stream is at `0x801`; entry 1's offset is a second segment.
+
+    `blocks` is non-zero on the shipped header, so the third party's "the data's offset" reading
+    is the one claim the real image contradicts: `data_offset` is a second `0x08` marker, and the
+    stream behind it inflates to the second PowerPC image entry 1 declares the size of.
+    """
+    from appimage import inflate, parse_container_header
+
+    h = parse_container_header(container)
+    start, img = inflate(container)
+
+    assert start == 0x801
+    assert h.blocks not in (None, 0)
+    assert h.data_offset == (h.blocks + 1) * 2048
+    assert h.data_offset != start
+    assert container[h.data_offset] == 0x08
+    second = zlib.decompress(container[h.stream_offset :])
+    assert second[:4] == bytes.fromhex("9421ffe0")  # stwu r1,-0x20(r1): code, like the main one
+    assert len(second) == h.entries[1].inflated_size
+    assert second != img

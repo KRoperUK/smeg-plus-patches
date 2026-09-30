@@ -38,26 +38,33 @@ input *setting*, not to a signal (see [The AUX signal path](AUX_SIGNAL.md)).
 Every patch here edits `<module>/AppBin/f_BigQuick.bin`:
 
 ```
-0x0000..0x0800    header (version, sizes, segment descriptors, 0xdeadbeef markers)
+0x0000..0x0800    header: 64 x 32-byte entries, of which only 0 and 1 are used
 0x0800            0x08 (compression marker)
-0x0801..          a zlib stream
+0x0801..          a zlib stream                          -> the application image
+0xEE pad to the 2 KiB block the header names
+(blocks+1)*2048   0x08 + a second zlib stream             -> a second PowerPC image
 ```
 
-Inflating the stream yields the application image (about 32 MB for `AUDIO_BT`, about 40 MB for
-`NAV`), a raw PowerPC image loaded at `0x01000000`. It is not encrypted. The header holds the
-inflated size at offset `0x04` and no compressed size. The symbol map `SPYSTORE` copies off the
+Inflating the first stream yields the application image (about 32 MB for `AUDIO_BT`, about 40 MB
+for `NAV`), a raw PowerPC image loaded at `0x01000000`. It is not encrypted. The header carries
+the **inflated size at `+0x04`** of entry 0 and, at `+0x14`, the **stored span** of that
+segment — its `0x08` marker, the compressed bytes and two trailing bytes — which is the closest
+thing to a compressed size the format has. The symbol map `SPYSTORE` copies off the
 unit (`abs_symbols_base.txt.gz`) lines up exactly with the inflated image — every function
 symbol lands on a PowerPC prologue (`stwu r1,-N(r1) ; mflr r0`) — which is what makes
 symbol-level patching possible. `tools/unpack.py` inflates it; `patch_smeg.py` re-packs it and
 walks the checksum cascade (`f_BigQuick.bin` → `.inf` → `smeg.inf` → `<module>_ctrl.bin` →
 `ctrl.bin`, see [Boot and update chain](FLASH_CHAIN.md)).
 
-An external teardown reads the `0x800` header more finely — as **32-byte entries**, of which
-the first is the constant `0x00010004` and the second is the data's offset **in 2 KiB
-blocks** (file offset = `(blocks + 1) × 2048`); a size at `+0x04`, a data size at `+0x14`,
-and `0xdeadbeef` at `+0x1C`. *(read, bousqi/SMEG_PLUS. It agrees with our own reading of the
-inflated size at `0x04` and the `0xdeadbeef` markers, but the entry structure is not
-confirmed here; see [Sources and prior art](REFERENCES.md).)*
+The header is a table of **32-byte entries**: entry 0's first word is the constant `0x00010004`,
+and a later entry's first word is its segment's offset **in 2 KiB blocks** (file offset =
+`(blocks + 1) × 2048`), with `+0x04` its inflated size, `+0x14` its stored span and `0xdeadbeef`
+at `+0x1C`. *(Read from bousqi/SMEG_PLUS's `smeg_reverse.txt`, then **executed** against the NAV,
+`AUDIO_BT` and `AUDIO_BT_256` images — `tests/test_firmware_nav.py`.)* Two things the real
+images settled against the original description: **`blocks` is not 0**, so a later entry points
+at a **second segment** — a second `0x08` marker and zlib stream — rather than at the
+application's own stream at `0x801`; and the entries past the first two are **eight `0xdeadbeef`
+words**, unused slots rather than segments. See [Sources and prior art](REFERENCES.md).
 
 ## Addresses are per firmware version, not only per build
 
@@ -599,12 +606,14 @@ sink *(executed)*. On its own it produces no output, because the sink is the no-
 The caller passes a format string in `r3` and up to six arguments in `r4`–`r9`, which is
 exactly VxWorks `logMsg(fmt, a1…a6)`.
 
-**`logMsg` is at `0x00484a94`.** `BSP/SMEG_PLUS_512/vxWorks.bin` is a raw PowerPC image that
-begins with a function prologue at offset 0 and carries a **VxWorks symbol table**: 20-byte
-entries holding a pointer to the name and then the address. Read at a load base of
-`0x00200000` the table is self-consistent, and the base is confirmed independently — the
-application's own call into the kernel at `0x0058c248`, the one `IsAUXSRCAvailable()` makes on
-its failure path, is named `tickGet` by that table at exactly that address.
+**`logMsg` is at `0x00484a94`**, and that is now read off the symbol table rather than inferred.
+*(executed, `tests/test_firmware_bsp.py`)* `BSP/SMEG_PLUS_512/vxWorks.bin` is a raw PowerPC image
+that begins with a function prologue at offset 0 and carries a **VxWorks symbol table** at file
+offset `0x622024` (address `0x00822024`): 13 854 entries of 20 bytes holding a pointer to the
+name and then the address. Read at a load base of `0x00200000` the table's name pointers resolve,
+and it names both addresses this page uses: `0x00484a94` is `logMsg`, and the application's own
+call into the kernel at `0x0058c248` — the one `IsAUXSRCAvailable()` makes on its failure path —
+is `tickGet`. See [the kernel symbol table](FLASH_CHAIN.md#the-bsp-image-has-a-symbol-table-as-well).
 
 | build | sink | original | patched |
 |---|---|---|---|
