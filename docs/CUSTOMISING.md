@@ -112,13 +112,17 @@ four 800×480 images each. **These are not the boot splash**; the boot artwork i
 area a USB package cannot reach. What reads these is the skin system — `BigHarm3` is labelled
 *ESSENTIEL (DS)*, which is why `ds.pkg` exists at all.
 
-## Strings — 16 language tables
+## Strings — 14 language tables { #strings }
 
 `boardfs/GUI_STYLE/GUIS_RESSOURCES/gui_texts/gui_text_strings_<LANG>.xml.bin`
 
-`GB FR GE IT SP DU PO PL RU CZ CR BR HO TU` and more. **Not XML despite the name** — a binary
-string table with an id/length/offset directory and NUL-separated data. Decoding it is what
-would allow renaming UI labels, e.g. calling the `AUX` tile "CarPlay".
+`BR CR CZ DU FR GB GE HO IT PL PO RU SP TU` — 14 files ship, of the 16 languages
+`gui_languages.xml` lists (`SC` and `US`, the two Chinese entries, are absent). **Not XML
+despite the name**: a 16-byte header, a 12-byte `(id, offset, length)` record per string, then
+the strings as **UTF-16BE with no terminator** — a byte count bounds each one, not a NUL. The
+format is decoded and `tools/guistrings.py` round-trips it byte-for-byte, which is what allows
+overriding a UI label, e.g. calling the `AUX` tile "CarPlay". See
+[GUI string tables](GUI_STRINGS.md) for the layout, the edit loop and the worked package rebuild.
 
 ## Theme and layout — the XML
 
@@ -159,7 +163,7 @@ cheatcodes: `SPYSTORE`, `SPYTAKE`, `SYSPMON`, `REBOOT`, `BTINFO`, `TUNERINFO`, `
 | Radio station logos | **low** | plain PNG, 597 of them, no format work |
 | Fonts | **low technically**, licensing caveat | plain TTF; `GillSansPSA` is a commercial face |
 | Browser portal art, iPod logos | **low** | plain PNG/BMP |
-| String tables | **medium** | binary format has to be decoded first |
+| String tables | **medium** | format decoded and round-tripped, but no label has been flashed and which id a given tile shows is unproven |
 | `gui_*.xml` | **medium** | plausibly inert, as the skin comes from HARMONY |
 | Marque `.pkg` | **unknown** | decodable and rebuildable, but what reads them is unidentified |
 

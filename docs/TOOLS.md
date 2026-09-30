@@ -437,6 +437,7 @@ options:
 | [`ringtones.py`](#ringtones) | Ring tone / wait tone tool for SMEG+ — inspect, convert and stage custom audio. |
 | [`assets.py`](#assets) | The customisable assets in a SMEG+ media partition, with human-readable names. |
 | [`splash.py`](#splash) | Brand logo images for SMEG+ — inspect and replace the `Data_base/graphics/logo/*.pkg` bundles. |
+| [`guistrings.py`](#guistrings) | Decode and rebuild the GUI string tables (`gui_text_strings_<LANG>.xml.bin`). |
 | [`patch_studio.py`](#patch-studio) | Ringtone Studio — a Qt front-end for SMEG+ ring tones and firmware patches. |
 | [`dbschema.py`](#dbschema) | Dump the schema of the SQLite databases a SMEG+ unit keeps its state in. |
 
@@ -582,6 +583,67 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   --tree TREE           an extracted media partition (contains Data_base/graphics/logo/)
+```
+
+### guistrings
+
+`tools/guistrings.py`: Decode and rebuild the GUI string tables (`gui_text_strings_<LANG>.xml.bin`).
+
+```text
+usage: guistrings.py [-h] {info,dump,probe,build,patch,diff} ...
+
+Decode and rebuild the GUI string tables (`gui_text_strings_<LANG>.xml.bin`).
+
+The unit shows its user-visible wording from one binary file per language, in the media
+partition at `Data_base/boardfs/GUI_STYLE/GUIS_RESSOURCES/gui_texts/`. Despite the name they
+are **not XML**:
+
+    0x00  u32  total file size
+    0x04  u32  record count
+    0x08  u32  offset of the first string (always 0x10 + 12 * count)
+    0x0c  u32  zero
+    0x10  n * 12-byte records:  u32 id, u32 offset (absolute), u32 length (bytes)
+    ...   the string blob: UTF-16BE code units, concatenated, no terminator, no BOM
+
+The directory is sorted by id, the offsets are contiguous, and the blob ends exactly at EOF —
+so there is **no internal checksum**; the file's CRC32 lives in `system_ctrl.bin` with the
+rest of the partition cascade. A decode followed by a rebuild reproduces the input
+byte-for-byte; `probe` checks that on the file you hand it. See docs/GUI_STRINGS.md.
+
+The reader is `C_GUI_StringsManager::LoadStringsFileBinary` and the vendor's own writer is
+`C_GUI_StringsManager::buildBinaryStringsFile`, both in the application image; the layout
+above is what the disassembly of the two agrees on.
+
+usage:
+    # the id -> string table, and what the header says
+    python3 tools/guistrings.py dump  media/Data_base/.../gui_texts/gui_text_strings_GB.xml.bin
+    python3 tools/guistrings.py info  media/.../gui_text_strings_GB.xml.bin
+
+    # what the format allows, and proof that a rebuild is byte-identical
+    python3 tools/guistrings.py probe media/.../gui_text_strings_GB.xml.bin
+    python3 tools/guistrings.py probe media/.../gui_texts --lang GB
+
+    # edit a label: dump to JSON, change the value, rebuild (the JSON is the overrides file)
+    python3 tools/guistrings.py dump  GB.xml.bin --json > edits.json
+    python3 tools/guistrings.py build --base GB.xml.bin --out GB_new.xml.bin --overrides edits.json
+
+    # or in place, keeping every slot the same length so no offset moves
+    python3 tools/guistrings.py patch GB.xml.bin --in-place --set 4=CarPlay --pad
+
+    # compare two languages
+    python3 tools/guistrings.py diff GB.xml.bin FR.xml.bin
+
+positional arguments:
+  {info,dump,probe,build,patch,diff}
+    info                the header fields and a structural check
+    dump                print the id -> string table
+    probe               show the format's own limits and prove the round trip
+    build               rebuild a file from a base plus edits (no edits = a byte-for-byte copy)
+    patch               apply edits to a file (build with the base filled in)
+    diff                compare two string tables
+
+options:
+  -h, --help            show this help message and exit
 ```
 
 ### patch-studio
