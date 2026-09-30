@@ -58,6 +58,12 @@ import sys
 import zlib
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from smeglib import roundup  # noqa: E402
+
 DIR = "Data_base/graphics/logo"
 MARQUES = ("peugeot", "citroen", "ds")
 HEADER = 0x800
@@ -68,10 +74,6 @@ BMP_SIZE = IMAGE_W * IMAGE_H * 3 + 54
 
 def die(msg):
     sys.exit("splash: " + msg)
-
-
-def _roundup(n, m):
-    return (n + m - 1) // m * m
 
 
 class Chunk:
@@ -163,7 +165,7 @@ def flip_bmp(bmp):
     bpp = struct.unpack_from("<H", bmp, 28)[0]
     if (w, h, bpp, dib) != (IMAGE_W, IMAGE_H, 24, 40):
         die("expected 800x480 24-bit, uncompressed; got %dx%d %dbpp dib=%d" % (w, h, bpp, dib))
-    stride = _roundup(w * 3, 4)
+    stride = roundup(w * 3, 4)
     body = bmp[pixoff:]
     rows = [body[i * stride : (i + 1) * stride] for i in range(len(body) // stride)]
     return bmp[:pixoff] + b"".join(reversed(rows))

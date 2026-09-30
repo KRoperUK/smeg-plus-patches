@@ -41,7 +41,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from smeglib import crc32, read_inf_field, s32, stale_trailers  # noqa: E402
+from smeglib import crc32, read_inf_field, sqlite_inf, stale_trailers  # noqa: E402
 
 MODULES = ("NAV", "AUDIO_BT", "AUDIO_BT_256")
 
@@ -255,10 +255,6 @@ def check_settings(rep, keys, area="settings"):
             area,
             "ring tone list starts: %s" % ", ".join(repr(names[i]) for i in sorted(names)[:3]),
         )
-
-
-def sqlite_inf(data):
-    return ("CRC32: %d\r\n" % s32(crc32(data))).encode()
 
 
 def check_user_data(rep, pkg, module):

@@ -54,6 +54,12 @@ import sys
 import zlib
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from smeglib import crc32  # noqa: E402
+
 BLOCK = 256
 RECORD_SIZE = 212
 HEADER_MSG = b"19/09/2017"
@@ -198,7 +204,7 @@ def check_of(rec, data):
     if ctype == 1:
         return struct.pack(">I", len(data)), "size"
     if ctype == 2:
-        return struct.pack(">I", zlib.crc32(data) & 0xFFFFFFFF), "crc32"
+        return struct.pack(">I", crc32(data)), "crc32"
     if ctype == 3:
         length, offset = struct.unpack_from(">II", rec, 64)
         return data[offset : offset + length], "spot %d@%d" % (length, offset)

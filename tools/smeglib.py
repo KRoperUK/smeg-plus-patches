@@ -230,3 +230,15 @@ def rewrite_inf_field(blob, field, value):
     if n != 1:
         raise SystemExit("no '%s:' field found in the .inf" % field)
     return out
+
+
+def sqlite_inf(data):
+    """The `<database>.sqlite.inf` sidecar that belongs beside a live SQLite file.
+
+    One signed-decimal `CRC32:` line with a CRLF — the same form `rewrite_inf_field` writes
+    and `read_inf_field` reads. The updater's `ManageSQLiteFiles` generates one beside every
+    live database, so a shipped `USER_DATA` payload has to carry a matching sidecar or the
+    payload is incomplete. `build_package` writes it and `preflight` checks it against the
+    database, and both must agree byte for byte, which is why it lives here rather than twice.
+    """
+    return ("CRC32: %d\r\n" % s32(crc32(data))).encode()
