@@ -347,4 +347,8 @@ shipped alongside the Renesas MCU firmware.
 ## Where the databases are documented
 
 The SQLite inventory (29 databases, grouped by purpose) is in
-[Architecture](ARCHITECTURE.md#6-data-sqlite-databases).
+[Architecture](ARCHITECTURE.md#6-data-sqlite-databases). The databases as a layer — the seed
+copy in this partition versus the live copy on `USER_DATA`, the shared `UP_Keys` table, and
+which tables of each database are established — are in
+[Databases and settings](DATABASES.md). Inspect your own with
+[`tools/dbschema.py`](TOOLS.md#dbschema).

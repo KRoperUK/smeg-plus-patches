@@ -48,6 +48,7 @@ nav = [
     { "Customising" = "CUSTOMISING.md" },
     { "Cheatcodes & spy" = "CHEATCODES.md" },
     { "Cartography" = "CARTOGRAPHY.md" },
+    { "Databases & settings" = "DATABASES.md" },
   ] },
   { "Tooling & workflow" = [
     { "Running the tools" = "RUNNING.md" },

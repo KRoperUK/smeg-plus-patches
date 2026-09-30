@@ -212,6 +212,10 @@ The `up_*` stores share one generic typed key/value table
 (`UP_Keys(Section,Name,Type,Idx,IntValue,FloatValue,StringValue,BlobValue,…)`) — this is
 where per-source audio defaults such as `AUX / Vol_aux` live.
 
+The databases as a set — the seed/live split, the gzip'd live stores, `UP_Keys` and the full
+inventory of tables established — are in [Databases and settings](DATABASES.md); inspect your
+own with [`tools/dbschema.py`](TOOLS.md#dbschema).
+
 ## 7. Resources
 
 GUI text/sounds, the ring tone and wait tone WAVs, cheatcode libraries, symbol maps,
