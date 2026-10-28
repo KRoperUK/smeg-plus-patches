@@ -45,10 +45,10 @@ not a crc32 or adler32 fragment of the chunk). It is preserved as-is, and a rebu
 has not yet been flashed, so treat a replaced splash as unverified until a unit accepts it.
 
 usage:
-    python3 tools/splash.py list --tree media/
-    python3 tools/splash.py extract --tree media/ -o splash/ --marque peugeot
-    python3 tools/splash.py replace --tree media/ --marque peugeot --image mine.png
-    python3 tools/splash.py selftest --tree media/
+    python3 tools/splash.py --tree media/ list
+    python3 tools/splash.py --tree media/ extract -o splash/ --marque peugeot
+    python3 tools/splash.py --tree media/ replace --marque peugeot --image mine.png
+    python3 tools/splash.py --tree media/ selftest
 """
 
 import argparse
@@ -258,6 +258,8 @@ def main():
             pass
         for i, c in enumerate(pk.chunks):
             tag = pk.records[i][1] if i < len(pk.records) else "image%d.bmp" % i
+            if not tag or "/" in tag or "\\" in tag or ".." in tag:
+                die("refusing unsafe image name %r in %s" % (tag, path))
             dest = os.path.join(args.out, tag)
             Path(dest).write_bytes(pk.image(i))
             print("  %-24s -> %s (%d bytes)" % (tag, dest, len(pk.image(i))))
