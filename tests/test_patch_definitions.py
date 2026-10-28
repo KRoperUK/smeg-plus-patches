@@ -185,3 +185,52 @@ def test_build_schemes_do_not_combine_patches_that_fight(path):
             sorted(pair),
             why,
         )
+
+
+def _load_scheme(path):
+    with open(path) as fh:
+        return json.load(fh)
+
+
+def _patch_path(name):
+    filename = name if name.endswith(".json") else name + ".json"
+    return os.path.join(ROOT, "patches", filename)
+
+
+def _status_state(spec):
+    status = spec.get("status", {})
+    return status.get("state") if isinstance(status, dict) else status
+
+
+@pytest.mark.parametrize("path", BUILD_FILES, ids=lambda p: os.path.basename(p))
+def test_build_schemes_reference_only_shipped_patch_sets(path):
+    scheme = _load_scheme(path)
+    for name in scheme.get("app", {}).get("patches", []):
+        assert os.path.isfile(_patch_path(name)), (
+            "%s applies %r, which is not a shipped patch set" % (os.path.basename(path), name)
+        )
+
+
+@pytest.mark.parametrize("path", BUILD_FILES, ids=lambda p: os.path.basename(p))
+def test_build_schemes_use_sets_with_a_variant_for_their_module(path):
+    scheme = _load_scheme(path)
+    module = scheme.get("module", "NAV")
+    for name in scheme.get("app", {}).get("patches", []):
+        with open(_patch_path(name)) as fh:
+            spec = json.load(fh)
+        assert module in spec["variants"], (
+            "%s is a %s build applying %r, which has no %s variant"
+            % (os.path.basename(path), module, name, module)
+        )
+
+
+@pytest.mark.parametrize("path", BUILD_FILES, ids=lambda p: os.path.basename(p))
+def test_build_schemes_do_not_apply_falsified_patch_sets(path):
+    scheme = _load_scheme(path)
+    for name in scheme.get("app", {}).get("patches", []):
+        with open(_patch_path(name)) as fh:
+            spec = json.load(fh)
+        assert _status_state(spec) != "falsified", "%s applies %r, whose status is falsified" % (
+            os.path.basename(path),
+            name,
+        )

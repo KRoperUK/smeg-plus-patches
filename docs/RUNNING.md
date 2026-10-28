@@ -199,11 +199,11 @@ Ready-made **schemes** live in `builds/`. Each is a whole build, so a scheme is 
 | scheme | what it does | needs |
 |---|---|---|
 | `builds/aux-boot.json` | **boot to AUX, the recommended build**: `aux-autoswitch` + `aux-boot-default` + `aux-boot-restore`, nothing else. Confirmed on hardware | nothing |
-| `builds/aux-boot-restore.json` | the same three sets plus a custom ring tone and `spy-dump-userdata-partition` | a tone file |
+| `builds/aux-boot-restore.json` | the same three sets plus a custom ring tone | a tone file |
 | `builds/aux-only.json` | AUX always available (`aux-autoswitch`) and nothing else — the closest thing to stock that still enables AUX | nothing |
-| `builds/alien-piano-riff.json` | replaces the stock `Alien` ring tone and renames it `Piano` (the name patch is not yet confirmed on a car), plus `spy-dump-userdata-partition` | a tone file |
+| `builds/alien-piano-riff.json` | replaces the stock `Alien` ring tone and renames it `Piano` (the name patch is not yet confirmed on a car) | a tone file |
 | `builds/aux-signal-switch.json` | candidate switch-on-signal build: boot to AUX plus `aux-sticky` and `aux-signal-switch` (`aux-always-available` + `aux-sticky` carry `aux-autoswitch`'s edits). Emulated only, never flashed | a tone file |
-| `builds/combined-aux-boot-ringtone.json` | `aux-autoswitch` + `aux-boot-default` + `spy-dump-userdata-partition` + a ring tone. `aux-boot-default` without `aux-boot-restore` does **not** boot to AUX; use `aux-boot.json` | a tone file |
+| `builds/combined-aux-boot-ringtone.json` | `aux-autoswitch` + `aux-boot-default` + a ring tone. `aux-boot-default` without `aux-boot-restore` does **not** boot to AUX; use `aux-boot.json` | a tone file |
 | `builds/diagnostic.json` | trace mask only — **emits nothing** on its own | nothing |
 | `builds/diagnostic-logging.json` | the diagnostic build that should emit (mask + sink); where the output surfaces is issue #94. Not for driving | nothing |
 | `builds/force-aux-default.json` | a `USER_DATA` `Last_Source` payload. It **does not change the boot source** ([Verification](VERIFICATION.md)); overwrites the car's own settings | a tone file, and the `/USER_DATA` acknowledgement |
