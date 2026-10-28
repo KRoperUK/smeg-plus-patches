@@ -238,3 +238,45 @@ def test_inf_crc_is_written_signed_like_every_stock_inf():
     inf = b"CRC32: 1\r\nSIZE: 10\r\n"
     assert b"CRC32: -268435456\r\n" in patch_media.patch_inf(inf, 0xF0000000, {})
     assert b"CRC32: 305419896\r\n" in patch_media.patch_inf(inf, 0x12345678, {})
+
+
+def test_extract_refuses_members_escaping_the_tree(tmp_path):
+    pkg = tmp_path / "SMEG_PLUS_UPG"
+    pkg.mkdir()
+    mh.build_media_package(str(pkg), extra_files={"../evil.txt": b"evil", "/abs.txt": b"abs"})
+    tree = tmp_path / "tree"
+    r = run(
+        os.path.join(TOOLS, "patch_media.py"),
+        "extract",
+        "--package",
+        str(pkg),
+        "--module",
+        "NAV",
+        "--tree",
+        str(tree),
+    )
+    assert r.returncode != 0
+    assert "outside" in (r.stdout + r.stderr)
+    assert not (tmp_path / "evil.txt").exists()
+    assert not (tmp_path / "abs.txt").exists()
+
+
+def test_backup_refuses_members_escaping_the_tree(tmp_path):
+    pkg = tmp_path / "SMEG_PLUS_UPG"
+    pkg.mkdir()
+    mh.build_media_package(str(pkg), extra_files={"../evil.txt": b"evil"})
+    r = run(
+        os.path.join(TOOLS, "patch_media.py"),
+        "extract",
+        "--package",
+        str(pkg),
+        "--module",
+        "NAV",
+        "--tree",
+        str(tmp_path / "tree"),
+        "--backup",
+        str(tmp_path / "backup"),
+    )
+    assert r.returncode != 0
+    assert "outside" in (r.stdout + r.stderr)
+    assert not (tmp_path / "backup" / "evil.txt").exists()
