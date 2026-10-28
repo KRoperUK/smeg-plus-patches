@@ -23,3 +23,17 @@ uv run tools/build_package.py --manifest builds/aux-boot.json
 ```
 
 Every tool, with its `--help`, is on the generated [docs/TOOLS.md](docs/TOOLS.md) page.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles map 1:1 to label strings. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
