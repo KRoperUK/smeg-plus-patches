@@ -1,14 +1,9 @@
 {
-  "_comment": "Replace the stock 'Alien' ringtone (ring1) with a custom tone and name it 'Piano'. media.tones converts the source audio into ring_tones/ring1RT.wav in the unit's format (16-bit mono 44.1 kHz for ring/status tones; wait tones are 16-bit stereo 8 kHz and are not touched). media.names rewrites the 'Alien' literal in the application image, where the ringtone menu reads its names (ring1 has room for 7 characters; see docs/RINGTONES.md) - not yet confirmed on the car. seal:true is required: the media partition is covered by contract.dat, so an unsealed package is refused with string 2099. GUI_VER is set to 32.01; System Information shows GUI_VER on its GUI item's page by the code, but that has not been confirmed on the car, so judge the flash by the ring tone. Also carries spy-dump-userdata-partition, which does not work (no USER_DATA tree reached the stick after SPYSTORE, observed 2026-09-28) and costs the calibration *.log and *regen* files in the spy dump. No USER_DATA payload, so paired phones, destinations and presets are untouched. Edit the paths before reusing.",
+  "_comment": "Replace the stock 'Alien' ringtone (ring1) with a custom tone and name it 'Piano'. media.tones converts the source audio into ring_tones/ring1RT.wav in the unit's format (16-bit mono 44.1 kHz for ring/status tones; wait tones are 16-bit stereo 8 kHz and are not touched). media.names rewrites the 'Alien' literal in the application image, where the ringtone menu reads its names (ring1 has room for 7 characters; see docs/RINGTONES.md) - not yet confirmed on the car. seal:true is required: the media partition is covered by contract.dat, so an unsealed package is refused with string 2099. GUI_VER is set to 32.01; System Information shows GUI_VER on its GUI item's page by the code, but that has not been confirmed on the car, so judge the flash by the ring tone. No USER_DATA payload, so paired phones, destinations and presets are untouched. Edit the paths before reusing.",
   "_source": "The audio to convert. Source: the YouTube video 2c_uKUWivJ8, 'iPhone Piano Riff Alarm/Ringtone (Apple Sound) - Sound Effect for Editing' by Sound Library, 3.16 s, fetched with `uvx yt-dlp -x --audio-format mp3` to this path. It arrives 48 kHz stereo; ringtones.py convert resamples to the unit's 16-bit mono 44.1 kHz. gain_db matters: the stock tones sit at about -1 dBFS, so an unconverted music track sounds noticeably quiet next to them.",
   "package": "~/Downloads/SMEG_PLUS_UPG",
   "out": "~/Downloads/stick_ringtone/SMEG_PLUS_UPG",
   "module": "NAV",
-  "app": {
-    "patches": [
-      "spy-dump-userdata-partition"
-    ]
-  },
   "media": {
     "tones": {
       "ring_tones/ring1RT.wav": {

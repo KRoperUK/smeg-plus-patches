@@ -7,8 +7,7 @@
   ],
   "_pairs": {
     "aux-autoswitch": "supersedes aux-always-available, which patches only IsAUXSRCAvailable; this also carries the inert GetMediaDevice nop",
-    "aux-boot-default": "forces the restore target to AUX; does not boot to AUX without aux-boot-restore",
-    "spy-dump-userdata-partition": "carried here, but it does not work: no USER_DATA tree reached the stick after SPYSTORE (observed 2026-09-28); the dump loses the calibration *.log and *regen* files"
+    "aux-boot-default": "forces the restore target to AUX; does not boot to AUX without aux-boot-restore"
   },
   "_beacon": "gui_ver 32.01 (shown on System Information's GUI item page by the code; not confirmed on the car), and ring1 renamed to Piano (an application-image patch)",
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
@@ -18,8 +17,7 @@
   "app": {
     "patches": [
       "aux-autoswitch",
-      "aux-boot-default",
-      "spy-dump-userdata-partition"
+      "aux-boot-default"
     ]
   },
   "media": {
