@@ -8,8 +8,7 @@
     "aux-sticky": "the inert second half of aux-autoswitch, plus: turning the AUX setting off no longer releases AUX",
     "aux-boot-default": "forces the restored Last_Source to 7",
     "aux-boot-restore": "AUX's requests sent without PrOnly, and the restored priority forced to 20",
-    "aux-signal-switch": "the AUX handler reads the signal instead of the setting, and the media dispatch sends the signal event (0xcc) to it",
-    "spy-dump-userdata-partition": "carried here, but it does not work: no USER_DATA tree reached the stick after SPYSTORE (observed 2026-09-28); the dump loses the calibration *.log and *regen* files"
+    "aux-signal-switch": "the AUX handler reads the signal instead of the setting, and the media dispatch sends the signal event (0xcc) to it"
   },
   "_settings": "No USER_DATA payload, so the car's own settings - paired phones, destinations, presets - are NOT touched.",
   "package": "~/Downloads/SMEG_PLUS_UPG",
@@ -21,8 +20,7 @@
       "aux-sticky",
       "aux-boot-default",
       "aux-boot-restore",
-      "aux-signal-switch",
-      "spy-dump-userdata-partition"
+      "aux-signal-switch"
     ]
   },
   "media": {
