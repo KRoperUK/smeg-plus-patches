@@ -130,7 +130,8 @@ card matches what you are trying to do.
     address map and flash partitions, and where the AUX and speaker pins are.
 
     [:lucide-arrow-right: Hardware](HARDWARE.md) ·
-    [Kernel & partitions](PLATFORM.md)
+    [Kernel & partitions](PLATFORM.md) ·
+    [Workshop guide](WORKSHOP.md)
 
 -   :lucide-book-open:{ .lg .middle } __Reference__
 

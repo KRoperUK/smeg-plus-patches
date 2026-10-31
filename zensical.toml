@@ -25,6 +25,7 @@ nav = [
   { "The unit" = [
     { "Hardware" = "HARDWARE.md" },
     { "Kernel & partitions" = "PLATFORM.md" },
+    { "Workshop guide" = "WORKSHOP.md" },
   ] },
   { "Flash chain & protections" = [
     { "Boot & update chain" = "FLASH_CHAIN.md" },

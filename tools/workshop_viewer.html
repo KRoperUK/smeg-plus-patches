@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workshop manual viewer (local)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; }
+  #side { width: 340px; min-width: 260px; border-right: 1px solid #ccc; display: flex; flex-direction: column; }
+  #side .pad { padding: 8px; border-bottom: 1px solid #eee; }
+  #side input[type=text] { width: 100%; box-sizing: border-box; padding: 6px; }
+  #list { overflow-y: auto; flex: 1; font-size: 13px; }
+  #list div { padding: 4px 8px; cursor: pointer; }
+  #list div:hover { background: #eef; }
+  #list div.rel { font-weight: bold; }
+  #main { flex: 1; display: flex; flex-direction: column; }
+  #bar { padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 13px; }
+  iframe { flex: 1; border: 0; width: 100%; }
+  .hint { color: #666; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="side">
+  <div class="pad">
+    <div><label>Manual PDF (stays on this machine): <input type="file" id="pdf" accept="application/pdf"></label></div>
+    <div style="margin-top:6px"><label>Index JSON: <input type="file" id="idx" accept="application/json"></label></div>
+    <div class="hint">Build it with <code>uv run tools/workshop_build.py --src YOUR.pdf</code>. See docs/WORKSHOP.md.</div>
+  </div>
+  <div class="pad"><input type="text" id="q" placeholder="Filter 597 procedures, or full-text search…"></div>
+  <div id="list"><div class="hint">Load the index to list procedures.</div></div>
+</div>
+<div id="main">
+  <div id="bar">No PDF loaded. <span class="hint">Diagrams render as the original pages — pick the PDF and an index entry.</span></div>
+  <iframe id="view" title="manual page"></iframe>
+</div>
+<script>
+let procs = [], pageText = {}, pdfURL = null;
+const list = document.getElementById('list'),
+      bar = document.getElementById('bar'),
+      view = document.getElementById('view'),
+      q = document.getElementById('q');
+
+const REL = ["C5FG01A6P0","C5FG01A7P0","C5FG01A8P0","C5FG01AEP0","C5FG01APP0",
+  "C5FS011AP0","C5FS011BP0","C5FG01AAP0","C5FG01ADP0","D5AG014WP0",
+  "D5AG014RP0","D5AG014UP0","D6AG013HP0","D6AM03P0","D6AM01HFP0",
+  "D6AM01CNP0","D6AM01CPP0"];
+const isRel = t => REL.some(c => t.includes(c));
+
+document.getElementById('pdf').addEventListener('change', e => {
+  if (pdfURL) URL.revokeObjectURL(pdfURL);
+  pdfURL = URL.createObjectURL(e.target.files[0]);
+  bar.textContent = 'PDF loaded. Pick a procedure to jump to its page.';
+});
+document.getElementById('idx').addEventListener('change', e => {
+  const r = new FileReader();
+  r.onload = () => {
+    const j = JSON.parse(r.result);
+    procs = j.procedures || []; pageText = j.page_text || {};
+    bar.textContent = `${procs.length} procedures, ${j.pages} pages, text on ${j.ocr_pages} pages (${j.source}).`;
+    render('');
+  };
+  r.readAsText(e.target.files[0]);
+});
+function openPage(p, title) {
+  if (!pdfURL) { bar.textContent = 'Pick the PDF first.'; return; }
+  view.src = pdfURL + '#page=' + p;
+  bar.textContent = 'p' + p + ' — ' + title;
+}
+function render(f) {
+  f = f.toLowerCase();
+  list.innerHTML = '';
+  let shown = 0;
+  for (const p of procs) {
+    const hitTitle = !f || p.title.toLowerCase().includes(f);
+    let hitText = false, snippet = '';
+    if (!hitTitle && f && pageText[String(p.page)]) {
+      const t = pageText[String(p.page)];
+      const i = t.toLowerCase().indexOf(f);
+      if (i >= 0) { hitText = true; snippet = ' …' + t.slice(Math.max(0,i-60), i+120).replace(/\s+/g,' ') + '…'; }
+    }
+    if (!hitTitle && !hitText) continue;
+    const d = document.createElement('div');
+    if (isRel(p.title)) d.className = 'rel';
+    d.textContent = 'p' + p.page + ' — ' + p.title + snippet;
+    d.onclick = () => openPage(p.page, p.title);
+    list.appendChild(d);
+    if (++shown > 400) break;
+  }
+  if (!shown) list.innerHTML = '<div class="hint">No matches.</div>';
+}
+q.addEventListener('input', () => render(q.value));
+</script>
+</body>
+</html>

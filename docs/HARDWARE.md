@@ -183,5 +183,7 @@ in [The AUX signal path](AUX_SIGNAL.md).
   and reflashing the front-panel MCU are all outside anything Magneti Marelli would endorse.
 - Board variant is not read by any tool here. If a behaviour depends on which board a car
   has, this page is where to start looking, but the project has not correlated the two.
+- For the car around the unit — trim removal, the multifunction screen, harnesses —
+  see the [Workshop guide](WORKSHOP.md).
 - The spec is from **2013** and describes the `SMEG+ Integrated` (`5.x`) generation. The
   successor (`6.x`) is a different board.

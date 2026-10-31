@@ -724,6 +724,7 @@ options:
 | tool | what it does |
 |---|---|
 | [`spy_read.py`](#spy-read) | Read a SPY capture in one command: the boot timeline, the AUX events, any buffer. |
+| [`workshop_build.py`](#workshop-build) | Build a local searchable index for your own workshop manual copy. |
 
 ### spy-read
 
@@ -768,6 +769,28 @@ options:
   --aux        AUX-related lines only
   --show ID    print one buffer
   --no-redact  show personal data (VIN, addresses)
+```
+
+### workshop-build
+
+`tools/workshop_build.py`: Build a local searchable index for your own workshop manual copy.
+
+```text
+usage: workshop_build.py [-h] --src SRC [--out OUT] [--relevant-only]
+                         [--print-table]
+
+Build a local searchable index for your own workshop manual copy.
+
+options:
+  -h, --help       show this help message and exit
+  --src SRC        your manual PDF (OCR'd copy)
+  --out OUT        where to write the index (default:
+                   .workshop_cache/workshop_index.json)
+  --relevant-only  index text for SMEG-relevant pages only (fast); default is
+                   all pages
+  --print-table    print the SMEG-relevant procedures and their pages
+
+The manual stays yours: only .workshop_cache/workshop_index.json (gitignored) is written, never anything committed.
 ```
 
 ## Firmware analysis
