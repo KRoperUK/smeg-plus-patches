@@ -396,3 +396,14 @@ def test_shipped_build_manifests_carry_no_home_directory_paths():
     for path in sorted(pathlib.Path(ROOT, "builds").glob("*.json")):
         text = path.read_text()
         assert "/Users/" not in text and "C:\\\\Users" not in text, path.name
+
+
+def test_ship_user_data_refuses_names_escaping_the_tree(tmp_path):
+    bp = load_build()
+    out = tmp_path / "out"
+    tree = tmp_path / "tree"
+    (tree / "Data_base" / "sqlite").mkdir(parents=True)
+    with pytest.raises(SystemExit) as exc:
+        bp.ship_user_data(str(out), str(tree), ["../../evil.sqlite"], "NAV")
+    assert "unsafe" in str(exc.value.code)
+    assert not out.exists(), "refuse before any work, not halfway through"

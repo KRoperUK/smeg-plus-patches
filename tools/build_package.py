@@ -244,6 +244,14 @@ def ship_user_data(out, tree, names, module):
     """
     sources = []
     for name in names:
+        if (
+            not name
+            or name in (".", "..")
+            or "/" in name
+            or "\\" in name
+            or name != os.path.basename(name)
+        ):
+            sys.exit("refusing unsafe sqlite name %r: must be a plain file name" % name)
         src = os.path.join(tree, "Data_base", "sqlite", name)
         if not os.path.exists(src):
             sys.exit("no %s in the extracted media tree" % name)

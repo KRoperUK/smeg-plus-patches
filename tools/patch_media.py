@@ -74,6 +74,19 @@ MODULES = ("AUDIO_BT", "AUDIO_BT_256", "NAV")
 TONE_DIRS = ("ring_tones", "wait_tones")
 
 
+def _safe_dest(base, name):
+    """Join an archive member name onto base, refusing anything that escapes.
+
+    Tar member names are attacker-controlled bytes; `os.path.join` alone lets
+    `..` and absolute names write outside the tree.
+    """
+    base_abs = os.path.abspath(base)
+    dest = os.path.normpath(os.path.join(base_abs, name))
+    if dest == base_abs or not dest.startswith(base_abs + os.sep):
+        die("refusing archive name outside %s: %r" % (base, name))
+    return dest
+
+
 # --------------------------------------------------------------------- partition
 
 
@@ -225,10 +238,14 @@ def cmd_list(args):
 
 def cmd_extract(args):
     part = Partition(args.package, args.module)
+    for name in part.data:
+        _safe_dest(args.tree, name)
+        if args.backup:
+            _safe_dest(os.path.join(args.backup, part.module), name)
     os.makedirs(args.tree, exist_ok=True)
     n = 0
     for name, data in part.data.items():
-        dest = os.path.join(args.tree, name)
+        dest = _safe_dest(args.tree, name)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(dest, "wb") as fh:
             fh.write(data)
@@ -241,7 +258,7 @@ def cmd_extract(args):
             prefix = name.split("/")[0]
             if args.backup_tones_only and prefix not in TONE_DIRS:
                 continue
-            dest = os.path.join(args.backup, part.module, name)
+            dest = _safe_dest(os.path.join(args.backup, part.module), name)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             with open(dest, "wb") as fh:
                 fh.write(data)
