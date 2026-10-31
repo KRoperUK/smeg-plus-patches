@@ -725,6 +725,7 @@ options:
 |---|---|
 | [`spy_read.py`](#spy-read) | Read a SPY capture in one command: the boot timeline, the AUX events, any buffer. |
 | [`workshop_build.py`](#workshop-build) | Build a local searchable index for your own workshop manual copy. |
+| [`workshop_convert.py`](#workshop-convert) | Convert your own workshop manual copy into local Zensical pages. |
 
 ### spy-read
 
@@ -791,6 +792,38 @@ options:
   --print-table    print the SMEG-relevant procedures and their pages
 
 The manual stays yours: only .workshop_cache/workshop_index.json (gitignored) is written, never anything committed.
+```
+
+### workshop-convert
+
+`tools/workshop_convert.py`: Convert your own workshop manual copy into local Zensical pages.
+
+```text
+usage: workshop_convert.py [-h] --src SRC [--out-dir OUT_DIR] [--dpi DPI]
+                           [--no-images] [--all]
+
+Convert your own workshop manual copy into local Zensical pages.
+
+Reads the manual's bookmarks and OCR text and writes one page per relevant
+procedure -- text plus rendered page images (diagrams preserved) -- under
+`docs/workshop_generated/`, with a car-map landing page. Preview with
+`zensical serve`; the output is gitignored and must never be committed.
+
+Rendering needs `pdftoppm` (poppler) or Ghostscript `gs` on PATH; without
+either the pages are text-only (`--no-images` forces that).
+
+usage:
+    python3 tools/workshop_convert.py --src YOUR_manual_ocr.pdf
+    python3 tools/workshop_convert.py --src YOUR_manual_ocr.pdf --no-images
+    python3 tools/workshop_convert.py --src YOUR_manual_ocr.pdf --all --dpi 120
+
+options:
+  -h, --help         show this help message and exit
+  --src SRC          your manual PDF (OCR'd copy)
+  --out-dir OUT_DIR  generated site dir (default: docs/workshop_generated)
+  --dpi DPI          render resolution (default: 150)
+  --no-images        skip page rendering
+  --all              convert all 597 procedures, not just SMEG-relevant ones
 ```
 
 ## Firmware analysis

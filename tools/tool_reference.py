@@ -52,7 +52,7 @@ GROUPS = {
         "patch_studio",
         "dbschema",
     ],
-    "Diagnostics": ["spy_read", "workshop_build"],
+    "Diagnostics": ["spy_read", "workshop_build", "workshop_convert"],
     "Firmware analysis": [
         "unpack",
         "fingerprint",
