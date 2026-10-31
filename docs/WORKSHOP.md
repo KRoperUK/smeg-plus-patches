@@ -169,6 +169,19 @@ rendered diagrams, browsable locally — run `tools/workshop_convert.py --help`
 (see [Tool reference](TOOLS.md#workshop-convert)). That output is also
 local-only and never committed.
 
+For an arbitrary job — a clutch replacement, say — find its codes, then
+convert just those:
+
+```sh
+uv run tools/workshop_build.py --src /path/to/manual.pdf --relevant-only --print-table
+uv run tools/workshop_convert.py --src /path/to/manual.pdf \
+  --codes B1BG01BJP0,B2BB010NP0,B2BG011FP0,B2BI010EP0
+```
+
+That set is the clutch cluster: engine-gearbox assembly removal (for access),
+clutch tightening torques, the clutch mechanism itself, and bleeding the
+hydraulic control.
+
 ## What this page does not do
 
 - It does not replace the manual's safety sequences — those live in your copy.

@@ -95,7 +95,7 @@ def code_of(title):
     return m.group(1) if m else None
 
 
-def convert(src, out_dir, dpi=150, no_images=False, all_procs=False):
+def convert(src, out_dir, dpi=150, no_images=False, all_procs=False, codes=""):
     from pypdf import PdfReader
 
     reader = PdfReader(str(src))
@@ -105,6 +105,11 @@ def convert(src, out_dir, dpi=150, no_images=False, all_procs=False):
 
     if all_procs:
         wanted = flat
+    elif codes:
+        codes = [c.strip() for c in codes.split(",") if c.strip()]
+        wanted = [x for x in flat if any(c in x[1] for c in codes)]
+        if not wanted:
+            raise SystemExit("no procedures match: %s" % ", ".join(codes))
     else:
         wanted = [x for x in flat if any(c in x[1] for c in RELEVANT_CODES)]
 
@@ -178,6 +183,8 @@ def main(argv=None):
     ap.add_argument("--no-images", action="store_true", help="skip page rendering")
     ap.add_argument("--all", action="store_true",
                     help="convert all 597 procedures, not just SMEG-relevant ones")
+    ap.add_argument("--codes", default="",
+                    help="comma-separated procedure codes to convert (e.g. B2BG011FP0,B2BB010NP0); overrides the relevant set")
     args = ap.parse_args(argv)
     need_pypdf()
     src = Path(args.src).expanduser()
@@ -189,7 +196,7 @@ def main(argv=None):
     except ValueError:
         raise SystemExit("--out-dir must be inside the repository")
     pages = convert(src, out_dir, dpi=args.dpi, no_images=args.no_images,
-                    all_procs=args.all)
+                    all_procs=args.all, codes=args.codes)
     print("wrote %d procedure pages -> %s" % (len(pages), out_dir))
     print("preview: zensical serve  (then open /workshop_generated/)")
     print("reminder: %s is gitignored — never commit it" % out_dir.name)

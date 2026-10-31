@@ -824,6 +824,8 @@ options:
   --dpi DPI          render resolution (default: 150)
   --no-images        skip page rendering
   --all              convert all 597 procedures, not just SMEG-relevant ones
+  --codes CODES      comma-separated procedure codes to convert (e.g.
+                     B2BG011FP0,B2BB010NP0); overrides the relevant set
 ```
 
 ## Firmware analysis
