@@ -13,11 +13,11 @@ docs instead of bringing its structure into them.
 A native Zensical section that feels like part of smeg.kroper.uk:
 
 - a **car map**: a schematic 208 with selectable parts (screen, panel, console,
-  dashboard, vents, switches, radio, speakers, aerial, harness, SMEG ECU);
-  selecting a part jumps to its procedure entry;
-- **one entry per SMEG-relevant procedure**: code, short name, PDF page(s),
-  body variant notes (3-door / 5-door / RHD), and links into the SMEG+ docs
-  that explain *why* the part matters (AUX lines, connectors, flashing);
+  dashboard, vents, switches, radio, speakers, aerial, harness, SMEG ECU,
+  engine/gearbox/clutch); selecting a part jumps to its procedure entry;
+- **one entry per relevant procedure**: code, short name, PDF page(s), body
+  variant notes (3-door / 5-door / RHD), and links into the SMEG+ docs that
+  explain *why* the part matters (AUX lines, connectors, flashing);
 - **full search** via the site's built-in search (procedure codes, part names).
 
 ## Hard boundary (legal)
@@ -102,7 +102,7 @@ Output: `docs/workshop_generated/` (gitignored).
 - `zensical build --strict` passes with the section (no hard links from
   committed pages to generated paths).
 - `tool_reference --check`, docs-nav orphan test (now recursive, excluding
-  `workshop_generated/`), header and no-PII checks pass.
+  `workshop_generated/` and `agents/`), header and no-PII checks pass.
 - Every hotspot resolves to its section (slug rule verified against existing
   pages, e.g. `#how-the-boot-source-is-actually-chosen`), across all four
   subpages.
