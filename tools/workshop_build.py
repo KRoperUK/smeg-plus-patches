@@ -9,7 +9,6 @@
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -37,6 +36,46 @@ RELEVANT_CODES = [
     "D6AM01CNP0",  # configure instrument panel
     "D6AM01CPP0",  # configure matrix display
 ]
+
+# Public grouping, mirrored in docs/workshop-guide/. Codes not listed here land
+# under "Other procedures". Order matters: the first matching group wins.
+PROCEDURE_GROUPS = {
+    "Body & fascia": [
+        "C5FG01A6P0",  # multifunction screen
+        "C5FG01A7P0",  # instrument panel
+        "C5FG01AEP0",  # dashboard
+        "C5FG01APP0",  # dashboard, right-hand drive
+        "C5FS011AP0",  # stripping-assembling dashboard
+        "C5FS011BP0",  # stripping-assembling dashboard, right-hand drive
+        "C5FG01A8P0",  # centre console
+        "C5FG01AAP0",  # fascia panel air vents
+        "C5FG01ADP0",  # fascia panel switches
+    ],
+    "Electrical & audio": [
+        "D5AG014WP0",  # radio unit
+        "D5AG014RP0",  # speakers
+        "D5AG014UP0",  # radio aerial
+        "D6AG013HP0",  # passenger-compartment harness
+        "D6AM03P0",  # electrical harness repair
+        "D6AM01HFP0",  # configure SMEG data-communication ECU
+        "D6AM01CNP0",  # configure instrument panel
+        "D6AM01CPP0",  # configure matrix display
+    ],
+    "Mechanical": [
+        "B1BG01BJP0",  # engine-gearbox assembly
+        "B2BB010NP0",  # clutch tightening torques
+        "B2BG011FP0",  # clutch mechanism
+        "B2BI010EP0",  # bleed hydraulic clutch control
+    ],
+}
+
+
+def group_for(title):
+    """Return the public group for a bookmark title."""
+    for group, codes in PROCEDURE_GROUPS.items():
+        if any(code in title for code in codes):
+            return group
+    return "Other procedures"
 
 
 def need_pypdf():
@@ -71,13 +110,12 @@ def flatten(outline, reader, level=0):
             i += 1
 
 
-def build(src, relevant_only=False):
+def build(src, relevant_only=False, index_text=True):
     from pypdf import PdfReader
 
     reader = PdfReader(str(src))
     procedures = [
-        {"level": lv, "title": t, "page": p}
-        for lv, t, p in flatten(reader.outline, reader)
+        {"level": lv, "title": t, "page": p} for lv, t, p in flatten(reader.outline, reader)
     ]
     pages = len(reader.pages)
     if relevant_only:
@@ -92,13 +130,14 @@ def build(src, relevant_only=False):
     else:
         wanted = set(range(1, pages + 1))
     page_text = {}
-    for p in sorted(wanted):
-        try:
-            text = (reader.pages[p - 1].extract_text() or "").strip()
-        except Exception:
-            text = ""
-        if text:
-            page_text[str(p)] = text[:4000]
+    if index_text:
+        for p in sorted(wanted):
+            try:
+                text = (reader.pages[p - 1].extract_text() or "").strip()
+            except Exception:
+                text = ""
+            if text:
+                page_text[str(p)] = text[:4000]
     relevant = [pr for pr in procedures if any(c in pr["title"] for c in RELEVANT_CODES)]
     return {
         "source": Path(src).name,
@@ -131,13 +170,27 @@ def main(argv=None):
     ap.add_argument(
         "--print-table",
         action="store_true",
-        help="print the SMEG-relevant procedures and their pages",
+        help="print the SMEG-relevant procedures and their pages, grouped",
+    )
+    ap.add_argument(
+        "--grep",
+        default="",
+        metavar="TEXT",
+        help="print every bookmark whose title contains TEXT (case-insensitive) "
+        "and write nothing; use it to find codes for any job",
     )
     args = ap.parse_args(argv)
     need_pypdf()
     src = Path(args.src).expanduser()
     if not src.is_file():
         raise SystemExit("no such file: %s" % src)
+    if args.grep:
+        needle = args.grep.lower()
+        index = build(src, relevant_only=True, index_text=False)
+        for proc in index["procedures"]:
+            if needle in proc["title"].lower():
+                print("p%-5s %s" % (proc["page"], proc["title"]))
+        return 0
     index = build(src, relevant_only=args.relevant_only)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -147,10 +200,17 @@ def main(argv=None):
         % (len(index["procedures"]), index["pages"], index["ocr_pages"], out)
     )
     if not index["ocr_pages"]:
-        print("warning: no extractable text — run the OCR step first (docs/WORKSHOP.md)")
+        print(
+            "warning: no extractable text — run the OCR step first (docs/workshop-guide/local.md)"
+        )
     if args.print_table:
-        for proc in index["relevant"]:
-            print("p%-5s %s" % (proc["page"], proc["title"]))
+        for group in list(PROCEDURE_GROUPS) + ["Other procedures"]:
+            rows = [p for p in index["relevant"] if group_for(p["title"]) == group]
+            if not rows:
+                continue
+            print("\n%s" % group)
+            for proc in rows:
+                print("  p%-5s %s" % (proc["page"], proc["title"]))
     return 0
 
 

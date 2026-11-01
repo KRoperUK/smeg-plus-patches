@@ -184,6 +184,6 @@ in [The AUX signal path](AUX_SIGNAL.md).
 - Board variant is not read by any tool here. If a behaviour depends on which board a car
   has, this page is where to start looking, but the project has not correlated the two.
 - For the car around the unit — trim removal, the multifunction screen, harnesses —
-  see the [Workshop guide](WORKSHOP.md).
+  see the [Workshop guide](workshop-guide/index.md).
 - The spec is from **2013** and describes the `SMEG+ Integrated` (`5.x`) generation. The
   successor (`6.x`) is a different board.

@@ -36,35 +36,46 @@ never attached to issues, never published.
 
 ## Information architecture
 
-Committed (public, in nav under The unit):
+Committed (public, in nav under The unit → Workshop guide):
 
-- `docs/WORKSHOP.md` — the whole section on one page:
-  1. car map (inline SVG, hotspot per part, links to in-page anchors);
-  2. one `### <CODE> - <Part>` section per relevant procedure, each with:
-     code, manual page(s), variants, what it gives access to, and
-     `Related:` links into HARDWARE / AUX_SIGNAL / FLASHING etc.;
-  3. the bring-your-own-manual + OCR + local-converter instructions.
+- `docs/workshop-guide/index.md` — landing page:
+  1. what the section is and the legal boundary;
+  2. a **start-here** table (electrical, body, mechanical, local workflow);
+  3. the car map (inline SVG, hotspot per part, links to subpage anchors);
+  4. how to read an entry (code, pages, variant, why it matters).
+- `docs/workshop-guide/body.md` — body and fascia procedures, one
+  `## <CODE> - <Part>` section each, plus a summary table.
+- `docs/workshop-guide/electrical.md` — radio, speakers, aerial, harness, SMEG
+  ECU and configuration entries.
+- `docs/workshop-guide/mechanical.md` — the clutch cluster and engine-gearbox
+  assembly, with a `## Clutch replacement` work order.
+- `docs/workshop-guide/local.md` — OCR, index, converter, preview and
+  troubleshooting, for the user's own copy.
+
+Every procedure section gives code, manual page(s), variants, what it gives
+access to, and `Related:` links into HARDWARE / AUX_SIGNAL / FLASHING etc.
 
 Local-only (gitignored, built by the converter):
 
 - `docs/workshop_generated/index.md` + `<code>.md` pages + `img/` renders —
   full procedure text and diagrams for personal use. Not in `zensical.toml`
-  nav (the nav test requires every `docs/*.md` to be listed, and generated
-  files must not leak into the committed nav). Preview with
+  nav (the nav test walks `docs/**/*.md` but excludes this directory, because
+  generated files must not leak into the committed nav). Preview with
   `zensical serve`; navigate to `/workshop_generated/`.
 
 ## Car map spec
 
 - Original schematic line art (side view, committed as `tools/workshop_car.svg`
-  template, inlined by hand into WORKSHOP.md): body, glasshouse, two wheels,
-  roof aerial. No traced vendor figures.
-- One hotspot per part: indigo marker + label, wrapped in
-  `<a href="#<section-slug>">`. Slugs follow the site's existing header-slug
-  rule (lowercase, spaces to hyphens, punctuation stripped), e.g. header
-  `### C5FG01A6P0 - Multifunction screen` is linked as
+  template, inlined by hand into `docs/workshop-guide/index.md`): body,
+  glasshouse, two wheels, roof aerial. No traced vendor figures.
+- One hotspot per part: a numbered marker in the category colour (indigo body,
+  teal electrical, orange mechanical), wrapped in
+  `<a href="<subpage>/#<section-slug>">`. Slugs follow the site's existing
+  header-slug rule (lowercase, spaces to hyphens, punctuation stripped), e.g.
+  header `## C5FG01A6P0 - Multifunction screen` is linked as
   `#c5fg01a6p0-multifunction-screen`.
 - Markers for co-located parts (screen / panel / ECU all behind the fascia)
-  are offset with leader dots so each stays tappable.
+  are offset so each stays tappable.
 
 ## Converter spec (`tools/workshop_convert.py`)
 
@@ -74,19 +85,27 @@ Output: `docs/workshop_generated/` (gitignored).
 - Reads the 597 bookmarks (code + title + 1-based page), same flattening as
   `workshop_build.py`.
 - Per relevant procedure: writes `<code>.md` with the procedure's page range
-  (up to the next bookmark), OCR text per page as fenced content, and page
-  renders (`img/<code>-p<page>.png`, Ghostscript/`pdftoppm` at 150 dpi,
-  `--no-images` to skip).
+  (up to the next bookmark, capped by `--max-pages`, default 15), OCR text per
+  page as fenced content, and page renders (`img/<code>-p<page>.png`,
+  Ghostscript/`pdftoppm` at 150 dpi, `--no-images` to skip). A truncated range
+  says so in the page.
 - Writes a generated landing page reusing the car-map SVG with links rewritten
-  to the generated pages.
+  to the generated pages; markers for procedures not converted in this run fall
+  back to the public entry. Tables are grouped by the same categories as the
+  committed section (`PROCEDURE_GROUPS` in `workshop_build.py`).
+- Runs are additive: existing generated pages stay and are re-listed, so a
+  `--codes` run can extend a default build. `--clean` rebuilds from scratch.
 - Warns when pages carry no text (manual not OCR'd yet).
 
 ## Acceptance
 
-- `zensical build --strict` passes with the new page (no hard links from
+- `zensical build --strict` passes with the section (no hard links from
   committed pages to generated paths).
-- `tool_reference --check`, docs-nav orphan test, header and no-PII checks pass.
+- `tool_reference --check`, docs-nav orphan test (now recursive, excluding
+  `workshop_generated/`), header and no-PII checks pass.
 - Every hotspot resolves to its section (slug rule verified against existing
-  pages, e.g. `#how-the-boot-source-is-actually-chosen`).
+  pages, e.g. `#how-the-boot-source-is-actually-chosen`), across all four
+  subpages.
 - Converter proven on 2+ procedures locally (text + images), output confirmed
-  gitignored and uncommitted.
+  gitignored and uncommitted; incremental and `--clean` runs both produce a
+  complete grouped landing page.

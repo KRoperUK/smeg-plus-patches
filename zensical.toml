@@ -25,7 +25,13 @@ nav = [
   { "The unit" = [
     { "Hardware" = "HARDWARE.md" },
     { "Kernel & partitions" = "PLATFORM.md" },
-    { "Workshop guide" = "WORKSHOP.md" },
+    { "Workshop guide" = [
+      { "Overview" = "workshop-guide/index.md" },
+      { "Body & fascia" = "workshop-guide/body.md" },
+      { "Electrical & audio" = "workshop-guide/electrical.md" },
+      { "Mechanical" = "workshop-guide/mechanical.md" },
+      { "Reading your copy" = "workshop-guide/local.md" },
+    ] },
   ] },
   { "Flash chain & protections" = [
     { "Boot & update chain" = "FLASH_CHAIN.md" },

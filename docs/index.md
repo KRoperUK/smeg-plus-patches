@@ -131,7 +131,7 @@ card matches what you are trying to do.
 
     [:lucide-arrow-right: Hardware](HARDWARE.md) ·
     [Kernel & partitions](PLATFORM.md) ·
-    [Workshop guide](WORKSHOP.md)
+    [Workshop guide](workshop-guide/index.md)
 
 -   :lucide-book-open:{ .lg .middle } __Reference__
 
