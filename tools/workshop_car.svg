@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 340" width="100%" role="img" aria-label="Schematic Peugeot 208 side view with twelve numbered, selectable parts">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 340" width="100%" role="group" aria-labelledby="car-map-title">
+  <title id="car-map-title">Schematic Peugeot 208 side view with twelve numbered parts; each number links to its procedure</title>
   <!-- Original schematic line art for the workshop guide. No vendor figure is traced.
        Keep in sync with the copy inlined in docs/workshop-guide/index.md;
        tools/workshop_convert.py reads this file to build the local landing page.

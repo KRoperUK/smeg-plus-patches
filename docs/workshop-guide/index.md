@@ -35,7 +35,8 @@ your own copy there. It carries metadata only — no steps, no diagrams.
 Click a number to jump to the procedure entry. **Indigo** is body and fascia,
 **teal** is electrical and audio, **orange** is mechanical.
 
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 340" width="100%" role="img" aria-label="Schematic Peugeot 208 side view with twelve numbered, selectable parts">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 340" width="100%" role="group" aria-labelledby="car-map-title">
+  <title id="car-map-title">Schematic Peugeot 208 side view with twelve numbered parts; each number links to its procedure</title>
   <g fill="none" stroke="#666" stroke-width="2" stroke-linejoin="round">
     <line x1="20" y1="292" x2="640" y2="292" stroke-width="1.5"/>
     <path d="M60,252 L72,208 Q76,192 96,190 L152,184 L212,126 Q220,116 234,116
