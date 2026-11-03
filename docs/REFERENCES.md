@@ -63,6 +63,13 @@ this project has since re-derived a claim itself, the destination page says so.
 - **`prototux/PSA-CANbus-reverse-engineering`** — the PSA CAN bus itself. Out of scope for
   patching the head unit's software, but it is where the vehicle-side messages are documented.
 
+## Companion software
+
+- **MyPeugeot 1.55.1** (`com.psa.mym.mypeugeot`, APKPure XAPK) — the phone-side companion
+  app. Its archive-level inventory plus a JADX decompiler pass (send-to-nav chain,
+  O2X/dongle eligibility, transport notes) are recorded here; no behaviour beyond the
+  decompiled bodies is claimed. See [The MyPeugeot companion app](MYPEUGEOT_APP.md).
+
 ## Tools referenced
 
 - **`pyghidra-mcp`** — the Ghidra-over-MCP bridge used for [the toolchain](TOOLCHAIN.md).

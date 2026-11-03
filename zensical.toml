@@ -61,6 +61,7 @@ nav = [
   { "Project" = [
     { "Releasing" = "RELEASING.md" },
     { "Sources & prior art" = "REFERENCES.md" },
+    { "Companion app (MyPeugeot)" = "MYPEUGEOT_APP.md" },
   ] },
   { "Glossary" = "GLOSSARY.md" },
 ]
