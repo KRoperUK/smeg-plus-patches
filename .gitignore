@@ -22,6 +22,17 @@ app.elf
 !tools/*.py
 !tools/*.sh
 
+# the repo's own workshop-viewer cache (built from your own manual copy)
+.workshop_cache/
+docs/workshop_generated/
+
+# user-supplied workshop manual (copyrighted, never commit)
+*peugeot*.pdf
+*PEUGEOT*.pdf
+*CHAPTERS_FIXED.pdf
+*OCR_searchable.pdf
+workshop_index.json
+
 # python
 __pycache__/
 *.pyc

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 340" width="100%" role="group" aria-labelledby="car-map-title">
+  <title id="car-map-title">Schematic Peugeot 208 side view with twelve numbered parts; each number links to its procedure</title>
+  <!-- Original schematic line art for the workshop guide. No vendor figure is traced.
+       Keep in sync with the copy inlined in docs/workshop-guide/index.md;
+       tools/workshop_convert.py reads this file to build the local landing page.
+       Marker colours: indigo = body & fascia, teal = electrical & audio,
+       orange = mechanical. -->
+  <g fill="none" stroke="#666" stroke-width="2" stroke-linejoin="round">
+    <line x1="20" y1="292" x2="640" y2="292" stroke-width="1.5"/>
+    <path d="M60,252 L72,208 Q76,192 96,190 L152,184 L212,126 Q220,116 234,116
+             L358,116 Q370,116 378,126 L428,180 L518,192 Q558,197 574,216
+             L588,236 Q593,250 578,252 L540,252 A38,38 0 0 0 462,252
+             L208,252 A38,38 0 0 0 132,252 Z"/>
+    <path d="M228,128 L356,128 L400,172 L208,172 Z" stroke-width="1.5"/>
+    <line x1="292" y1="128" x2="292" y2="172" stroke-width="1.5"/>
+    <line x1="318" y1="196" x2="340" y2="196" stroke-width="2.5"/>
+    <line x1="228" y1="196" x2="250" y2="196" stroke-width="2.5"/>
+    <circle cx="500" cy="262" r="30"/>
+    <circle cx="500" cy="262" r="12" stroke-width="1.5"/>
+    <circle cx="170" cy="262" r="30"/>
+    <circle cx="170" cy="262" r="12" stroke-width="1.5"/>
+    <path d="M246,116 L252,98 L258,116 Z" stroke-width="1.5"/>
+  </g>
+  <g font-family="system-ui,sans-serif" font-size="11" font-weight="bold" text-anchor="middle">
+    <!-- body & fascia -->
+    <a href="body/#c5fg01a6p0-multifunction-screen"><title>Multifunction screen</title><circle cx="270" cy="165" r="11" fill="#3f51b5"/><text x="270" y="169" fill="#fff">1</text></a>
+    <a href="body/#c5fg01a7p0-instrument-panel"><title>Instrument panel</title><circle cx="230" cy="172" r="11" fill="#3f51b5"/><text x="230" y="176" fill="#fff">2</text></a>
+    <a href="body/#c5fg01aep0-dashboard"><title>Dashboard</title><circle cx="310" cy="140" r="11" fill="#3f51b5"/><text x="310" y="144" fill="#fff">3</text></a>
+    <a href="body/#c5fg01a8p0-centre-console"><title>Centre console</title><circle cx="288" cy="234" r="11" fill="#3f51b5"/><text x="288" y="238" fill="#fff">4</text></a>
+    <a href="body/#c5fg01aap0-fascia-air-vents"><title>Fascia air vents</title><circle cx="345" cy="152" r="11" fill="#3f51b5"/><text x="345" y="156" fill="#fff">5</text></a>
+    <a href="body/#c5fg01adp0-fascia-panel-switches"><title>Fascia panel switches</title><circle cx="355" cy="185" r="11" fill="#3f51b5"/><text x="355" y="189" fill="#fff">6</text></a>
+    <!-- electrical & audio -->
+    <a href="electrical/#d5ag014wp0-radio-unit"><title>Radio unit</title><circle cx="275" cy="202" r="11" fill="#00796b"/><text x="275" y="206" fill="#fff">7</text></a>
+    <a href="electrical/#d5ag014rp0-speakers"><title>Speakers</title><circle cx="360" cy="238" r="11" fill="#00796b"/><text x="360" y="242" fill="#fff">8</text></a>
+    <a href="electrical/#d5ag014up0-radio-aerial"><title>Radio aerial</title><circle cx="252" cy="82" r="11" fill="#00796b"/><text x="252" y="86" fill="#fff">9</text><line x1="252" y1="93" x2="252" y2="99" stroke="#00796b" stroke-width="1.5"/></a>
+    <a href="electrical/#d6ag013hp0-cabin-harness"><title>Cabin harness</title><circle cx="315" cy="245" r="11" fill="#00796b"/><text x="315" y="249" fill="#fff">10</text></a>
+    <a href="electrical/#d6am01hfp0-smeg-ecu"><title>SMEG ECU</title><circle cx="320" cy="200" r="11" fill="#00796b"/><text x="320" y="204" fill="#fff">11</text></a>
+    <!-- mechanical -->
+    <a href="mechanical/#clutch-replacement"><title>Engine, gearbox and clutch</title><circle cx="110" cy="205" r="11" fill="#f57c00"/><text x="110" y="209" fill="#fff">12</text></a>
+  </g>
+</svg>
