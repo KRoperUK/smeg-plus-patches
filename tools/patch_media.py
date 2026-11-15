@@ -328,6 +328,12 @@ def cmd_apply(args):
     base = args.ctrl_from or args.package
     mod_ctrl_path = os.path.join(base, "%s_ctrl.bin" % args.module)
     root_ctrl_path = os.path.join(base, "ctrl.bin")
+    for _p in (mod_ctrl_path, root_ctrl_path):
+        if not os.path.exists(_p):
+            die(
+                "no manifests at %s — omit --ctrl-from unless an application "
+                "patch step already wrote them there" % base
+            )
     old_mod = Path(mod_ctrl_path).read_bytes()
     old_root = Path(root_ctrl_path).read_bytes()
 

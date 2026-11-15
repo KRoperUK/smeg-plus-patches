@@ -102,6 +102,45 @@ MODULES = ("NAV", "AUDIO_BT", "AUDIO_BT_256")
 DEFAULT_BACKUP = os.path.expanduser("~/smeg-test/backups")
 ACCENT = "#0A84FF"
 
+
+def merge_patch_specs(paths):
+    """Merge patch definitions into one spec, keeping the firmware guard.
+
+    Every variant field the CLI's `patch_smeg.py` gates on is carried through —
+    including `firmware`, which the merge used to drop, letting a GUI build apply
+    on expect-bytes alone against a wrong-version image. Merges that mix firmware
+    versions are refused instead.
+    """
+    merged = {"name": "studio-merge", "variants": {}}
+    seen = {}
+    for path in paths:
+        spec = json.loads(Path(path).read_text())
+        for variant, vdef in spec["variants"].items():
+            dst = merged["variants"].setdefault(
+                variant, {k: vdef[k] for k in ("app_image", "inf", "smeg_inf", "ctrl", "base")}
+            )
+            if "firmware" in vdef:
+                if "firmware" in dst:
+                    if dst["firmware"] != vdef["firmware"]:
+                        raise SystemExit(
+                            "firmware mismatch at %s: %s vs %s"
+                            % (variant, dst["firmware"], vdef["firmware"])
+                        )
+                else:
+                    dst["firmware"] = vdef["firmware"]
+            dst.setdefault("patches", [])
+            for p in vdef["patches"]:
+                key = (variant, p["addr"])
+                if key in seen and seen[key] != p["bytes"]:
+                    raise SystemExit(
+                        "conflict at %s %s: %s vs %s" % (variant, p["addr"], seen[key], p["bytes"])
+                    )
+                if key not in seen:
+                    seen[key] = p["bytes"]
+                    dst["patches"].append(p)
+    return merged
+
+
 # Two palettes, so the app can follow the desktop instead of guessing. Qt reports the system
 # scheme through styleHints().colorScheme(), which means there is no preference of our own to
 # store and the app matches whatever else on the machine is doing.
@@ -986,26 +1025,7 @@ class Studio(QWidget):
         chosen = [p for p, cb in self.patch_boxes.items() if cb.isChecked()]
         if not chosen:
             return None
-        merged = {"name": "studio-merge", "variants": {}}
-        seen = {}
-        for path in chosen:
-            spec = json.loads(Path(path).read_text())
-            for variant, vdef in spec["variants"].items():
-                dst = merged["variants"].setdefault(
-                    variant, {k: vdef[k] for k in ("app_image", "inf", "smeg_inf", "ctrl", "base")}
-                )
-                dst.setdefault("patches", [])
-                for p in vdef["patches"]:
-                    key = (variant, p["addr"])
-                    if key in seen and seen[key] != p["bytes"]:
-                        raise SystemExit(
-                            "conflict at %s %s: %s vs %s"
-                            % (variant, p["addr"], seen[key], p["bytes"])
-                        )
-                    if key not in seen:
-                        seen[key] = p["bytes"]
-                        dst["patches"].append(p)
-        return merged
+        return merge_patch_specs(chosen)
 
     def build(self):
         src, out = self.pkg_edit.text().strip(), self.out_edit.text().strip()
@@ -1037,37 +1057,49 @@ class Studio(QWidget):
                         out,
                         "--patches",
                         tmp,
+                        "--copy-package",
                     ],
                     "application patches",
                 )
             )
         tree = self.tree_edit.text().strip()
         if tree:
-            log.append(
-                self._run(
-                    [
-                        sys.executable,
-                        os.path.join(HERE, "patch_media.py"),
-                        "apply",
-                        "--package",
-                        src,
-                        "--module",
-                        self.mod_combo.currentText(),
-                        "--tree",
-                        tree,
-                        "--out",
-                        out,
-                        "--ctrl-from",
-                        out,
-                    ],
-                    "media partition",
-                )
-            )
+            if not spec:
+                # Media-only build: `out/` has no package yet, so copy it first.
+                # Otherwise the media step writes a sparse pile and `--ctrl-from
+                # out` reads manifests that were never copied there.
+                shutil.copytree(src, out, dirs_exist_ok=True)
+            cmd = [
+                sys.executable,
+                os.path.join(HERE, "patch_media.py"),
+                "apply",
+                "--package",
+                out,
+                "--module",
+                self.mod_combo.currentText(),
+                "--tree",
+                tree,
+                "--out",
+                out,
+            ]
+            if spec:
+                # Chaining after patch_smeg: manifests in `out/` already carry
+                # the patched application checks. Without an app spec `out`
+                # may hold no manifests yet, so pass `--ctrl-from` only then.
+                cmd += ["--ctrl-from", out]
+            log.append(self._run(cmd, "media partition"))
         if not log:
             QMessageBox.information(
                 self, "Nothing selected", "Tick a patch definition, or choose a media tree."
             )
             return
+        if spec or tree:
+            log.append(
+                self._run(
+                    [sys.executable, os.path.join(HERE, "patch_contract.py"), "--package", out],
+                    "re-seal contract",
+                )
+            )
         self.plog.setPlainText("\n\n".join(log))
 
     def _run(self, cmd, title):
