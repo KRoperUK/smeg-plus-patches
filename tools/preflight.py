@@ -25,22 +25,24 @@ usage:
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --stock SMEG_PLUS_UPG
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --json
+    python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --patches patches/aux-sticky.json
 """
 
 import argparse
+import glob
 import json
 import os
 import sqlite3
 import subprocess
 import sys
 import tempfile
-import zlib
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from appimage import inflate  # noqa: E402
 from smeglib import crc32, read_inf_field, sqlite_inf, stale_trailers  # noqa: E402
 
 MODULES = ("NAV", "AUDIO_BT", "AUDIO_BT_256")
@@ -59,14 +61,44 @@ AUDIO_SOURCES = {
 }
 
 # Application-image patches this repository knows how to recognise. Addresses are absolute
-# in the image loaded at 0x01000000.
-KNOWN_PATCHES = {
-    "NAV": [
-        (0x02247858, "9421ffa0", "386000014e800020", "IsAUXSRCAvailable -> return true"),
-        (0x02303428, "419e014c", "60000000", "AUX status handler +0x10c -> nop"),
-        (0x010346D0, "38600000", "4970de88", "dummyLogMsg -> b Log_msg (diagnostics)"),
-    ],
-}
+# in the image loaded at 0x01000000. Generated from `patches/*.json` per module, so a
+# correct logsink build — or anything under AUDIO_BT / AUDIO_BT_256 — is recognised
+# instead of reported WARN / missed. Several sets patch the same address with different
+# bytes (e.g. diagnostic-logging vs diagnostic-logsink), so `check_patches` groups by
+# address and an image matching any known variant reads as patched, not unknown.
+PATCH_DIR = os.path.normpath(os.path.join(HERE, os.pardir, "patches"))
+
+
+def load_known_patches(paths):
+    """Build a {module: [(addr, expect_hex, bytes_hex, why), ...]} table from patch files."""
+    table = {}
+    for path in paths:
+        try:
+            spec = json.loads(Path(path).read_text())
+        except (OSError, ValueError):
+            continue
+        for variant, vdef in spec.get("variants", {}).items():
+            for p in vdef.get("patches", []):
+                try:
+                    addr = int(str(p["addr"]), 16)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if not p.get("expect") or not p.get("bytes"):
+                    continue
+                why = p.get("why") or p["addr"]
+                table.setdefault(variant, []).append((addr, p["expect"], p["bytes"], why))
+    for rows in table.values():
+        rows.sort(key=lambda r: (r[0], r[2]))
+    return table
+
+
+def _patch_paths_for(location):
+    if os.path.isdir(location):
+        return sorted(glob.glob(os.path.join(location, "*.json")))
+    return [location]
+
+
+KNOWN_PATCHES = load_known_patches(sorted(glob.glob(os.path.join(PATCH_DIR, "*.json"))))
 
 OK, WARN, BAD, INFO, UNKNOWN = "ok", "warn", "bad", "info", "unknown"
 
@@ -115,10 +147,9 @@ def read_module(pkg, module):
     img, media = None, {}
     app = os.path.join(pkg, module, "AppBin", "f_BigQuick.bin")
     if os.path.exists(app):
-        raw = Path(app).read_bytes()
         try:
-            img = zlib.decompress(raw[0x801:])
-        except zlib.error:
+            img = inflate(Path(app).read_bytes())[1]
+        except SystemExit:
             img = None
     sysbin = os.path.join(pkg, module, "system.bin")
     if os.path.exists(sysbin):
@@ -202,26 +233,38 @@ def check_cascade(rep, pkg, module):
         )
 
 
-def check_patches(rep, img, module):
+def check_patches(rep, img, module, known=None):
     if not img:
         return []
+    table = known if known is not None else KNOWN_PATCHES
     present = []
-    for addr, stock, patched, why in KNOWN_PATCHES.get(module, []):
+    by_addr = {}
+    for addr, stock, patched, why in table.get(module, []):
+        by_addr.setdefault(addr, []).append((stock, patched, why))
+    for addr in sorted(by_addr):
+        variants = by_addr[addr]
         off = addr - 0x01000000
         # each form is compared over its own length: a patch longer than the stock bytes it
         # replaces (`li r3,1; blr` over `stwu`) otherwise makes a stock image "unrecognised"
-        here = img[off : off + len(patched) // 2].hex()
-        if here == patched:
-            present.append(why)
-            rep.add(OK, "application image", "PATCHED  %s" % why)
-        elif img[off : off + len(stock) // 2].hex() == stock:
-            rep.add(INFO, "application image", "stock    %s" % why)
+        here = None
+        for stock, patched, why in variants:
+            here = img[off : off + len(patched) // 2].hex()
+            if here == patched:
+                break
         else:
-            rep.add(
-                WARN,
-                "application image",
-                "unrecognised bytes at %#010x (%s) - not a build this tool knows" % (addr, here),
-            )
+            here = img[off : off + max(len(p) // 2 for _, p, _ in variants)].hex()
+            if any(img[off : off + len(s) // 2].hex() == s for s, _, _ in variants):
+                rep.add(INFO, "application image", "stock    %s" % variants[0][2])
+            else:
+                rep.add(
+                    WARN,
+                    "application image",
+                    "unrecognised bytes at %#010x (%s) - not a build this tool knows"
+                    % (addr, here),
+                )
+            continue
+        present.append(why)
+        rep.add(OK, "application image", "PATCHED  %s" % why)
     return present
 
 
@@ -409,6 +452,12 @@ def main():
     ap.add_argument("--package", required=True)
     ap.add_argument("--module", default=None)
     ap.add_argument("--stock", help="a stock package to compare against (optional)")
+    ap.add_argument(
+        "--patches",
+        default=None,
+        help="a patch definition JSON (or a directory of them) to recognise "
+        "instead of patches/*.json",
+    )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -425,7 +474,8 @@ def main():
     check_firmware(rep, img)
     check_cascade(rep, pkg, module)
     check_trailers(rep, pkg)
-    patches = check_patches(rep, img, module)
+    known = load_known_patches(_patch_paths_for(args.patches)) if args.patches else KNOWN_PATCHES
+    patches = check_patches(rep, img, module, known)
 
     keys = {}
     if "Data_base/sqlite/up_common.sqlite" in media:

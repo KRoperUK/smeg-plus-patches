@@ -51,13 +51,13 @@ import os
 import re
 import struct
 import sys
-import zlib
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from appimage import inflate as _inflate_container  # noqa: E402
 from smeglib import crc32  # noqa: E402
 
 BLOCK = 256
@@ -117,17 +117,11 @@ def oaep_encrypt(msg, k=BLOCK, hlen=20, seed=None):
 
 
 def inflate(path):
-    raw = Path(path).read_bytes()
-    for start in (0x801, 0x800):
-        try:
-            d = zlib.decompressobj()
-            out = d.decompress(raw[start:])
-            out += d.flush()
-        except zlib.error:
-            continue
-        if len(out) > 0x100000:
-            return out
-    raise SystemExit("could not inflate %s" % path)
+    """The inflated image from a container path (the shared reader, plus the path)."""
+    try:
+        return _inflate_container(Path(path).read_bytes())[1]
+    except SystemExit:
+        raise SystemExit("could not inflate %s" % path)
 
 
 def find_keys(app_image):
