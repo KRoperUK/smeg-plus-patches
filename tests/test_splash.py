@@ -49,3 +49,29 @@ def test_extract_refuses_record_names_escaping_the_out_dir(tmp_path):
     assert r.returncode != 0
     assert "unsafe" in (r.stdout + r.stderr)
     assert not escaped.exists()
+
+
+def test_to_bmp_leaves_no_predictable_sibling(tmp_path):
+    """Conversion used a fixed `<base>.splash.bmp` beside the source: a pre-planted
+    symlink was followed with `-y`, and concurrent runs collided (#256)."""
+    import shutil
+
+    sys.path.insert(0, TOOLS)
+    import splash
+
+    if not shutil.which("ffmpeg"):
+        import pytest
+
+        pytest.skip("ffmpeg is required for conversion")
+    # a valid 1x1 24-bit BMP: too small, so it goes through ffmpeg, not passthrough
+    row = b"\x00\x00\x00" + b"\x00"
+    header = struct.pack("<2sIHHI", b"BM", 54 + len(row), 0, 0, 54) + struct.pack(
+        "<IIIHHIIIIII", 40, 1, 1, 1, 24, 0, len(row), 0, 0, 0, 0
+    )
+    src = tmp_path / "logo.png"
+    src.write_bytes(header + row)
+
+    out = splash.to_bmp(str(src))
+
+    assert len(out) == splash.BMP_SIZE
+    assert list(tmp_path.iterdir()) == [src], "no temp file may remain beside the source"

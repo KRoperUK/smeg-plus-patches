@@ -212,8 +212,12 @@ def stale_trailers(root):
 
 
 def read_inf_field(text, field="CRC32"):
-    """Read one numeric field out of an `.inf`, or None when it is absent."""
-    m = re.search((field + r": (-?\d+)").encode(), text)
+    """Read one numeric field out of an `.inf`, or None when it is absent.
+
+    Anchored so `CRC32` does not match inside `BIGQUICK_CRC32` (the exact form the
+    updater's own files emit) — a bare substring search reads the wrong field.
+    """
+    m = re.search((r"(?<![A-Z_])" + field + r": (-?\d+)").encode(), text)
     return None if m is None else int(m.group(1)) & 0xFFFFFFFF
 
 
@@ -225,7 +229,10 @@ def read_inf_fields(text, fields):
 def rewrite_inf_field(blob, field, value):
     """Rewrite one `FIELD: <int>` in place, refusing when it is not there exactly once."""
     out, n = re.subn(
-        (field + r": -?\d+").encode(), ("%s: %d" % (field, s32(value))).encode(), blob, count=1
+        (r"(?<![A-Z_])" + field + r": -?\d+").encode(),
+        ("%s: %d" % (field, s32(value))).encode(),
+        blob,
+        count=1,
     )
     if n != 1:
         raise SystemExit("no '%s:' field found in the .inf" % field)

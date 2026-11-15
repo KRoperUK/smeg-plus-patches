@@ -407,3 +407,41 @@ def test_ship_user_data_refuses_names_escaping_the_tree(tmp_path):
         bp.ship_user_data(str(out), str(tree), ["../../evil.sqlite"], "NAV")
     assert "unsafe" in str(exc.value.code)
     assert not out.exists(), "refuse before any work, not halfway through"
+
+
+# ------------------------------------------------- tranche-2 #256 build gates
+def test_refuses_out_nested_inside_src(tmp_path, fake_pkg):
+    out = fake_pkg / "nested-out"
+    m = manifest(tmp_path, package=str(fake_pkg), out=str(out))
+    r = run_cli(m)
+    assert r.returncode != 0
+    assert "must not live inside" in (r.stdout + r.stderr)
+    assert not out.exists()
+
+
+def test_refuses_a_forged_gui_ver_before_copying(tmp_path, fake_pkg):
+    m = manifest(
+        tmp_path,
+        package=str(fake_pkg),
+        out=str(tmp_path / "o"),
+        media={"gui_ver": "32.01\r\nVER:9.9"},
+    )
+    r = run_cli(m)
+    assert r.returncode != 0
+    assert "must be a single line" in (r.stdout + r.stderr)
+    assert not (tmp_path / "o").exists(), "validation runs before the copy"
+
+
+def test_refuses_an_unknown_tone_slot_before_copying(tmp_path, fake_pkg):
+    src = tmp_path / "whatever.mp3"
+    src.write_bytes(b"fake")
+    m = manifest(
+        tmp_path,
+        package=str(fake_pkg),
+        out=str(tmp_path / "o"),
+        media={"tones": {"nope/nowhere.wav": str(src)}},
+    )
+    r = run_cli(m)
+    assert r.returncode != 0
+    assert "not a known tone slot" in (r.stdout + r.stderr)
+    assert not (tmp_path / "o").exists(), "validation runs before the copy"

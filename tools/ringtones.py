@@ -156,10 +156,10 @@ def require_media_tree(tree):
         )
 
 
-def cmd_export(args):
-    tree = args.tree
+def export_tones(tree, out):
+    """Copy the stock WAVs out of an extracted media tree. Returns the file count."""
     require_media_tree(tree)
-    os.makedirs(args.output, exist_ok=True)
+    os.makedirs(out, exist_ok=True)
     n = 0
     for sub in (RING_DIR, WAIT_DIR):
         d = os.path.join(tree, sub)
@@ -167,8 +167,13 @@ def cmd_export(args):
             continue
         for f in sorted(os.listdir(d)):
             if f.lower().endswith(".wav"):
-                shutil.copyfile(os.path.join(d, f), os.path.join(args.output, f))
+                shutil.copyfile(os.path.join(d, f), os.path.join(out, f))
                 n += 1
+    return n
+
+
+def cmd_export(args):
+    n = export_tones(args.tree, args.output)
     print("exported %d file(s) to %s" % (n, args.output))
 
 
@@ -232,7 +237,12 @@ def name_patch_spec(module, names):
         if slot not in table["slots"]:
             sys.exit("%s: names only apply to %s" % (slot, ", ".join(table["slots"])))
         addr, stock, room = table["slots"][slot]
-        if not name or len(name) > room or not all(32 <= ord(c) < 127 for c in name):
+        if (
+            not isinstance(name, str)
+            or not name
+            or len(name) > room
+            or not all(32 <= ord(c) < 127 for c in name)
+        ):
             sys.exit(
                 "%s: %r must be 1-%d printable ASCII characters (the room before the next "
                 "string in the image)" % (slot, name, room)
@@ -288,7 +298,10 @@ def ring_names(tree):
         return []
     import sqlite3
 
-    con = sqlite3.connect(path)
+    try:
+        con = sqlite3.connect(path)
+    except sqlite3.Error:
+        return []
     try:
         return [
             r[0]
@@ -297,18 +310,25 @@ def ring_names(tree):
                 (NAME_SECTION, NAME_KEY),
             )
         ]
+    except sqlite3.Error:
+        return []
     finally:
         con.close()
 
 
 def set_ring_name(tree, index, name):
     """Rename one entry of the list. `index` is the Idx column, not the ring number."""
-    con, _ = _name_db(tree)
+    import sqlite3
+
+    con, path = _name_db(tree)
     try:
-        cur = con.execute(
-            "update UP_Keys set StringValue=? where Section=? and Name=? and Idx=?",
-            (name, NAME_SECTION, NAME_KEY, index),
-        )
+        try:
+            cur = con.execute(
+                "update UP_Keys set StringValue=? where Section=? and Name=? and Idx=?",
+                (name, NAME_SECTION, NAME_KEY, index),
+            )
+        except sqlite3.Error as e:
+            sys.exit("%s is not a readable settings database (%s)" % (path, e))
         if cur.rowcount != 1:
             sys.exit(
                 "expected to update exactly one row at Idx=%d, updated %d" % (index, cur.rowcount)
@@ -334,7 +354,7 @@ def cmd_names(args):
 
 def cmd_rename(args):
     names = ring_names(args.tree)
-    m = re.match(r"ring(\d)$", args.slot)
+    m = re.match(r"ring([1-5])$", args.slot)
     if not m:
         sys.exit("--slot must be ring1..ring5 (the names are the phone ringtone list)")
     idx = int(m.group(1)) - 1

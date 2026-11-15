@@ -289,6 +289,7 @@ def to_bmp(src):
     """Convert anything ffmpeg reads into the exact 800x480 24-bit bottom-up BMP."""
     import shutil
     import subprocess
+    import tempfile
 
     if src.lower().endswith(".bmp"):
         d = Path(src).read_bytes()
@@ -296,29 +297,35 @@ def to_bmp(src):
             return d
     if not shutil.which("ffmpeg"):
         die("ffmpeg is required to convert %s" % src)
-    tmp = os.path.splitext(src)[0] + ".splash.bmp"
-    r = subprocess.run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            src,
-            "-vf",
-            "scale=%d:%d" % (IMAGE_W, IMAGE_H),
-            "-pix_fmt",
-            "bgr24",
-            tmp,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0:
-        die("ffmpeg failed: %s" % (r.stderr.strip() or r.stdout.strip()))
-    d = Path(tmp).read_bytes()
-    os.unlink(tmp)
+    # a unique temp file, not a predictable sibling: `-y` follows a pre-planted
+    # symlink, and a fixed name collides across concurrent runs
+    fd, tmp = tempfile.mkstemp(suffix=".splash.bmp")
+    os.close(fd)
+    try:
+        r = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                src,
+                "-vf",
+                "scale=%d:%d" % (IMAGE_W, IMAGE_H),
+                "-pix_fmt",
+                "bgr24",
+                tmp,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            die("ffmpeg failed: %s" % (r.stderr.strip() or r.stdout.strip()))
+        d = Path(tmp).read_bytes()
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     if len(d) != BMP_SIZE:
         die("conversion produced %d bytes, expected %d" % (len(d), BMP_SIZE))
     return d

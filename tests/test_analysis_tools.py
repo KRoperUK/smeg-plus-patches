@@ -140,3 +140,76 @@ def test_mkelf_wraps_the_image_and_symbols_as_powerpc_elf(fixture, tmp_path):
     assert b"caller\x00" in elf
     assert b"target_function\x00" in elf
     assert b"aux_name\x00" in elf
+
+
+def test_xref_reports_every_copy_of_a_doubled_string(tmp_path):
+    """Literals stored twice got references for the first copy only (#256)."""
+    img = bytearray(0x100)
+    img[0x80 : 0x80 + len(b"Auxiliary_Input\x00")] = b"Auxiliary_Input\x00"
+    img[0x90 : 0x90 + len(b"Auxiliary_Input\x00")] = b"Auxiliary_Input\x00"
+    img[0x10:0x14] = struct.pack(">I", 0x01000090)  # pointer to the second copy
+    image = tmp_path / "words.bin"
+    image.write_bytes(bytes(img))
+    symbols = tmp_path / "symbols.txt"
+    symbols.write_text(
+        "%08x T caller\n%08x R aux_name\n%08x R aux_name_copy\n"
+        % (0x01000000, 0x01000080, 0x01000090)
+    )
+    result = run("xref.py", str(image), str(symbols), "Auxiliary_Input")
+    assert result.returncode == 0, result.stderr
+    assert "string 'Auxiliary_Input' at 0x1000080" in result.stdout
+    assert "string 'Auxiliary_Input' at 0x1000090" in result.stdout
+    assert "total: 1 pointer(s)" in result.stdout
+
+
+def test_xref_ignores_unaligned_byte_matches(tmp_path):
+    """Only 4-aligned matches are pointers; the rest is string data (#256)."""
+    img = bytearray(0x100)
+    img[0x11:0x15] = struct.pack(">I", 0x01000080)  # unaligned: not a pointer
+    img[0x20:0x24] = struct.pack(">I", 0x01000080)  # aligned: a pointer
+    img[0x80 : 0x80 + len(b"Auxiliary_Input\x00")] = b"Auxiliary_Input\x00"
+    image = tmp_path / "unaligned.bin"
+    image.write_bytes(bytes(img))
+    symbols = tmp_path / "symbols.txt"
+    symbols.write_text("%08x T caller\n%08x R aux_name\n" % (0x01000000, 0x01000080))
+    result = run("xref.py", str(image), str(symbols), "0x01000080")
+    assert result.returncode == 0, result.stderr
+    assert "total: 1 pointer(s), 0 immediate site(s)" in result.stdout
+
+
+def test_xref_stops_the_lis_search_at_a_clobber(tmp_path):
+    """Any matching `lis` within 29 instructions combined, even past an overwrite (#256)."""
+    image, symbols = _words_image(
+        tmp_path,
+        {
+            0x00: 0x3C600100,  # lis r3,0x100
+            0x04: 0x80600000,  # lwz r3,0(r0): overwrites r3
+            0x08: 0x38630080,  # addi r3,r3,0x80
+        },
+    )
+    result = run("xref.py", image, symbols, "Auxiliary_Input")
+    assert result.returncode == 0, result.stderr
+    assert "total: 0 pointer(s), 0 immediate site(s)" in result.stdout
+
+
+def test_ppcdis_validates_the_address_range(fixture, tmp_path):
+    """A start below base used to wrap via negative indexing and disassemble the
+    wrong bytes with exit 0 (#256)."""
+    pytest.importorskip("capstone")
+    image, symbols = fixture
+    result = run("ppcdis.py", image, symbols, "0x00fffffc", "0x01000010")
+    assert result.returncode != 0
+    assert "outside the image" in (result.stdout + result.stderr)
+
+
+def test_mkelf_reads_a_gzipped_symbol_map(fixture, tmp_path):
+    """mkelf re-parsed maps with a plain open(); a `.gz` map yielded a 0-symbol ELF (#256)."""
+    import gzip as _gzip
+
+    image, symbols = fixture
+    gzipped = tmp_path / "symbols.txt.gz"
+    gzipped.write_bytes(_gzip.compress(symbols.read_bytes()))
+    output = tmp_path / "analysis-gz.elf"
+    result = run("mkelf.py", image, str(gzipped), str(output))
+    assert result.returncode == 0, result.stderr
+    assert "3 symbols" in result.stdout

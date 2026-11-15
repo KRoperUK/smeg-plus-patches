@@ -24,6 +24,7 @@ from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+from survey import written
 from symbols import load_symbols
 
 
@@ -54,26 +55,40 @@ def main():
         target = None
 
     if target is None:
-        off = img.find(args.target.encode())
-        if off < 0:
+        needle = args.target.encode()
+        offs = []
+        j = 0
+        while True:
+            # literals stored twice get references for every copy, not just the first
+            j = img.find(needle, j)
+            if j < 0:
+                break
+            offs.append(j)
+            j += 1
+        if not offs:
             sys.exit("string not found: %r" % args.target)
-        target = base + off
-        print("string %r at %#x" % (args.target, target))
+        targets = [base + off for off in offs]
+        for t in targets:
+            print("string %r at %#x" % (args.target, t))
+        pats = {struct.pack(">I", t) for t in targets}
+        wanted = set(targets)
     else:
         print("target address %#x (%s)" % (target, name(target)))
-
-    pat = struct.pack(">I", target)
+        pats = {struct.pack(">I", target)}
+        wanted = {target}
 
     # 1. literal 4-byte pointers
     n = 0
-    j = 0
-    while True:
-        j = img.find(pat, j)
-        if j < 0:
-            break
-        print("  pointer   @ %#x  in %s" % (base + j, name(base + j)))
-        j += 1
-        n += 1
+    for pat in sorted(pats):
+        j = 0
+        while True:
+            j = img.find(pat, j)
+            if j < 0:
+                break
+            if j % 4 == 0:  # only 4-aligned matches are pointers
+                print("  pointer   @ %#x  in %s" % (base + j, name(base + j)))
+                n += 1
+            j += 1
 
     # 2. lis + addi/ori materialisation
     words = struct.unpack(">%dI" % (len(img) // 4), img[: len(img) // 4 * 4])
@@ -95,9 +110,11 @@ def main():
             if (pw >> 26) == 15 and ((pw >> 21) & 31) == ra:  # lis ra,hi
                 hi = (pw & 0xFFFF) << 16
                 val = (hi | (imm & 0xFFFF)) if op == 24 else ((hi + imm) & 0xFFFFFFFF)
-                if val == target:
+                if val in wanted:
                     print("  immediate @ %#x  in %s" % (base + i * 4, name(base + i * 4)))
                     m += 1
+                break
+            if ra in written(pw, pw >> 26):  # overwritten past the lis: no chain
                 break
 
     print("total: %d pointer(s), %d immediate site(s)" % (n, m))

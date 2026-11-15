@@ -262,4 +262,83 @@ def test_a_stock_site_shorter_than_its_patch_is_reported_as_stock():
     rep = preflight.Report()
     preflight.check_patches(rep, bytes(img), "NAV")
     rows = [m for _, area, m in rep.rows if "IsAUXSRCAvailable" in m or "0x02247858" in m]
-    assert rows == ["stock    IsAUXSRCAvailable -> return true"]
+    assert rows == ["stock    C_HMI_AUDIO_APP_BASE::IsAUXSRCAvailable -> return true"]
+
+
+# ------------------------------------------------------- tranche-2 #255 dedupe
+def test_known_patches_come_from_the_patch_sets():
+    """The table must cover every module the patch sets describe (#255)."""
+    import preflight
+
+    assert set(preflight.KNOWN_PATCHES) >= {"NAV", "AUDIO_BT", "AUDIO_BT_256"}
+    nav_addrs = {addr for addr, _, _, _ in preflight.KNOWN_PATCHES["NAV"]}
+    assert 0x02247858 in nav_addrs and 0x010346D0 in nav_addrs
+    assert any("AUX" in why for _, _, _, why in preflight.KNOWN_PATCHES["AUDIO_BT_256"]), (
+        "AUDIO_BT_256 rows must not be absent"
+    )
+
+
+def test_competing_patches_at_one_address_read_as_patched():
+    """diagnostic-logging and diagnostic-logsink share 0x010346d0 with different bytes."""
+    import preflight
+
+    img = bytearray(0x1300000)
+    off = 0x010346D0 - 0x01000000
+    img[off : off + 4] = bytes.fromhex("4b4503c4")  # the logsink form
+    rep = preflight.Report()
+    present = preflight.check_patches(rep, bytes(img), "NAV")
+    assert len(present) == 1
+    assert not any("0x010346d0" in m for _, _, m in rep.rows if "unrecognised" in m)
+
+
+def test_read_module_finds_the_alternate_offset_stream(tmp_path):
+    """An image whose stream sits at 0x800 must not report UNKNOWN firmware (#255)."""
+    import zlib as _zlib
+
+    import helpers
+    import preflight
+
+    img = helpers.make_image()
+    raw = b"\x00" * 0x800 + _zlib.compress(bytes(img))
+    pkg = tmp_path / "SMEG_PLUS_UPG"
+    appbin = pkg / "NAV" / "AppBin"
+    appbin.mkdir(parents=True)
+    (appbin / "f_BigQuick.bin").write_bytes(raw)
+
+    got, _ = preflight.read_module(str(pkg), "NAV")
+
+    assert got == bytes(img)
+
+
+def test_load_known_patches_reads_a_single_file(tmp_path):
+    import json as _json
+
+    import preflight
+
+    spec = {
+        "name": "custom",
+        "variants": {
+            "NAV": {
+                "app_image": "NAV/AppBin/f_BigQuick.bin",
+                "inf": "NAV/AppBin/f_BigQuick.bin.inf",
+                "smeg_inf": "NAV/smeg.inf",
+                "ctrl": "NAV_ctrl.bin",
+                "base": "0x01000000",
+                "firmware": "9.99",
+                "patches": [
+                    {
+                        "addr": "0x01000100",
+                        "expect": "00",
+                        "bytes": "01",
+                        "why": "custom probe",
+                    }
+                ],
+            }
+        },
+    }
+    p = tmp_path / "custom.json"
+    p.write_text(_json.dumps(spec))
+
+    table = preflight.load_known_patches([str(p)])
+
+    assert table == {"NAV": [(0x01000100, "00", "01", "custom probe")]}

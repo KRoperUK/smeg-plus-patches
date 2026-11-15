@@ -48,7 +48,13 @@ sys.path.insert(0, HERE)
 
 from appimage import DEFAULT_BASE, inflate  # noqa: E402
 from fingerprint import identify, variants_from_spec  # noqa: E402
-from smeglib import crc32, refresh_trailer, rewrite_inf_field, s32, swap_crc  # noqa: E402
+from smeglib import (  # noqa: E402
+    crc32,
+    read_inf_field,
+    refresh_trailer,
+    rewrite_inf_field,
+    swap_crc,
+)
 
 
 def rewrite_inf(blob, new_crc):
@@ -132,10 +138,6 @@ def check_build(img, name, spec):
     )
 
 
-INF_CRC_RE = re.compile(rb"CRC32: (-?\d+)")
-SMEG_CRC_RE = re.compile(rb"BIGQUICK_CRC32: (-?\d+)")
-
-
 def disassemble(blob):
     """PowerPC disassembly, or None when capstone is not installed.
 
@@ -187,16 +189,16 @@ def check_site(site, label, addr, declared):
     return got
 
 
-def assert_crc_field(out_dir, rel, regex, want, what):
+def assert_crc_field(out_dir, rel, field, want, what):
     """A `.inf` names its file's CRC32 in text; check the written file agrees."""
     blob = load(os.path.join(out_dir, rel))
-    m = regex.search(blob)
-    if not m:
+    got = read_inf_field(blob, field)
+    if got is None:
         raise SystemExit("%s: no CRC field in %s" % (what, rel))
-    if int(m.group(1)) != s32(want):
+    if got != (want & 0xFFFFFFFF):
         raise SystemExit(
             "%s: %s declares CRC32 %d but the file hashes to %d"
-            % (what, rel, int(m.group(1)), s32(want))
+            % (what, rel, got, want & 0xFFFFFFFF)
         )
 
 
@@ -230,8 +232,8 @@ def verify_written(out_dir, name, v, base, stock=False):
             )
 
     bq_crc = crc32(bq)
-    assert_crc_field(out_dir, v["inf"], INF_CRC_RE, bq_crc, name)
-    assert_crc_field(out_dir, v["smeg_inf"], SMEG_CRC_RE, bq_crc, name)
+    assert_crc_field(out_dir, v["inf"], "CRC32", bq_crc, name)
+    assert_crc_field(out_dir, v["smeg_inf"], "BIGQUICK_CRC32", bq_crc, name)
 
     inf_crc = crc32(load(os.path.join(out_dir, v["inf"])))
     smeg_crc = crc32(load(os.path.join(out_dir, v["smeg_inf"])))

@@ -46,10 +46,9 @@ sys.path.insert(0, HERE)
 try:
     from ringtones import (
         SLOTS,
-        WAIT_DIR,
-        RING_DIR,
         convert,
         describe,  # noqa: E402
+        export_tones as export_tones_cli,
         ring_names,
         set_ring_name,
     )  # noqa: E402
@@ -101,6 +100,45 @@ AUDIO_FILTER = "Audio (*.wav *.mp3 *.ogg *.flac *.m4a *.aac *.wma *.opus);;All f
 MODULES = ("NAV", "AUDIO_BT", "AUDIO_BT_256")
 DEFAULT_BACKUP = os.path.expanduser("~/smeg-test/backups")
 ACCENT = "#0A84FF"
+
+
+def merge_patch_specs(paths):
+    """Merge patch definitions into one spec, keeping the firmware guard.
+
+    Every variant field the CLI's `patch_smeg.py` gates on is carried through —
+    including `firmware`, which the merge used to drop, letting a GUI build apply
+    on expect-bytes alone against a wrong-version image. Merges that mix firmware
+    versions are refused instead.
+    """
+    merged = {"name": "studio-merge", "variants": {}}
+    seen = {}
+    for path in paths:
+        spec = json.loads(Path(path).read_text())
+        for variant, vdef in spec["variants"].items():
+            dst = merged["variants"].setdefault(
+                variant, {k: vdef[k] for k in ("app_image", "inf", "smeg_inf", "ctrl", "base")}
+            )
+            if "firmware" in vdef:
+                if "firmware" in dst:
+                    if dst["firmware"] != vdef["firmware"]:
+                        raise SystemExit(
+                            "firmware mismatch at %s: %s vs %s"
+                            % (variant, dst["firmware"], vdef["firmware"])
+                        )
+                else:
+                    dst["firmware"] = vdef["firmware"]
+            dst.setdefault("patches", [])
+            for p in vdef["patches"]:
+                key = (variant, p["addr"])
+                if key in seen and seen[key] != p["bytes"]:
+                    raise SystemExit(
+                        "conflict at %s %s: %s vs %s" % (variant, p["addr"], seen[key], p["bytes"])
+                    )
+                if key not in seen:
+                    seen[key] = p["bytes"]
+                    dst["patches"].append(p)
+    return merged
+
 
 # Two palettes, so the app can follow the desktop instead of guessing. Qt reports the system
 # scheme through styleHints().colorScheme(), which means there is no preference of our own to
@@ -312,7 +350,7 @@ class Studio(QWidget):
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["SLOT", "FILE IN THE PARTITION", "EXPECTED", "STATE", "NAME IN THE PHONE UI", ""]
+            ["SLOT", "FILE IN THE PARTITION", "EXPECTED", "STATE", "NAME (SEED DB ONLY)", ""]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
@@ -424,7 +462,7 @@ class Studio(QWidget):
             choose.clicked.connect(lambda _=False, s=slot: self.choose_file(s))
             name_btn = QPushButton()
             name_btn.setIcon(self._icon(QStyle.SP_FileDialogDetailedView))
-            name_btn.setToolTip("Change what the phone UI calls this ringtone")
+            name_btn.setToolTip("Rename the seed-database row (the unit shows the image name)")
             name_btn.setAccessibleName("Rename this tone")
             name_btn.setEnabled(bool(self.tree) and ui_name != "—")
             name_btn.clicked.connect(lambda _=False, s=slot: self.rename_tone(s))
@@ -583,15 +621,11 @@ class Studio(QWidget):
         d = QFileDialog.getExistingDirectory(self, "Export the tones to…")
         if not d:
             return
-        n = 0
-        for sub in (RING_DIR, WAIT_DIR):
-            src = os.path.join(self.tree, sub)
-            if not os.path.isdir(src):
-                continue
-            for f in sorted(os.listdir(src)):
-                if f.lower().endswith(".wav"):
-                    Path(os.path.join(d, f)).write_bytes(Path(os.path.join(src, f)).read_bytes())
-                    n += 1
+        try:
+            n = export_tones_cli(self.tree, d)
+        except SystemExit as e:
+            QMessageBox.warning(self, "Export failed", str(e))
+            return
         self.say("exported %d file(s) to %s" % (n, d))
 
     def choose_file(self, slot):
@@ -624,8 +658,9 @@ class Studio(QWidget):
         self.populate()
 
     def rename_tone(self, slot):
-        """Change the name the phone UI shows. That is a row in up_common.sqlite, not the
-        WAV — replacing a tone changes what you hear, renaming changes what you see."""
+        """Rename a seed-database row. That is a row in up_common.sqlite, not the
+        WAV — and the unit does NOT display it: the ringtone menu shows literals
+        in the application image (use media.names in a build manifest for those)."""
         if not (slot.startswith("ring") and slot[4:].isdigit()):
             return
         idx = int(slot[4:]) - 1
@@ -634,7 +669,10 @@ class Studio(QWidget):
             QMessageBox.information(self, "No name", "This media tree has no name for that slot.")
             return
         new, ok = QInputDialog.getText(
-            self, "Rename %s" % slot, "Name shown in the phone UI:", text=names[idx]
+            self,
+            "Rename %s" % slot,
+            "Seed-database name (the unit shows the image name):",
+            text=names[idx],
         )
         if not ok or not new.strip():
             return
@@ -643,8 +681,10 @@ class Studio(QWidget):
         except SystemExit as e:
             QMessageBox.critical(self, "Could not rename", str(e))
             return
-        self.say("%s is now shown as %r (was %r)" % (slot, new.strip(), names[idx]))
-        self.say("  rebuild the package and re-seal for this to reach the car")
+        self.say("%s seed-database name is now %r (was %r)" % (slot, new.strip(), names[idx]))
+        self.say("  note: this edits the seed database only; the unit shows the")
+        self.say("  application image's names. Use media.names in a build manifest")
+        self.say("  to change what the menu shows.")
         self.populate()
 
     # --------------------------------------------------------------------- splash
@@ -986,26 +1026,7 @@ class Studio(QWidget):
         chosen = [p for p, cb in self.patch_boxes.items() if cb.isChecked()]
         if not chosen:
             return None
-        merged = {"name": "studio-merge", "variants": {}}
-        seen = {}
-        for path in chosen:
-            spec = json.loads(Path(path).read_text())
-            for variant, vdef in spec["variants"].items():
-                dst = merged["variants"].setdefault(
-                    variant, {k: vdef[k] for k in ("app_image", "inf", "smeg_inf", "ctrl", "base")}
-                )
-                dst.setdefault("patches", [])
-                for p in vdef["patches"]:
-                    key = (variant, p["addr"])
-                    if key in seen and seen[key] != p["bytes"]:
-                        raise SystemExit(
-                            "conflict at %s %s: %s vs %s"
-                            % (variant, p["addr"], seen[key], p["bytes"])
-                        )
-                    if key not in seen:
-                        seen[key] = p["bytes"]
-                        dst["patches"].append(p)
-        return merged
+        return merge_patch_specs(chosen)
 
     def build(self):
         src, out = self.pkg_edit.text().strip(), self.out_edit.text().strip()
@@ -1037,37 +1058,49 @@ class Studio(QWidget):
                         out,
                         "--patches",
                         tmp,
+                        "--copy-package",
                     ],
                     "application patches",
                 )
             )
         tree = self.tree_edit.text().strip()
         if tree:
-            log.append(
-                self._run(
-                    [
-                        sys.executable,
-                        os.path.join(HERE, "patch_media.py"),
-                        "apply",
-                        "--package",
-                        src,
-                        "--module",
-                        self.mod_combo.currentText(),
-                        "--tree",
-                        tree,
-                        "--out",
-                        out,
-                        "--ctrl-from",
-                        out,
-                    ],
-                    "media partition",
-                )
-            )
+            if not spec:
+                # Media-only build: `out/` has no package yet, so copy it first.
+                # Otherwise the media step writes a sparse pile and `--ctrl-from
+                # out` reads manifests that were never copied there.
+                shutil.copytree(src, out, dirs_exist_ok=True)
+            cmd = [
+                sys.executable,
+                os.path.join(HERE, "patch_media.py"),
+                "apply",
+                "--package",
+                out,
+                "--module",
+                self.mod_combo.currentText(),
+                "--tree",
+                tree,
+                "--out",
+                out,
+            ]
+            if spec:
+                # Chaining after patch_smeg: manifests in `out/` already carry
+                # the patched application checks. Without an app spec `out`
+                # may hold no manifests yet, so pass `--ctrl-from` only then.
+                cmd += ["--ctrl-from", out]
+            log.append(self._run(cmd, "media partition"))
         if not log:
             QMessageBox.information(
                 self, "Nothing selected", "Tick a patch definition, or choose a media tree."
             )
             return
+        if spec or tree:
+            log.append(
+                self._run(
+                    [sys.executable, os.path.join(HERE, "patch_contract.py"), "--package", out],
+                    "re-seal contract",
+                )
+            )
         self.plog.setPlainText("\n\n".join(log))
 
     def _run(self, cmd, title):

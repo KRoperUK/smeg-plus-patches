@@ -210,6 +210,9 @@ class Emulator:
             return
         self.calls.append((address, target))
         if len(self.calls) > self.max_calls:
+            self.error = "call budget of %d exceeded; results past this point are garbage" % (
+                self.max_calls,
+            )
             uc.emu_stop()
             return
         stubbed = target in self.stubs or (self.stub_all and target not in self.run_for_real)

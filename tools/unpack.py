@@ -11,22 +11,16 @@ usage:
 
 import argparse
 import hashlib
+import os
+import sys
 import zlib
 from pathlib import Path
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
-def inflate(raw):
-    """Return (stream_offset, image_bytes)."""
-    for start in (0x801, 0x800, 0x800 + 1):
-        try:
-            d = zlib.decompressobj()
-            out = d.decompress(raw[start:])
-            out += d.flush()
-        except zlib.error:
-            continue
-        if len(out) > 0x100000:
-            return start, out
-    raise SystemExit("no zlib stream found (is this really an f_BigQuick.bin?)")
+from appimage import inflate  # noqa: E402  (the shared container reader; see appimage.py)
 
 
 def main():

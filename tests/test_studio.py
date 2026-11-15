@@ -293,3 +293,61 @@ def test_the_two_palettes_actually_differ():
 def test_stylesheet_is_never_empty_for_the_running_scheme():
     """dark is a real branch, so it must resolve to something usable."""
     assert rs.stylesheet().strip()
+
+
+# ------------------------------------------------- tranche-2 #246 firmware guard
+import json as _json
+
+
+def _write_spec(tmp_path, name, firmware, addr="0x01000100"):
+    p = tmp_path / name
+    p.write_text(
+        _json.dumps(
+            {
+                "name": name,
+                "variants": {
+                    "NAV": {
+                        "app_image": "NAV/AppBin/f_BigQuick.bin",
+                        "inf": "NAV/AppBin/f_BigQuick.bin.inf",
+                        "smeg_inf": "NAV/smeg.inf",
+                        "ctrl": "NAV_ctrl.bin",
+                        "base": "0x01000000",
+                        "firmware": firmware,
+                        "patches": [{"addr": addr, "expect": "00", "bytes": "01"}],
+                    }
+                },
+            }
+        )
+    )
+    return str(p)
+
+
+def test_merge_keeps_firmware():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        from pathlib import Path as _P
+
+        t = _P(td)
+        a = _write_spec(t, "a.json", "5.43.A.R2")
+        b = _write_spec(t, "b.json", "5.43.A.R2", addr="0x01000200")
+        merged = rs.merge_patch_specs([a, b])
+        assert merged["variants"]["NAV"]["firmware"] == "5.43.A.R2"
+        assert len(merged["variants"]["NAV"]["patches"]) == 2
+
+
+def test_merge_refuses_mixed_firmware():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        from pathlib import Path as _P
+
+        t = _P(td)
+        a = _write_spec(t, "a.json", "5.43.A.R2")
+        b = _write_spec(t, "b.json", "5.42.B.R4", addr="0x01000200")
+        try:
+            rs.merge_patch_specs([a, b])
+        except SystemExit as e:
+            assert "firmware mismatch" in str(e)
+        else:
+            raise AssertionError("mixed firmware versions must be refused")

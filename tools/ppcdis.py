@@ -68,6 +68,12 @@ def main():
     base = int(args.base, 16)
     start, end = int(args.start, 16), int(args.end, 16)
     img = Path(args.image).read_bytes()
+    if not (base <= start < end <= base + len(img)):
+        sys.exit(
+            "range %#x..%#x outside the image (%#x..%#x); a start below base wraps "
+            "via negative indexing and disassembles the wrong bytes"
+            % (start, end, base, base + len(img))
+        )
     syms = load_symbols(args.symbols)
     addrs = sorted(syms)
 

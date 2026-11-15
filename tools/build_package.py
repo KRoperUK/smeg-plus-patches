@@ -49,6 +49,7 @@ usage:
 """
 
 import argparse
+import atexit
 import json
 import os
 import shutil
@@ -190,11 +191,14 @@ def set_gui_ver(tree, value):
     path = os.path.join(tree, "Data_base", "smeg.inf")
     if not os.path.exists(path):
         sys.exit("no Data_base/smeg.inf in this tree - is it an extracted media partition?")
+    text = str(value)
+    if any(c in text for c in "\r\n"):
+        sys.exit("gui_ver must be a single line, got %r" % value)
     raw = Path(path).read_bytes()
     out, seen = [], False
     for line in raw.split(b"\r\n"):
         if line.startswith(b"GUI_VER:"):
-            out.append(b"GUI_VER:" + str(value).encode() + b" ")
+            out.append(b"GUI_VER:" + text.encode() + b" ")
             seen = True
         else:
             out.append(line)
@@ -316,6 +320,8 @@ def main():
         sys.exit("no such package: %s\n  (from %r in %s)" % (src, cfg["package"], args.manifest))
     if os.path.abspath(src) == os.path.abspath(out):
         sys.exit("--out must differ from --package; never build in place")
+    if os.path.commonpath([os.path.abspath(src), os.path.abspath(out)]) == os.path.abspath(src):
+        sys.exit("--out must not live inside --package; it would nest a copy in the rollback")
     if os.path.exists(out):
         sys.exit("%s already exists — remove it or pick another --out" % out)
 
@@ -343,6 +349,27 @@ def main():
     ud_sqlite = user_data.get("sqlite") or []
     any_media = bool(tone_map or splash_map or settings or gui_ver or ud_sqlite)
 
+    # validate the media destinations before copying: a typo'd slot used to fail
+    # post-copy, stranding `out/` and refusing rerun
+    if any_media:
+        _rt = load_module("ringtones")
+        for dest_rel in tone_map:
+            if not any(v[0] == dest_rel for v in _rt.SLOTS.values()):
+                sys.exit("%s is not a known tone slot" % dest_rel)
+        _sl = load_module("splash")
+        for marque in splash_map:
+            if marque not in _sl.MARQUES:
+                sys.exit(
+                    "unknown splash marque %r (expected one of %s)" % (marque, sorted(_sl.MARQUES))
+                )
+        for dotted in settings:
+            if "." not in dotted:
+                sys.exit("%r should be Section.Name, e.g. supervisor.Last_Source" % dotted)
+        if name_map:
+            _rt.name_patch_spec(module, name_map)
+        if gui_ver is not None and any(c in str(gui_ver) for c in "\r\n"):
+            sys.exit("gui_ver must be a single line, got %r" % gui_ver)
+
     if ud_sqlite and not user_data.get("accept_data_loss"):
         sys.exit(
             warn_user_data(ud_sqlite)
@@ -358,6 +385,9 @@ def main():
         print("dry run: nothing will be written")
 
     work = tempfile.mkdtemp(prefix="smegbuild-")
+    # a failed build exits via sys.exit, which would skip the rmtree at the end and
+    # leak a full package copy in /tmp; atexit runs on SystemExit too
+    atexit.register(shutil.rmtree, work, True)
 
     # 1. start from a copy, so the source stays a rollback
     if not args.dry_run:

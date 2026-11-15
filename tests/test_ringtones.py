@@ -256,3 +256,73 @@ def test_a_renamed_tone_survives_a_media_rebuild(tmp_path):
     ).fetchone()[0]
     con.close()
     assert got == "Piano Riff"
+
+
+# ------------------------------------------------------- tranche-2 #252 hardening
+def test_rename_rejects_ring6(tmp_path):
+    """`--slot ring6` used to rename Idx 5 although names apply to ring1..ring5."""
+    import argparse
+
+    tree = make_tree(tmp_path, ["a", "b", "c", "d", "e"])
+    args = argparse.Namespace(tree=str(tree), slot="ring6", name="x")
+    try:
+        rt.cmd_rename(args)
+    except SystemExit as e:
+        assert "ring1..ring5" in str(e)
+    else:
+        raise AssertionError("ring6 must be rejected")
+
+
+def test_ring_names_returns_empty_on_corrupt_db(tmp_path):
+    tree = tmp_path / "tree"
+    d = tree / "Data_base" / "sqlite"
+    d.mkdir(parents=True)
+    (d / "up_common.sqlite").write_bytes(b"not a database at all")
+    assert rt.ring_names(str(tree)) == []
+
+
+def test_set_ring_name_exits_cleanly_on_corrupt_db(tmp_path):
+    import pytest as _pytest
+
+    tree = tmp_path / "tree"
+    d = tree / "Data_base" / "sqlite"
+    d.mkdir(parents=True)
+    (d / "up_common.sqlite").write_bytes(b"not a database at all")
+    with _pytest.raises(SystemExit, match="not a readable settings database"):
+        rt.set_ring_name(str(tree), 0, "x")
+
+
+def test_cli_rename_survives_a_corrupt_db(tmp_path):
+    tree = tmp_path / "tree"
+    d = tree / "Data_base" / "sqlite"
+    d.mkdir(parents=True)
+    (d / "up_common.sqlite").write_bytes(b"not a database at all")
+    r = run(
+        os.path.join(TOOLS, "ringtones.py"),
+        "rename",
+        "--tree",
+        str(tree),
+        "--slot",
+        "ring1",
+        "--name",
+        "x",
+    )
+    assert r.returncode != 0
+    assert "Traceback" not in (r.stdout + r.stderr)
+
+
+def test_name_patch_spec_rejects_a_non_string_name():
+    """A manifest `{"ring1": 5}` died with `object of type int has no len()` (#256)."""
+    import pytest as _pytest
+
+    with _pytest.raises(SystemExit, match="must be 1-"):
+        rt.name_patch_spec("NAV", {"ring1": 5})
+
+
+def test_export_tones_needs_a_media_tree(tmp_path):
+    bad = tmp_path / "nope"
+    bad.mkdir()
+    import pytest as _pytest
+
+    with _pytest.raises(SystemExit, match="extracted media partition"):
+        rt.export_tones(str(bad), str(tmp_path / "out"))

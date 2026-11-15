@@ -110,14 +110,6 @@ class Partition:
             if m.isfile():
                 self.data[m.name] = self.tf.extractfile(m).read()
 
-    def size_fields(self, data=None):
-        """Our own computation. Kept for reference — see adjusted_size_fields()."""
-        data = data if data is not None else self.data
-        fields = {"SIZE": sum(len(v) for v in data.values())}
-        for n in (1, 2, 4, 8, 16, 32):
-            fields["SIZE_%d" % n] = sum(roundup(len(v), n * 1024) for v in data.values())
-        return fields
-
     def build_tar(self, data):
         out = io.BytesIO()
         with tarfile.open(fileobj=out, mode="w", format=tarfile.GNU_FORMAT) as tf:
@@ -299,6 +291,12 @@ def cmd_apply(args):
         )
         for e in extra[:10]:
             print("   ", e)
+    if missing:
+        print(
+            "note: %d file(s) in the partition are not in the tree and will be kept:" % len(missing)
+        )
+        for e in missing[:10]:
+            print("   ", e)
     if not changes:
         die(
             "tree has no differences against %s/%s — nothing to patch" % (args.module, "system.bin")
@@ -328,6 +326,12 @@ def cmd_apply(args):
     base = args.ctrl_from or args.package
     mod_ctrl_path = os.path.join(base, "%s_ctrl.bin" % args.module)
     root_ctrl_path = os.path.join(base, "ctrl.bin")
+    for _p in (mod_ctrl_path, root_ctrl_path):
+        if not os.path.exists(_p):
+            die(
+                "no manifests at %s — omit --ctrl-from unless an application "
+                "patch step already wrote them there" % base
+            )
     old_mod = Path(mod_ctrl_path).read_bytes()
     old_root = Path(root_ctrl_path).read_bytes()
 

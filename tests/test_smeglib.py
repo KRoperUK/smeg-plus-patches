@@ -180,3 +180,11 @@ def test_build_package_and_preflight_share_one_sqlite_inf():
 
     assert build_package.sqlite_inf is smeglib.sqlite_inf
     assert preflight.sqlite_inf is smeglib.sqlite_inf
+
+
+def test_crc32_does_not_match_inside_bigquick_crc32():
+    """`smeg.inf` carries BIGQUICK_CRC32 (the exact emitted form); a bare `CRC32`
+    read must not match inside it (#256)."""
+    blob = b"BSP_CRC32: 0 \r\nBIGQUICK_CRC32: 12345 \r\nVER: SMEG0.0.0.A.R0 \r\n"
+    assert smeglib.read_inf_field(blob, "CRC32") is None
+    assert smeglib.read_inf_field(blob, "BIGQUICK_CRC32") == 12345

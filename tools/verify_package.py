@@ -34,7 +34,6 @@ import gzip
 import io
 import json
 import os
-import re
 import sys
 import tarfile
 from pathlib import Path
@@ -45,12 +44,13 @@ sys.path.insert(0, HERE)
 import struct  # noqa: E402
 
 from appimage import crc32_file  # noqa: E402
-from smeglib import read_inf_fields, roundup, s32, stale_trailers  # noqa: E402
+from smeglib import (  # noqa: E402
+    read_inf_field,
+    read_inf_fields,
+    roundup,
+    stale_trailers,
+)
 
-# `smeg.inf` carries BSP_CRC32 and BIGQUICK_CRC32, which are different things entirely, so
-# the sidecar match has to be a bare CRC32 field and not a suffix of another key
-INF_SIDECAR_RE = re.compile(rb"(?<![A-Z_])CRC32: (-?\d+)")
-SMEG_CRC_RE = re.compile(rb"BIGQUICK_CRC32: (-?\d+)")
 MODULE_IMAGE = os.path.join("AppBin", "f_BigQuick.bin")
 SIZE_KEYS = ("SIZE",) + tuple("SIZE_%d" % n for n in (1, 2, 4, 8, 16, 32))
 
@@ -73,11 +73,10 @@ def tar_content_sizes(path):
     return out
 
 
-def read_field(path, regex):
+def read_field(path, field):
     """The integer in a text field, or None when the field is absent."""
     with open(path, "rb") as fh:
-        m = regex.search(fh.read(1 << 16))
-    return int(m.group(1)) if m else None
+        return read_inf_field(fh.read(1 << 16), field)
 
 
 def records(path):
@@ -112,7 +111,7 @@ def audit(root):
             if not n.endswith(".inf"):
                 continue
             inf = os.path.join(dirpath, n)
-            declared = read_field(inf, INF_SIDECAR_RE)
+            declared = read_field(inf, "CRC32")
             if declared is None:
                 continue  # smeg.inf and friends carry other fields; checked separately
             sibling = inf[: -len(".inf")]
@@ -125,12 +124,12 @@ def audit(root):
                 )
                 continue
             actual = crc32_file(sibling)
-            if declared != s32(actual):
+            if declared != actual:
                 bad(
                     "inf-sidecar",
                     rel,
                     "declares CRC32 %d, but %s hashes to %d"
-                    % (declared, os.path.basename(sibling), s32(actual)),
+                    % (declared, os.path.basename(sibling), actual),
                 )
 
     # 2. each *application* module's smeg.inf and its own manifest.
@@ -148,15 +147,15 @@ def audit(root):
 
         smeg = os.path.join(mod_dir, "smeg.inf")
         if os.path.isfile(smeg):
-            declared = read_field(smeg, SMEG_CRC_RE)
+            declared = read_field(smeg, "BIGQUICK_CRC32")
             if declared is None:
                 bad("smeg-inf", os.path.join(mod, "smeg.inf"), "no BIGQUICK_CRC32 field")
-            elif declared != s32(image_crc):
+            elif declared != image_crc:
                 bad(
                     "smeg-inf",
                     os.path.join(mod, "smeg.inf"),
                     "declares BIGQUICK_CRC32 %d, but the image hashes to %d"
-                    % (declared, s32(image_crc)),
+                    % (declared, image_crc),
                 )
 
         manifest = os.path.join(root, "%s_ctrl.bin" % mod)
@@ -280,10 +279,11 @@ def main(argv=None):
     warnings = [
         {"kind": "trailer", "where": rel, "detail": STALE_TRAILER} for rel in stale_trailers(root)
     ]
+    nothing = not info["modules"] or not info["application_modules"]
 
     if args.json:
         print(json.dumps({"summary": info, "problems": problems, "warnings": warnings}, indent=2))
-        return 1 if problems else 0
+        return 1 if problems or nothing else 0
 
     print("package : %s" % root)
     print("modules : %s" % (", ".join(info["modules"]) or "none"))

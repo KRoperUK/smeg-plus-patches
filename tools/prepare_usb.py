@@ -145,6 +145,10 @@ def copy_tree(src, dst):
         filenames = [f for f in filenames if not is_junk(f)]
         target_dir = top if rel == "." else os.path.join(top, rel)
         os.makedirs(target_dir, exist_ok=True)
+        if rel != ".":
+            # empty dirs hold no files, so without this their AppleDouble shadows
+            # are never derived and spuriously fail the junk check on macOS
+            names.append(rel)
         for n in filenames:
             shutil.copyfile(os.path.join(dirpath, n), os.path.join(target_dir, n))
             names.append(os.path.join(rel, n) if rel != "." else n)
@@ -270,6 +274,35 @@ def eject(target, attempts=5, wait=2.0, sleep=time.sleep):
     return False, out
 
 
+def filesystem_from_mount_table(table, target):
+    """The fstype for `target` from a mount table, or None when it says nothing.
+
+    Three layouts are seen in the wild: Linux `/proc/mounts` (`dev mnt fstype ...`),
+    Linux `mount(1)` (`dev on mnt type fstype (...)`) and macOS/BSD `mount(1)`
+    (`dev on mnt (fstype, ...)`). Reading the wrong field on macOS probed a good
+    FAT32 stick as `local` and refused it once `diskutil` had stalled.
+    """
+    for line in table.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        fs = None
+        if len(parts) >= 4 and parts[1] == target and not parts[2].startswith("("):
+            fs = parts[2]
+        elif len(parts) >= 3 and parts[2] == target:
+            if len(parts) >= 5 and parts[3] == "type":
+                fs = parts[4].split(",")[0]
+            elif parts[3].startswith("("):
+                fs = parts[3].lstrip("(").split(",")[0]
+            elif len(parts) >= 5:
+                fs = parts[4].split(",")[0]
+            else:
+                fs = parts[3]
+        if fs:
+            return {"msdos": "MS-DOS FAT32", "vfat": "MS-DOS FAT32"}.get(fs, fs)
+    return None
+
+
 def probe_target(target):
     """Best-effort filesystem and partition-scheme facts. Missing facts are not failures.
 
@@ -300,12 +333,9 @@ def probe_target(target):
             table = fh.read()
     except OSError:
         table = subprocess.run(["mount"], capture_output=True, text=True, timeout=20).stdout
-    for line in table.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[2] == target:
-            fs = parts[4].split(",")[0] if len(parts) >= 5 else parts[3]
-            info["filesystem"] = {"msdos": "MS-DOS FAT32", "vfat": "MS-DOS FAT32"}.get(fs, fs)
-            break
+    fs = filesystem_from_mount_table(table, target)
+    if fs:
+        info["filesystem"] = fs
 
     try:
         dev = (

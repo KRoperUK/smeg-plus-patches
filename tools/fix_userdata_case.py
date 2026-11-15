@@ -96,6 +96,12 @@ def main(argv):
     if "-h" in argv or "--help" in argv:
         print(__doc__)
         return
+    for a in argv[1:]:
+        if a.startswith("-") and a not in ("--check", "--dry-run"):
+            sys.exit(
+                "unknown option %r (only --check, --dry-run and --help are "
+                "accepted) — refusing to open the device" % a
+            )
     dry = "--dry-run" in argv
     check = "--check" in argv
     if dry and check:

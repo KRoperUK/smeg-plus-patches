@@ -465,3 +465,34 @@ def test_by_default_macos_indexing_is_stopped_and_its_folders_removed(pkg, tmp_p
     assert (stick / ".metadata_never_index").exists()
     assert not (stick / ".fseventsd").exists()
     assert (stick / "SMEG_PLUS_UPG" / "ctrl.bin").exists()
+
+
+# ------------------------------------------------- tranche-2 #256 mount parsing
+def test_mount_table_parses_all_three_layouts():
+    """macOS `mount(1)` parenthesises the fstype; Linux has two layouts (#256)."""
+    darwin = "/dev/disk2s1 on /Volumes/USB (msdos, local, nodev, nosuid, noowners)\n"
+    assert prepare_usb.filesystem_from_mount_table(darwin, "/Volumes/USB") == "MS-DOS FAT32"
+
+    proc = "/dev/sdb1 /mnt/usb vfat rw,relatime 0 0\n"
+    assert prepare_usb.filesystem_from_mount_table(proc, "/mnt/usb") == "MS-DOS FAT32"
+
+    linux_mount = "/dev/sdb1 on /mnt/usb type vfat (rw,relatime)\n"
+    assert prepare_usb.filesystem_from_mount_table(linux_mount, "/mnt/usb") == "MS-DOS FAT32"
+
+    assert prepare_usb.filesystem_from_mount_table(darwin, "/Volumes/OTHER") is None
+
+
+def test_copy_tree_records_empty_dirs_for_shadow_removal(tmp_path):
+    """Packages with empty dirs spuriously failed the junk check on macOS (#256)."""
+    src = tmp_path / "pkg"
+    (src / "NAV" / "empty").mkdir(parents=True)
+    (src / "NAV" / "ctrl.bin").write_bytes(b"c")
+
+    top, names = prepare_usb.copy_tree(str(src), str(tmp_path / "dst"))
+
+    assert os.path.join("NAV", "empty") in names
+    (tmp_path / "dst" / "pkg" / "NAV" / "._empty").write_bytes(b"shadow")
+    (tmp_path / "dst" / "pkg" / "NAV" / "._ctrl.bin").write_bytes(b"shadow")
+
+    assert prepare_usb.remove_own_shadows(top, names) == 2
+    assert prepare_usb.count_junk(top) == []

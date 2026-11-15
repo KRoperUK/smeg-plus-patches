@@ -122,7 +122,7 @@ def test_smeg_inf_is_not_mistaken_for_a_sidecar(pkg):
     field has to match as a bare key.
     """
     p, info = pkg
-    assert verify_package.read_field(info["smeg_inf"], verify_package.INF_SIDECAR_RE) is None
+    assert verify_package.read_field(info["smeg_inf"], "CRC32") is None
     assert verify_package.audit(str(p)) == []
 
 
@@ -253,3 +253,14 @@ def test_preflight_reports_a_stale_trailer_as_a_warning(pkg):
     rep = preflight.Report()
     preflight.check_trailers(rep, str(p))
     assert rep.warnings == 1 and rep.problems == 0
+
+
+def test_json_output_exits_non_zero_on_nothing_to_audit(tmp_path):
+    """`--json` must exit 1 where text exits 1 on an empty package (#256)."""
+    p = tmp_path / "SMEG_PLUS_UPG"
+    p.mkdir()
+    text = run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p))
+    assert text.returncode == 1
+    js = run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p), "--json")
+    assert js.returncode == 1
+    assert json.loads(js.stdout)["summary"]["modules"] == []

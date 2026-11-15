@@ -112,3 +112,26 @@ def test_help_prints_usage_and_succeeds():
     r = subprocess.run([sys.executable, TOOL, "--help"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert "--check" in r.stdout
+
+
+def test_typoed_check_flag_is_rejected_before_opening(tmp_path):
+    """`--chek` must not take the write path and open a raw device read-write (#247)."""
+    image = tmp_path / "fat.img"
+    fat32(image, sqlite_name="sqlite_dat")
+    before = image.read_bytes()
+
+    result = run(image, "--chek")
+
+    assert result.returncode != 0
+    assert "unknown option" in (result.stdout + result.stderr)
+    assert image.read_bytes() == before, "the device must not be touched"
+
+
+def test_unknown_single_dash_flag_is_rejected(tmp_path):
+    image = tmp_path / "fat.img"
+    fat32(image, sqlite_name="sqlite_dat")
+
+    result = run(image, "-x")
+
+    assert result.returncode != 0
+    assert "unknown option" in (result.stdout + result.stderr)
