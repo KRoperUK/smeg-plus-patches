@@ -30,10 +30,14 @@ usage:
 """
 
 import argparse
+import gzip
+import io
 import json
 import os
 import re
 import sys
+import tarfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -41,13 +45,32 @@ sys.path.insert(0, HERE)
 import struct  # noqa: E402
 
 from appimage import crc32_file  # noqa: E402
-from smeglib import s32, stale_trailers  # noqa: E402
+from smeglib import read_inf_fields, roundup, s32, stale_trailers  # noqa: E402
 
 # `smeg.inf` carries BSP_CRC32 and BIGQUICK_CRC32, which are different things entirely, so
 # the sidecar match has to be a bare CRC32 field and not a suffix of another key
 INF_SIDECAR_RE = re.compile(rb"(?<![A-Z_])CRC32: (-?\d+)")
 SMEG_CRC_RE = re.compile(rb"BIGQUICK_CRC32: (-?\d+)")
 MODULE_IMAGE = os.path.join("AppBin", "f_BigQuick.bin")
+SIZE_KEYS = ("SIZE",) + tuple("SIZE_%d" % n for n in (1, 2, 4, 8, 16, 32))
+
+
+def tar_content_sizes(path):
+    """The SIZE values a `system.bin.inf` must carry for this partition.
+
+    `SIZE` is the sum of the tar members' sizes (headers and padding excluded);
+    each `SIZE_n` rounds every member up to an n-KiB block first.
+    """
+    raw = gzip.decompress(Path(path).read_bytes())
+    sizes = []
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as tf:  # noqa: SIM115  # reads a BytesIO, not a file descriptor
+        for m in tf.getmembers():
+            if m.isfile():
+                sizes.append(m.size)
+    out = {"SIZE": sum(sizes)}
+    for n in (1, 2, 4, 8, 16, 32):
+        out["SIZE_%d" % n] = sum(roundup(s, n * 1024) for s in sizes)
+    return out
 
 
 def read_field(path, regex):
@@ -157,7 +180,49 @@ def audit(root):
                     "does not record the CRC of %s (%#010x)" % (label, want),
                 )
 
-    # 3. the root manifest describes every module manifest
+    # 3. every media partition's SIZE fields describe the inflated system.bin.
+    #
+    # Nothing read these until now: SIZE flipped to 1 with a consistent CRC cascade
+    # audited clean, yet the updater uses SIZE for its media space check. SIZE must
+    # equal the contents size exactly; each SIZE_n must cover at least the
+    # block-rounded contents (the vendor's _1/_2/_4 carry an offset the patcher
+    # preserves but does not model, so those only get a lower bound).
+    for mod in modules(root):
+        system = os.path.join(root, mod, "system.bin")
+        if not os.path.isfile(system):
+            continue
+        rel = os.path.join(mod, "system.bin")
+        if not os.path.isfile(system + ".inf"):
+            bad("inf-size", rel + ".inf", "missing: the SIZE fields cannot be checked")
+            continue
+        try:
+            actual = tar_content_sizes(system)
+        except Exception as e:
+            bad("inf-size", rel, "does not inflate as a gzip'd tar: %s" % e)
+            continue
+        with open(system + ".inf", "rb") as fh:
+            declared = read_inf_fields(fh.read(), SIZE_KEYS)
+        if declared.get("SIZE") is None:
+            bad("inf-size", rel + ".inf", "no SIZE field")
+        elif declared["SIZE"] != actual["SIZE"]:
+            bad(
+                "inf-size",
+                rel + ".inf",
+                "declares SIZE %d, but the tar contents hold %d bytes"
+                % (declared["SIZE"], actual["SIZE"]),
+            )
+        for key in SIZE_KEYS[1:]:
+            if declared.get(key) is None:
+                bad("inf-size", rel + ".inf", "no %s field" % key)
+            elif declared[key] < actual[key]:
+                bad(
+                    "inf-size",
+                    rel + ".inf",
+                    "declares %s %d, below the %d bytes the contents round up to"
+                    % (key, declared[key], actual[key]),
+                )
+
+    # 4. the root manifest describes every module manifest
     root_manifest = os.path.join(root, "ctrl.bin")
     if not os.path.isfile(root_manifest):
         bad("manifest", "ctrl.bin", "missing from the package root")

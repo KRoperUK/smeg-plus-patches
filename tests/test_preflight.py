@@ -110,6 +110,22 @@ def test_accepts_a_real_source(tmp_path):
     assert "= 7 (AUX)" in out
 
 
+def test_seed_settings_carry_the_no_effect_note(tmp_path):
+    """#254: a clean OK on seed Last_Source must say it does not reach the unit."""
+    r = run(make_pkg(tmp_path, last_source=7))
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "= 7 (AUX)" in out
+    assert "ignores these values unless they arrive via USER_DATA" in out
+
+
+def test_live_user_data_settings_carry_no_seed_note(tmp_path):
+    """#254: the note belongs to the seed database, not to shipped USER_DATA."""
+    r = run(make_pkg(tmp_path, last_source=7, user_data=True))
+    out = r.stdout + r.stderr
+    assert out.count("ignores these values unless they arrive via USER_DATA") == 1
+
+
 def test_warns_about_a_user_data_payload(tmp_path):
     r = run(make_pkg(tmp_path, last_source=7, user_data=True))
     out = r.stdout + r.stderr
