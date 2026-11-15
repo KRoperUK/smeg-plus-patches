@@ -106,7 +106,7 @@ def test_a_wrong_crc_field_is_caught(tmp_path):
     d.mkdir()
     (d / "f_BigQuick.bin.inf").write_bytes(b"CRC32: 12345\r\nTYPE:RELOCABLE\r\n")
     with pytest.raises(SystemExit) as e:
-        patch_smeg.assert_crc_field(str(d), "f_BigQuick.bin.inf", patch_smeg.INF_CRC_RE, 999, "NAV")
+        patch_smeg.assert_crc_field(str(d), "f_BigQuick.bin.inf", "CRC32", 999, "NAV")
     assert "declares CRC32 12345" in str(e.value)
 
 
@@ -115,7 +115,7 @@ def test_a_missing_crc_field_is_caught(tmp_path):
     d.mkdir()
     (d / "f_BigQuick.bin.inf").write_bytes(b"TYPE:RELOCABLE\r\n")
     with pytest.raises(SystemExit) as e:
-        patch_smeg.assert_crc_field(str(d), "f_BigQuick.bin.inf", patch_smeg.INF_CRC_RE, 1, "NAV")
+        patch_smeg.assert_crc_field(str(d), "f_BigQuick.bin.inf", "CRC32", 1, "NAV")
     assert "no CRC field" in str(e.value)
 
 

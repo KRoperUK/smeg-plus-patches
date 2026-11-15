@@ -144,3 +144,54 @@ def test_an_image_matching_no_build_is_left_to_the_other_checks():
     """
     s = spec({"NAV": variant("i.bin", [(BASE + 0x100, b"\x94\x21\xff\xa0")])})
     patch_smeg.check_build(image_with([(BASE + 0x100, b"\x00\x00\x00\x00")]), "NAV", s)
+
+
+def test_json_output_carries_the_probes(tmp_path):
+    """`--json` used to emit an empty probes map (#256)."""
+    import json as _json
+    import subprocess as _sp
+
+    probes = [(BASE + 0x100, b"\x94\x21\xff\xa0")]
+    img = image_with(probes, size=0x110000)
+    packed = tmp_path / "f_BigQuick.bin"
+    packed.write_bytes(container(img))
+    spec_path = tmp_path / "probes.json"
+    spec_path.write_text(
+        _json.dumps(
+            {
+                "name": "synthetic",
+                "variants": {
+                    "NAV": {
+                        "app_image": "NAV/AppBin/f_BigQuick.bin",
+                        "base": hex(BASE),
+                        "firmware": "9.99",
+                        "patches": [
+                            {
+                                "addr": hex(BASE + 0x100),
+                                "expect": "9421ffa0",
+                                "bytes": "38600001",
+                                "why": "test",
+                            }
+                        ],
+                    }
+                },
+            }
+        )
+    )
+    tools = os.path.join(ROOT, "tools")
+    r = _sp.run(
+        [
+            sys.executable,
+            os.path.join(tools, "fingerprint.py"),
+            "--image",
+            str(packed),
+            "--patches",
+            str(spec_path),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    (finding,) = _json.loads(r.stdout)
+    assert finding["probes"], "the probes payload must be filled outside the print branch"

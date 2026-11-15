@@ -80,3 +80,78 @@ def test_aliases_do_not_import_a_whole_group_by_accident(tmp_path):
     (tree / "ring_tones" / "ring1RT.wav").write_bytes(b"RIFF")
     got = assets.group_for(str(tree), "Ring tone 1")
     assert len(got) == 1
+
+
+# ------------------------------------------------------- tranche-2 #256 assets
+def _png(size, tag):
+    d = size / "AT_O3.png"
+    d.parent.mkdir(parents=True, exist_ok=True)
+    d.write_bytes(b"png-" + tag.encode())
+    return d
+
+
+def _asset_args(tree, **kw):
+    import argparse
+
+    args = argparse.Namespace(tree=str(tree), force=False, **kw)
+    return args
+
+
+def test_export_keeps_same_named_files_from_every_size(tmp_path):
+    """Same basename in Large/Medium/Small used to collapse into one pool file."""
+    import assets
+
+    tree = tmp_path / "media"
+    for size in ("Large", "Medium", "Small"):
+        _png(tree / "Data_base" / "radio" / "logo" / size, size)
+
+    args = _asset_args(tree, asset="radio logos", out=str(tmp_path / "out"))
+    assets.cmd_export(args)
+
+    for size in ("Large", "Medium", "Small"):
+        got = tmp_path / "out" / "Data_base" / "radio" / "logo" / size / "AT_O3.png"
+        assert got.read_bytes() == b"png-" + size.encode()
+
+
+def test_replace_refuses_an_ambiguous_flat_pool(tmp_path):
+    """One pool file must not land in all three sizes silently."""
+    import pytest
+
+    import assets
+
+    tree = tmp_path / "media"
+    for size in ("Large", "Medium", "Small"):
+        _png(tree / "Data_base" / "radio" / "logo" / size, size)
+    pool = tmp_path / "pool"
+    pool.mkdir()
+    (pool / "AT_O3.png").write_bytes(b"new")
+
+    import argparse
+
+    args = argparse.Namespace(tree=str(tree), asset="radio logos", with_=str(pool), dry_run=True)
+    with pytest.raises(SystemExit, match="ambiguous across sizes"):
+        assets.cmd_replace(args)
+    for size in ("Large", "Medium", "Small"):
+        assert (tree / "Data_base" / "radio" / "logo" / size / "AT_O3.png").read_bytes() != b"new"
+
+
+def test_replace_maps_a_mirrored_pool_per_size(tmp_path):
+    import assets
+
+    tree = tmp_path / "media"
+    for size in ("Large", "Medium", "Small"):
+        _png(tree / "Data_base" / "radio" / "logo" / size, size + "-old")
+    pool = tmp_path / "pool"
+    for size in ("Large", "Medium", "Small"):
+        d = pool / "Data_base" / "radio" / "logo" / size
+        d.mkdir(parents=True)
+        (d / "AT_O3.png").write_bytes(b"png-" + size.encode() + b"-new")
+
+    import argparse
+
+    args = argparse.Namespace(tree=str(tree), asset="radio logos", with_=str(pool), dry_run=False)
+    assets.cmd_replace(args)
+
+    for size in ("Large", "Medium", "Small"):
+        got = tree / "Data_base" / "radio" / "logo" / size / "AT_O3.png"
+        assert got.read_bytes() == b"png-" + size.encode() + b"-new"

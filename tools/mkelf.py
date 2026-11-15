@@ -12,8 +12,16 @@ usage:
 
 import argparse
 import bisect
+import os
 import struct
+import sys
 from pathlib import Path
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from symbols import load_typed_symbols  # noqa: E402
 
 SHF_ALLOC = 0x2
 SHF_EXECINSTR = 0x4
@@ -37,16 +45,8 @@ def main():
     img = Path(args.image).read_bytes()
 
     raw = {}
-    with open(args.symbols, "r", errors="replace") as fh:
-        for line in fh:
-            p = line.split()
-            if len(p) >= 3:
-                try:
-                    raw[int(p[0], 16)] = (p[2], p[1])
-                except ValueError:
-                    # the symbol map has header and section lines whose first
-                    # field is not a hex address; those are not symbols
-                    pass
+    for addr, (typ, name) in load_typed_symbols(args.symbols).items():
+        raw[addr] = (name, typ)
     addrs = sorted(raw)
 
     def size(a):

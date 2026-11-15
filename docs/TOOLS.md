@@ -247,7 +247,7 @@ options:
 `tools/preflight.py`: Pre-flight a SMEG+ package: say what it will do before it goes on a stick.
 
 ```text
-usage: preflight.py [-h] --package PACKAGE [--module MODULE] [--stock STOCK] [--json]
+usage: preflight.py [-h] --package PACKAGE [--module MODULE] [--patches PATCHES] [--json]
 
 Pre-flight a SMEG+ package: say what it will do before it goes on a stick.
 
@@ -265,14 +265,15 @@ This runs those checks, plus the ones that are merely tedious, and reports what 
 
 usage:
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod
-    python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --stock SMEG_PLUS_UPG
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --json
+    python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --patches patches/aux-sticky.json
 
 options:
   -h, --help         show this help message and exit
   --package PACKAGE
   --module MODULE
-  --stock STOCK      a stock package to compare against (optional)
+  --patches PATCHES  a patch definition JSON (or a directory of them) to recognise instead of
+                     patches/*.json
   --json
 ```
 
@@ -568,10 +569,10 @@ not a crc32 or adler32 fragment of the chunk). It is preserved as-is, and a rebu
 has not yet been flashed, so treat a replaced splash as unverified until a unit accepts it.
 
 usage:
-    python3 tools/splash.py list --tree media/
-    python3 tools/splash.py extract --tree media/ -o splash/ --marque peugeot
-    python3 tools/splash.py replace --tree media/ --marque peugeot --image mine.png
-    python3 tools/splash.py selftest --tree media/
+    python3 tools/splash.py --tree media/ list
+    python3 tools/splash.py --tree media/ extract -o splash/ --marque peugeot
+    python3 tools/splash.py --tree media/ replace --marque peugeot --image mine.png
+    python3 tools/splash.py --tree media/ selftest
 
 positional arguments:
   {list,extract,replace,selftest}

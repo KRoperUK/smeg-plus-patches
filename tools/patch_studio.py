@@ -46,10 +46,9 @@ sys.path.insert(0, HERE)
 try:
     from ringtones import (
         SLOTS,
-        WAIT_DIR,
-        RING_DIR,
         convert,
         describe,  # noqa: E402
+        export_tones as export_tones_cli,
         ring_names,
         set_ring_name,
     )  # noqa: E402
@@ -622,15 +621,11 @@ class Studio(QWidget):
         d = QFileDialog.getExistingDirectory(self, "Export the tones to…")
         if not d:
             return
-        n = 0
-        for sub in (RING_DIR, WAIT_DIR):
-            src = os.path.join(self.tree, sub)
-            if not os.path.isdir(src):
-                continue
-            for f in sorted(os.listdir(src)):
-                if f.lower().endswith(".wav"):
-                    Path(os.path.join(d, f)).write_bytes(Path(os.path.join(src, f)).read_bytes())
-                    n += 1
+        try:
+            n = export_tones_cli(self.tree, d)
+        except SystemExit as e:
+            QMessageBox.warning(self, "Export failed", str(e))
+            return
         self.say("exported %d file(s) to %s" % (n, d))
 
     def choose_file(self, slot):

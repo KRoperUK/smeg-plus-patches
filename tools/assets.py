@@ -374,9 +374,12 @@ def cmd_export(args):
     n = 0
     for group, desc, pattern, kind, files in (e[:5] for e in entries):
         for f in files:
-            dest = os.path.join(args.out, os.path.basename(f))
+            # key by tree-relative path: the same basename repeats across sizes
+            # (Large/Medium/Small radio logos), and a flat export silently drops 2 of 3
+            dest = os.path.join(args.out, os.path.relpath(f, tree))
             if os.path.exists(dest) and not args.force:
                 continue
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy2(f, dest)
             n += 1
     print("exported %d file(s) to %s" % (n, args.out))
@@ -390,7 +393,12 @@ def cmd_replace(args):
 
     src = args.with_
     if os.path.isdir(src):
-        pool = [os.path.join(src, f) for f in os.listdir(src)]
+        pool = [
+            os.path.join(root, f)
+            for root, _, fs in os.walk(src)
+            for f in fs
+            if not f.startswith("._") and f != ".DS_Store"
+        ]
     elif os.path.exists(src):
         pool = [src]
     else:
@@ -401,11 +409,36 @@ def cmd_replace(args):
         if len(pool) == 1 and len(files) == 1:
             pairs = [(files[0], pool[0])]
         else:
-            # match by name, so a directory of replacements maps onto the right files
-            by_name = {os.path.basename(p): p for p in pool}
-            pairs = [
-                (f, by_name[os.path.basename(f)]) for f in files if os.path.basename(f) in by_name
-            ]
+            # match by tree-relative path first (a pool mirroring the tree layout is
+            # the only unambiguous mapping when basenames repeat across sizes), and
+            # by basename only when it names exactly one file on both sides
+            by_rel = {}
+            for p in pool:
+                rel = os.path.relpath(p, src) if os.path.isdir(src) else os.path.basename(p)
+                by_rel.setdefault(rel, []).append(p)
+            basenames = {}
+            for f in files:
+                basenames.setdefault(os.path.basename(f), []).append(f)
+            pairs, ambiguous = [], []
+            for f in files:
+                rel = os.path.relpath(f, tree)
+                if by_rel.get(rel) and len(by_rel[rel]) == 1:
+                    pairs.append((f, by_rel[rel][0]))
+                elif len(basenames[os.path.basename(f)]) == 1:
+                    cands = [p for p in pool if os.path.basename(p) == os.path.basename(f)]
+                    if len(cands) == 1:
+                        pairs.append((f, cands[0]))
+                    elif cands:
+                        ambiguous.append(os.path.basename(f))
+                else:
+                    ambiguous.append(os.path.basename(f))
+            if ambiguous:
+                sys.exit(
+                    "%s is ambiguous across sizes - mirror the tree layout under %s "
+                    "(e.g. Data_base/radio/logo/Large/%s) so each replacement maps "
+                    "to one file"
+                    % (", ".join(sorted(set(ambiguous))), src, sorted(set(ambiguous))[0])
+                )
             if not pairs:
                 if len(files) > 1 and os.path.isfile(src):
                     sys.exit(

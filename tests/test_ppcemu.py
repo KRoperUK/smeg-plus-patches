@@ -297,3 +297,11 @@ def test_an_unseeded_bss_global_reads_as_zero():
     """lwz r3, 0(r3) from BSS: the zero page stands in for uninitialised data."""
     e = ppcemu.Emulator(image({BASE: [0x80630000, blr()]}, size=0x1000))
     assert e.call(BASE, [BASE + 0x90000]) == 0
+
+
+def test_exceeding_the_call_budget_sets_an_error():
+    """An over-budget run used to return mid-function garbage with no error set (#256)."""
+    e = emu({BASE: [bl(BASE, BASE), blr()]}, max_calls=3)
+    e.call(BASE)
+    assert e.error is not None
+    assert "call budget" in e.error

@@ -132,20 +132,23 @@ def report_image(label, path, variants, as_json):
         "probes": {},
     }
 
+    for key, v in variants.items():
+        m, n, details = probe_results(img, v)
+        payload["probes"]["%s/%s" % key] = {
+            "matched": m,
+            "total": n,
+            "firmware": v["firmware"],
+            "detail": [
+                {"addr": hex(a), "expect": e, "found": g, "ok": ok} for a, e, g, ok in details
+            ],
+        }
     if not as_json:
         print("  %s" % label)
         print("    %-14s %d bytes, %s" % ("image", len(img), how))
         print("    %-14s %s" % ("build tokens", ", ".join(tokens) if tokens else "none"))
         for key, v in variants.items():
-            m, n, details = probe_results(img, v)
-            payload["probes"]["%s/%s" % key] = {
-                "matched": m,
-                "total": n,
-                "firmware": v["firmware"],
-                "detail": [
-                    {"addr": hex(a), "expect": e, "found": g, "ok": ok} for a, e, g, ok in details
-                ],
-            }
+            m = payload["probes"]["%s/%s" % key]["matched"]
+            n = payload["probes"]["%s/%s" % key]["total"]
             tag = "  <- match" if m == n and n else ""
             print(
                 "    %-22s %d/%d probes   firmware=%s%s"

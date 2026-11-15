@@ -156,10 +156,10 @@ def require_media_tree(tree):
         )
 
 
-def cmd_export(args):
-    tree = args.tree
+def export_tones(tree, out):
+    """Copy the stock WAVs out of an extracted media tree. Returns the file count."""
     require_media_tree(tree)
-    os.makedirs(args.output, exist_ok=True)
+    os.makedirs(out, exist_ok=True)
     n = 0
     for sub in (RING_DIR, WAIT_DIR):
         d = os.path.join(tree, sub)
@@ -167,8 +167,13 @@ def cmd_export(args):
             continue
         for f in sorted(os.listdir(d)):
             if f.lower().endswith(".wav"):
-                shutil.copyfile(os.path.join(d, f), os.path.join(args.output, f))
+                shutil.copyfile(os.path.join(d, f), os.path.join(out, f))
                 n += 1
+    return n
+
+
+def cmd_export(args):
+    n = export_tones(args.tree, args.output)
     print("exported %d file(s) to %s" % (n, args.output))
 
 
@@ -232,7 +237,12 @@ def name_patch_spec(module, names):
         if slot not in table["slots"]:
             sys.exit("%s: names only apply to %s" % (slot, ", ".join(table["slots"])))
         addr, stock, room = table["slots"][slot]
-        if not name or len(name) > room or not all(32 <= ord(c) < 127 for c in name):
+        if (
+            not isinstance(name, str)
+            or not name
+            or len(name) > room
+            or not all(32 <= ord(c) < 127 for c in name)
+        ):
             sys.exit(
                 "%s: %r must be 1-%d printable ASCII characters (the room before the next "
                 "string in the image)" % (slot, name, room)

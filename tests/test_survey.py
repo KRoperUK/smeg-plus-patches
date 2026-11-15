@@ -209,3 +209,15 @@ def test_a_gzipped_map_is_read_directly(tmp_path):
     gz = tmp_path / "vt.txt.gz"
     gz.write_bytes(gzip.compress(sym.read_bytes()))
     assert load_typed_symbols(str(gz)) == load_typed_symbols(str(sym))
+
+
+def test_a_corrupt_container_is_refused_not_inventoried(tmp_path):
+    """A corrupt container must fail loudly, not inventory raw bytes (#256)."""
+    import pytest as _pytest
+
+    import survey as _survey
+
+    container = tmp_path / "f_BigQuick.bin"
+    container.write_bytes(b"\x00" * 0x800 + b"\x08" + b"not a zlib stream" * 100)
+    with _pytest.raises(SystemExit):
+        _survey.load_image(str(container))

@@ -127,10 +127,8 @@ def load_image(path):
     """The inflated image, from either an `f_BigQuick.bin` container or a raw image."""
     raw = Path(path).read_bytes()
     if len(raw) > 0x801 and raw[0x800] == 0x08:
-        try:
-            return inflate(raw)[1]
-        except SystemExit:
-            pass
+        # a corrupt container must fail loudly, not inventory raw bytes at wrong addresses
+        return inflate(raw)[1]
     return raw
 
 

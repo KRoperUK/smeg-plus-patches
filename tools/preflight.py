@@ -23,7 +23,6 @@ This runs those checks, plus the ones that are merely tedious, and reports what 
 
 usage:
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod
-    python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --stock SMEG_PLUS_UPG
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --json
     python3 tools/preflight.py --package SMEG_PLUS_UPG_mod --patches patches/aux-sticky.json
 """
@@ -451,7 +450,6 @@ def main():
     )
     ap.add_argument("--package", required=True)
     ap.add_argument("--module", default=None)
-    ap.add_argument("--stock", help="a stock package to compare against (optional)")
     ap.add_argument(
         "--patches",
         default=None,

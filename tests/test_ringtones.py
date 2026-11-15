@@ -309,3 +309,20 @@ def test_cli_rename_survives_a_corrupt_db(tmp_path):
     )
     assert r.returncode != 0
     assert "Traceback" not in (r.stdout + r.stderr)
+
+
+def test_name_patch_spec_rejects_a_non_string_name():
+    """A manifest `{"ring1": 5}` died with `object of type int has no len()` (#256)."""
+    import pytest as _pytest
+
+    with _pytest.raises(SystemExit, match="must be 1-"):
+        rt.name_patch_spec("NAV", {"ring1": 5})
+
+
+def test_export_tones_needs_a_media_tree(tmp_path):
+    bad = tmp_path / "nope"
+    bad.mkdir()
+    import pytest as _pytest
+
+    with _pytest.raises(SystemExit, match="extracted media partition"):
+        rt.export_tones(str(bad), str(tmp_path / "out"))

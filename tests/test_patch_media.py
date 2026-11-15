@@ -280,3 +280,27 @@ def test_backup_refuses_members_escaping_the_tree(tmp_path):
     assert r.returncode != 0
     assert "outside" in (r.stdout + r.stderr)
     assert not (tmp_path / "backup" / "evil.txt").exists()
+
+
+def test_apply_names_tree_deleted_files_it_keeps(media, tmp_path):
+    """Tree-deleted files used to be kept silently; extras get a note (#256)."""
+    pkg, info = media
+    tree = extract(tmp_path, pkg)
+    first = sorted(info["files"])[0]
+    (tree / first).unlink()
+    (tree / "ring_tones" / "ring1RT.wav").write_bytes(mh.wav_bytes(frames=2000))
+    r = run(
+        os.path.join(TOOLS, "patch_media.py"),
+        "apply",
+        "--package",
+        str(pkg),
+        "--module",
+        "NAV",
+        "--tree",
+        str(tree),
+        "--out",
+        str(tmp_path / "out"),
+    )
+    assert r.returncode == 0, r.stderr
+    assert "will be kept" in r.stdout
+    assert first in r.stdout
