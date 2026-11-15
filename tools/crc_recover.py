@@ -150,6 +150,11 @@ def recover(samples, width=16, polys=None):
     `polys` restricts the polynomial search, which exists so tests can exercise the whole
     path in milliseconds rather than scanning 65536 candidates. Left as None it scans them all.
     """
+    if width > 16:
+        raise ValueError(
+            "width %d is not supported: the init search is 2^width per candidate, "
+            "which hangs at width 32 — recover the .inf CRCs at width 16 or below" % width
+        )
     groups = groups_by_length(samples)
     if not groups:
         return None
@@ -274,6 +279,11 @@ def main(argv=None):
     ap.add_argument("--root", default=".", help="base for the paths in --samples")
     ap.add_argument("--width", type=int, default=16)
     args = ap.parse_args(argv)
+    if args.width > 16:
+        sys.exit(
+            "width %d is not supported: the init search is 2^width per candidate, "
+            "which hangs at width 32" % args.width
+        )
     samples = []
 
     if args.package:

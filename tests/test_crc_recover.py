@@ -93,6 +93,26 @@ def test_init_and_xorout_are_not_uniquely_identifiable():
     assert [c for _, c in truth] == [c for _, c in alt]
 
 
+def test_widths_above_16_are_refused_not_hung():
+    """#250: `--width 32` needs ~2^32 init checks per candidate — refuse it."""
+    with pytest.raises(ValueError):
+        cr.recover(samples_for(0x1021, 0xFFFF, False, False, 0x0000), 32)
+
+
+def test_the_cli_refuses_width_32_without_hanging(tmp_path):
+    import subprocess
+
+    samples = tmp_path / "samples.txt"
+    samples.write_text("a/b.bin 12ab\n")
+    r = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tools", "crc_recover.py"), "--width", "32"],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    assert "not supported" in (r.stdout + r.stderr)
+
+
 def test_full_scan_finds_a_variant_without_being_told_the_polynomial():
     """One end-to-end scan, at width 8 so it is a few hundred candidates rather than 65536."""
     msgs = [bytes([(i * 31 + j) & 0xFF for j in range(12)]) for i in range(4)]
