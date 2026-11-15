@@ -215,6 +215,45 @@ def test_applies_when_the_firmware_version_matches(tmp_path):
     assert "5.43.A.R2" in r.stdout
 
 
+def test_overlong_patch_bytes_at_the_tail_are_refused():
+    """#245: a tail entry whose payload runs past the end must not grow the image."""
+    import patch_smeg  # noqa: E402
+
+    img = bytearray(b"\xaa" * 64)
+    base = 0x1000000
+    tail = base + len(img) - 4
+    img[-4:] = bytes.fromhex("9421ffa0")
+    patches = [
+        {
+            "addr": hex(tail),
+            "expect": "9421ffa0",
+            "bytes": "386000014e80002038600001",  # 12 bytes: 4 fit, 8 do not
+        }
+    ]
+    before = bytes(img)
+    with pytest.raises(SystemExit):
+        patch_smeg.apply_patches(img, base, patches, "tail")
+    assert bytes(img) == before, "a refused patch must leave the image untouched"
+
+
+def test_short_data_edit_in_the_last_bytes_is_accepted():
+    """#245 (the other half): a 2-byte edit inside the last 2 bytes is legal."""
+    import patch_smeg  # noqa: E402
+
+    img = bytearray(b"\xaa" * 64)
+    base = 0x1000000
+    tail = base + len(img) - 2
+    img[-2:] = bytes.fromhex("4e80")
+    out = patch_smeg.apply_patches(
+        img,
+        base,
+        [{"addr": hex(tail), "expect": "4e80", "bytes": "4800", "data": True}],
+        "tail",
+    )
+    assert out[-2:] == bytes.fromhex("4800")
+    assert len(out) == 64, "the image must never grow"
+
+
 def test_zensical_nav_matches_docs():
     """Every page listed in the site nav must exist (guards against broken nav)."""
     import re

@@ -259,15 +259,15 @@ def apply_patches(img, base, patches, label):
     for p in patches:
         addr = int(str(p["addr"]), 16)
         off = addr - base
-        if off < 0 or off + 4 > len(img):
-            raise SystemExit("%s: patch address %#x outside image" % (label, addr))
         expect = bytes.fromhex(p["expect"])
+        new = bytes.fromhex(p["bytes"])
+        if off < 0 or off + len(expect) > len(img) or off + len(new) > len(img):
+            raise SystemExit("%s: patch address %#x outside image" % (label, addr))
         if img[off : off + len(expect)] != expect:
             raise SystemExit(
                 "%s: at %#x expected %s, found %s (wrong firmware build?)"
                 % (label, addr, expect.hex(), img[off : off + len(expect)].hex())
             )
-        new = bytes.fromhex(p["bytes"])
         if not p.get("data"):  # a string or table edit (e.g. ring tone names) is not code
             check_site(new, label, addr, p.get("disasm"))
         img[off : off + len(new)] = new
