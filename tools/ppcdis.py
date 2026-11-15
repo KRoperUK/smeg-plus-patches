@@ -41,17 +41,17 @@ _CLOBBER_RA = {20, 21, 23, 25, 26, 27, 28, 29}
 
 def _clobbered(w, op, mnemonic=""):
     """Capstone register ids this instruction word overwrites, if any."""
+    # mtctr/mtlr only move a GPR into a special register, which the tracking below
+    # reads — popping their source would blind the very call they set up.
+    out = []
     if op == 31:
-        # mtctr/mtlr only move a GPR into a special register, which the tracking
-        # below reads — popping their source would blind the very call they set up.
-        if mnemonic in ("mtctr", "mtlr"):
-            return ()
-        return (_GPR[(w >> 21) & 31], _GPR[(w >> 16) & 31])
-    if op in _CLOBBER_RT:
-        return (_GPR[(w >> 21) & 31],)
-    if op in _CLOBBER_RA:
-        return (_GPR[(w >> 16) & 31],)
-    return ()
+        if mnemonic not in ("mtctr", "mtlr"):
+            out = [_GPR[(w >> 21) & 31], _GPR[(w >> 16) & 31]]
+    elif op in _CLOBBER_RT:
+        out = [_GPR[(w >> 21) & 31]]
+    elif op in _CLOBBER_RA:
+        out = [_GPR[(w >> 16) & 31]]
+    return tuple(out)
 
 
 def main():
