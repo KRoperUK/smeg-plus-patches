@@ -154,6 +154,49 @@ def test_a_package_with_no_modules_is_not_reported_as_consistent(tmp_path):
     assert "nothing to audit" in r.stdout
 
 
+def test_a_media_partition_with_consistent_sizes_has_no_problems(tmp_path):
+    """#254: the SIZE check must pass a package the patcher built."""
+    import media_helpers as mh  # noqa: E402
+
+    p = tmp_path / "SMEG_PLUS_UPG"
+    p.mkdir()
+    mh.build_media_package(str(p))
+    assert verify_package.audit(str(p)) == []
+
+
+def test_a_flipped_size_is_caught(tmp_path):
+    """#254: SIZE flipped to 1 with a consistent CRC cascade must not audit clean."""
+    import re  # noqa: E402
+
+    import media_helpers as mh  # noqa: E402
+
+    p = tmp_path / "SMEG_PLUS_UPG"
+    p.mkdir()
+    mh.build_media_package(str(p))
+    inf = p / "NAV" / "system.bin.inf"
+    inf.write_bytes(re.sub(rb"SIZE: \d+", b"SIZE: 1", inf.read_bytes(), count=1))
+    problems = verify_package.audit(str(p))
+    assert any(x["kind"] == "inf-size" and "SIZE 1" in x["detail"] for x in problems)
+
+
+def test_an_undersized_size_n_is_caught(tmp_path):
+    """#254: a SIZE_n below the block-rounded contents understates the space need."""
+    import re  # noqa: E402
+
+    import media_helpers as mh  # noqa: E402
+
+    p = tmp_path / "SMEG_PLUS_UPG"
+    p.mkdir()
+    info = mh.build_media_package(str(p))
+    inf = p / "NAV" / "system.bin.inf"
+    small = info["sizes"]["SIZE_8"] - 1
+    inf.write_bytes(
+        re.sub(rb"SIZE_8: \d+", ("SIZE_8: %d" % small).encode(), inf.read_bytes(), count=1)
+    )
+    problems = verify_package.audit(str(p))
+    assert any(x["kind"] == "inf-size" and "SIZE_8" in x["detail"] for x in problems)
+
+
 def test_non_application_modules_are_not_failures(tmp_path):
     """BSP, HARMONY, RENESAS and USERGUIDE are modules and never had an AppBin/f_BigQuick.bin.
 

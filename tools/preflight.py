@@ -226,6 +226,12 @@ def check_patches(rep, img, module):
 
 
 def check_settings(rep, keys, area="settings"):
+    if area == "settings":
+        rep.add(
+            INFO,
+            area,
+            "seed database: the unit ignores these values unless they arrive via USER_DATA",
+        )
     ls = None
     for (sec, name, idx), val in keys.items():
         if sec == "supervisor" and name == "Last_Source":

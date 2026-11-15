@@ -123,6 +123,24 @@ def test_switching_slots_stops_the_previous(studio, tmp_path):
     assert studio._preview_btns["ring2"].toolTip() == "Stop preview"
 
 
+def test_module_comes_from_the_backup_not_the_tree(studio, tmp_path):
+    """#253: with any media tree open, the module is the one the backup has."""
+    tree = tmp_path / "media"
+    (tree / "ring_tones").mkdir(parents=True)
+    (tmp_path / "backup" / "AUDIO_BT").mkdir(parents=True)
+    studio.tree = str(tree)
+    studio.backup = str(tmp_path / "backup")
+    assert studio.module() == "AUDIO_BT"
+
+
+def test_module_falls_back_to_nav_without_a_backup(studio, tmp_path):
+    tree = tmp_path / "media"
+    (tree / "ring_tones").mkdir(parents=True)
+    studio.tree = str(tree)
+    studio.backup = str(tmp_path / "backup-missing")
+    assert studio.module() == "NAV"
+
+
 def test_studio_still_builds_its_tabs(studio):
     """Smoke test: the window and every tab construct without raising."""
     from PySide6.QtWidgets import QTabWidget

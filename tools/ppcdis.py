@@ -13,6 +13,7 @@ usage:
 import argparse
 import bisect
 import os
+import struct
 import sys
 from pathlib import Path
 
@@ -22,10 +23,35 @@ sys.path.insert(0, HERE)
 from symbols import load_symbols
 
 try:
+    import capstone.ppc
     from capstone import CS_ARCH_PPC, CS_MODE_32, CS_MODE_BIG_ENDIAN, Cs
     from capstone.ppc import PPC_OP_IMM, PPC_OP_REG
 except ImportError:
     sys.exit("capstone is required:  pip install capstone")
+
+_GPR = tuple(getattr(capstone.ppc, "PPC_REG_R%d" % n) for n in range(32))
+
+# Opcodes whose result lands in RT (bits 21-25) or RA (bits 16-20), mirroring
+# survey.written: dropping a register an instruction overwrote only loses a reference,
+# while keeping it past the overwrite invents a call target that is not there.
+# lis/addi/ori are absent: the tracking below overwrites (or drops) them itself.
+_CLOBBER_RT = {7, 8, 12, 13, 32, 33, 34, 35, 40, 41, 42, 43, 46}
+_CLOBBER_RA = {20, 21, 23, 25, 26, 27, 28, 29}
+
+
+def _clobbered(w, op, mnemonic=""):
+    """Capstone register ids this instruction word overwrites, if any."""
+    # mtctr/mtlr only move a GPR into a special register, which the tracking below
+    # reads — popping their source would blind the very call they set up.
+    out = []
+    if op == 31:
+        if mnemonic not in ("mtctr", "mtlr"):
+            out = [_GPR[(w >> 21) & 31], _GPR[(w >> 16) & 31]]
+    elif op in _CLOBBER_RT:
+        out = [_GPR[(w >> 21) & 31]]
+    elif op in _CLOBBER_RA:
+        out = [_GPR[(w >> 16) & 31]]
+    return tuple(out)
 
 
 def main():
@@ -61,16 +87,27 @@ def main():
         m, ops = ins.mnemonic, ins.op_str
         o = ins.operands
         ann = ""
+        raw = img[ins.address - base : ins.address - base + 4]
+        if len(raw) == 4:
+            w = struct.unpack(">I", raw)[0]
+            op = w >> 26
+            if op != 15 and op not in (14, 24):
+                for r in _clobbered(w, op, m):
+                    regs.pop(r, None)
         if m == "lis" and len(o) == 2 and o[1].type == PPC_OP_IMM:
             regs[o[0].reg] = o[1].imm << 16
         elif m == "addi" and len(o) == 3 and o[1].type == PPC_OP_REG and o[2].type == PPC_OP_IMM:
             b = regs.get(o[1].reg)
             if b is not None:
                 regs[o[0].reg] = (b + o[2].imm) & 0xFFFFFFFF
+            else:
+                regs.pop(o[0].reg, None)  # overwritten with an untracked value
         elif m == "ori" and len(o) == 3 and o[1].type == PPC_OP_REG and o[2].type == PPC_OP_IMM:
             b = regs.get(o[1].reg)
             if b is not None:
                 regs[o[0].reg] = b | o[2].imm
+            else:
+                regs.pop(o[0].reg, None)  # overwritten with an untracked value
         elif m == "mtctr" and len(o) == 1:
             ctr = regs.get(o[0].reg)
         elif m == "mtlr" and len(o) == 1:

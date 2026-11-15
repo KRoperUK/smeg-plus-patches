@@ -82,7 +82,9 @@ def main():
         op = w >> 26
         if op not in (14, 24):  # addi / ori
             continue
-        ra = (w >> 16) & 31
+        # addi reads rA (bits 16-20); ori reads rS (bits 21-25) — survey.py gets this
+        # right, and xref disagreed with it on `lis rX; ori rY,rX` sequences.
+        ra = ((w >> 16) & 31) if op == 14 else ((w >> 21) & 31)
         imm = w & 0xFFFF
         if op == 14 and imm & 0x8000:
             imm -= 0x10000

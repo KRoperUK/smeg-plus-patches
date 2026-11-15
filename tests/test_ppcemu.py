@@ -164,6 +164,25 @@ def test_calls_are_recorded_and_really_executed():
     assert [t for _, t in e.calls] == [CALLEE]
 
 
+def test_a_second_call_starts_with_empty_per_call_state():
+    """#249: `reached` and the trace belong to the last call, not every call so far."""
+    other = BASE + 0x2000
+    e = emu(
+        {
+            BASE: [bl(BASE, CALLEE), blr()],
+            other: [li(3, 0), blr()],
+            CALLEE: [li(3, 7), blr()],
+        },
+        trace=True,
+    )
+    assert e.call(BASE) == 7
+    assert e.reached(CALLEE)
+    assert e.call(other) == 0
+    assert not e.reached(CALLEE), "the second call never reaches the callee"
+    assert e.calls == [], "no calls happen in the straight-line second function"
+    assert not any(line.startswith("%08x" % CALLEE) for line in e.log)
+
+
 def test_a_stub_replaces_the_callee_and_its_body_never_runs():
     e = emu({BASE: [bl(BASE, CALLEE), blr()], CALLEE: [li(3, 7), blr()]}, trace=True)
     e.stub(CALLEE, 99)

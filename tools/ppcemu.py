@@ -243,6 +243,9 @@ class Emulator:
 
     def call(self, addr, args=(), max_insns=200000, timeout=10_000_000):
         """Call a function. Returns r3. Stops when it returns, faults or runs too long."""
+        self.calls = []
+        self.unmapped = []
+        self.log = []
         uc = self.uc
         sp = STACK_TOP - 0x1000
         uc.mem_write(sp - 0x800, b"\x00" * 0x1000)  # a clean frame each time

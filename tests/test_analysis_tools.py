@@ -54,6 +54,71 @@ def test_xref_finds_pointer_and_materialised_string_address(fixture):
     assert "total: 1 pointer(s), 1 immediate site(s)" in result.stdout
 
 
+def _words_image(tmp_path, words, base=0x01000000):
+    """A tiny image with hand-encoded words at 0x00.. plus the target string."""
+    import struct as _struct
+
+    img = bytearray(0x100)
+    for off, word in words.items():
+        img[off : off + 4] = _struct.pack(">I", word)
+    img[0x80 : 0x80 + len(b"Auxiliary_Input\x00")] = b"Auxiliary_Input\x00"
+    image = tmp_path / "words.bin"
+    image.write_bytes(bytes(img))
+    symbols = tmp_path / "symbols.txt"
+    symbols.write_text(
+        "%08x T caller\n%08x T target_function\n%08x R aux_name\n"
+        % (base, base + 0x40, base + 0x80)
+    )
+    return str(image), str(symbols)
+
+
+def test_xref_finds_an_ori_with_a_different_source_register(tmp_path):
+    """#251: `ori r4,r3` reads r3 (bits 21-25), not r4 — xref missed it."""
+    image, symbols = _words_image(
+        tmp_path,
+        {
+            0x00: 0x3C600100,  # lis r3,0x100
+            0x04: 0x60640080,  # ori r4,r3,0x80
+        },
+    )
+    result = run("xref.py", image, symbols, "Auxiliary_Input")
+    assert result.returncode == 0, result.stderr
+    assert "immediate @ 0x1000004" in result.stdout
+    assert "total: 0 pointer(s), 1 immediate site(s)" in result.stdout
+
+
+def test_xref_does_not_read_the_ori_destination_as_its_source(tmp_path):
+    """#251: `ori r5,r6` with a `lis r5` nearby is not a materialisation."""
+    image, symbols = _words_image(
+        tmp_path,
+        {
+            0x00: 0x3CA00100,  # lis r5,0x100
+            0x04: 0x60C50080,  # ori r5,r6,0x80: reads r6, so no lis applies
+        },
+    )
+    result = run("xref.py", image, symbols, "Auxiliary_Input")
+    assert result.returncode == 0, result.stderr
+    assert "total: 0 pointer(s), 0 immediate site(s)" in result.stdout
+
+
+def test_ppcdis_drops_a_register_after_it_is_overwritten(tmp_path):
+    """#251: `lwz r3` after `lis/addi r3` leaves no address to annotate."""
+    pytest.importorskip("capstone")
+    image, symbols = _words_image(
+        tmp_path,
+        {
+            0x00: 0x3C600100,  # lis r3,0x100
+            0x04: 0x38630080,  # addi r3,r3,0x80
+            0x08: 0x80630000,  # lwz r3,0(r3): r3 is overwritten with unknown data
+            0x0C: 0x7C6903A6,  # mtctr r3
+            0x10: 0x4E800421,  # bctrl
+        },
+    )
+    result = run("ppcdis.py", image, symbols, "0x01000000", "0x01000014")
+    assert result.returncode == 0, result.stderr
+    assert "; call " not in result.stdout
+
+
 def test_mkelf_wraps_the_image_and_symbols_as_powerpc_elf(fixture, tmp_path):
     image, symbols = fixture
     output = tmp_path / "analysis.elf"
