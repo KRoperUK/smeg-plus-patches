@@ -363,9 +363,7 @@ class Studio(QWidget):
 
     def module(self):
         for mod in MODULES:
-            if os.path.isdir(os.path.join(self.tree, RING_DIR)) or os.path.isdir(
-                os.path.join(self.backup, mod)
-            ):
+            if self.backup and os.path.isdir(os.path.join(self.backup, mod)):
                 return mod
         return "NAV"
 
