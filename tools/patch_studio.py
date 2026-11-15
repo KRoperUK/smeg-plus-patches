@@ -351,7 +351,7 @@ class Studio(QWidget):
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["SLOT", "FILE IN THE PARTITION", "EXPECTED", "STATE", "NAME IN THE PHONE UI", ""]
+            ["SLOT", "FILE IN THE PARTITION", "EXPECTED", "STATE", "NAME (SEED DB ONLY)", ""]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
@@ -463,7 +463,7 @@ class Studio(QWidget):
             choose.clicked.connect(lambda _=False, s=slot: self.choose_file(s))
             name_btn = QPushButton()
             name_btn.setIcon(self._icon(QStyle.SP_FileDialogDetailedView))
-            name_btn.setToolTip("Change what the phone UI calls this ringtone")
+            name_btn.setToolTip("Rename the seed-database row (the unit shows the image name)")
             name_btn.setAccessibleName("Rename this tone")
             name_btn.setEnabled(bool(self.tree) and ui_name != "—")
             name_btn.clicked.connect(lambda _=False, s=slot: self.rename_tone(s))
@@ -663,8 +663,9 @@ class Studio(QWidget):
         self.populate()
 
     def rename_tone(self, slot):
-        """Change the name the phone UI shows. That is a row in up_common.sqlite, not the
-        WAV — replacing a tone changes what you hear, renaming changes what you see."""
+        """Rename a seed-database row. That is a row in up_common.sqlite, not the
+        WAV — and the unit does NOT display it: the ringtone menu shows literals
+        in the application image (use media.names in a build manifest for those)."""
         if not (slot.startswith("ring") and slot[4:].isdigit()):
             return
         idx = int(slot[4:]) - 1
@@ -673,7 +674,10 @@ class Studio(QWidget):
             QMessageBox.information(self, "No name", "This media tree has no name for that slot.")
             return
         new, ok = QInputDialog.getText(
-            self, "Rename %s" % slot, "Name shown in the phone UI:", text=names[idx]
+            self,
+            "Rename %s" % slot,
+            "Seed-database name (the unit shows the image name):",
+            text=names[idx],
         )
         if not ok or not new.strip():
             return
@@ -682,8 +686,10 @@ class Studio(QWidget):
         except SystemExit as e:
             QMessageBox.critical(self, "Could not rename", str(e))
             return
-        self.say("%s is now shown as %r (was %r)" % (slot, new.strip(), names[idx]))
-        self.say("  rebuild the package and re-seal for this to reach the car")
+        self.say("%s seed-database name is now %r (was %r)" % (slot, new.strip(), names[idx]))
+        self.say("  note: this edits the seed database only; the unit shows the")
+        self.say("  application image's names. Use media.names in a build manifest")
+        self.say("  to change what the menu shows.")
         self.populate()
 
     # --------------------------------------------------------------------- splash

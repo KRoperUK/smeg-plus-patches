@@ -288,7 +288,10 @@ def ring_names(tree):
         return []
     import sqlite3
 
-    con = sqlite3.connect(path)
+    try:
+        con = sqlite3.connect(path)
+    except sqlite3.Error:
+        return []
     try:
         return [
             r[0]
@@ -297,18 +300,25 @@ def ring_names(tree):
                 (NAME_SECTION, NAME_KEY),
             )
         ]
+    except sqlite3.Error:
+        return []
     finally:
         con.close()
 
 
 def set_ring_name(tree, index, name):
     """Rename one entry of the list. `index` is the Idx column, not the ring number."""
-    con, _ = _name_db(tree)
+    import sqlite3
+
+    con, path = _name_db(tree)
     try:
-        cur = con.execute(
-            "update UP_Keys set StringValue=? where Section=? and Name=? and Idx=?",
-            (name, NAME_SECTION, NAME_KEY, index),
-        )
+        try:
+            cur = con.execute(
+                "update UP_Keys set StringValue=? where Section=? and Name=? and Idx=?",
+                (name, NAME_SECTION, NAME_KEY, index),
+            )
+        except sqlite3.Error as e:
+            sys.exit("%s is not a readable settings database (%s)" % (path, e))
         if cur.rowcount != 1:
             sys.exit(
                 "expected to update exactly one row at Idx=%d, updated %d" % (index, cur.rowcount)
@@ -334,7 +344,7 @@ def cmd_names(args):
 
 def cmd_rename(args):
     names = ring_names(args.tree)
-    m = re.match(r"ring(\d)$", args.slot)
+    m = re.match(r"ring([1-5])$", args.slot)
     if not m:
         sys.exit("--slot must be ring1..ring5 (the names are the phone ringtone list)")
     idx = int(m.group(1)) - 1
