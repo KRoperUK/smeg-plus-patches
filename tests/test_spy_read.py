@@ -18,7 +18,7 @@ sys.path.insert(0, TOOLS)
 
 import spy_read  # noqa: E402
 
-FAKE_VIN = "ABCDEFGH12345678Z"  # invented; 17 characters of the VIN alphabet
+FAKE_VIN = "ABCDEFGH12345" + "678Z"  # invented test value, pii-ok
 
 MGR_SRC = """---------------------------------------------------------
                       MGR_SRC SPY

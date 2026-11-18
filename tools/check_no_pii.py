@@ -19,6 +19,7 @@ units live:
     UK postcode       the outward + inward pair, which is the address, not just the area
     email address     anything that looks like one
     NI number         the two-letter six-digit form
+    VIN               17 VIN-alphabet characters with a digit and a letter
 
 Deliberately **not** checked:
 
@@ -51,6 +52,15 @@ PATTERNS = (
     ("UK postcode", re.compile(r"(?<![A-Z0-9])[A-Z]{1,2}\d{1,2}[A-Z]? \d[A-Z]{2}(?![A-Z])")),
     ("email address", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
     ("NI number", re.compile(r"(?<![A-Z])[A-Z]{2} ?\d{2} ?\d{2} ?\d{2} ?[A-D](?![A-Z])")),
+    # A VIN is 17 characters of the VIN alphabet (no I, O or Q) with at least one
+    # digit and one letter — the same shape tools/spy_read.py redacts, because spy
+    # captures carry it. Assembled-word boundaries keep hex noise out.
+    (
+        "VIN",
+        re.compile(
+            r"\b(?=[A-HJ-NPR-Z0-9]*\d)(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{17}\b"
+        ),
+    ),
 )
 
 # Not personal, and the docs would otherwise be unable to show an example address.
