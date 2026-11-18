@@ -1,7 +1,9 @@
 # Development / CI dependencies. No vendor firmware is needed to run the tests —
 # they build a synthetic package from scratch (see tests/helpers.py).
 pytest>=8
-ruff>=0.16
+# Pinned to the pre-commit hook's rev (v0.16.7): CI's `ruff format --check` must agree
+# with the hook, and a floating `>=` let the two diverge.
+ruff==0.16.7
 # tools/ppcemu.py — the function-level PowerPC emulator and its tests
 unicorn>=2.0
 capstone>=5.0

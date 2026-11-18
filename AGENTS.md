@@ -94,7 +94,11 @@ what CI runs.
 python3 tools/check_commit_msg.py --title "feat: ..."     # check a PR title
 ```
 
-CI runs `ruff check`, `ruff format --check`, `pytest tests -q` and `zensical build --clean`.
+CI runs `ruff check`, `ruff format --check`, `pytest tests -q`, `zensical build --clean`
+and a `hard rules` job with the same guards as the hooks: `check_no_firmware.sh --all`
+over the whole tree, `check_no_pii.py` over `git ls-files`, and `bandit -r tools`. The
+`Conventional Commits` check runs on the PR title. The branch ruleset requires the
+`test`, `hard rules` and `Conventional Commits` checks.
 `pre-commit install` wires three hook stages:
 
 * **every commit:** whitespace/EOF/YAML hygiene, `ruff check --fix`, `ruff format`,
