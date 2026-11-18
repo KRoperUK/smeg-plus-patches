@@ -140,7 +140,14 @@ def parse_cct(plain):
 # ----------------------------------------------------------------- commands
 
 
+def _missing(path):
+    """A clean one-line exit when an input file is not there, like the siblings."""
+    if not Path(path).exists():
+        raise SystemExit("%s: no such file" % path)
+
+
 def cmd_names(args):
+    _missing(args.file)
     fields = read_pool(args.file)
     if args.out:
         write_pool(args.out, fields)
@@ -157,6 +164,7 @@ def cmd_names(args):
 
 
 def cmd_round_trip(args):
+    _missing(args.file)
     fields = read_pool(args.file)
     out = Path(str(args.file) + ".roundtrip")
     write_pool(out, fields)
@@ -169,6 +177,7 @@ def cmd_round_trip(args):
 
 
 def cmd_inf(args):
+    _missing(args.file)
     first, fields = parse_inf(args.file)
     print("%s: checksum field %r" % (args.file, first))
     for k, v in fields.items():
@@ -177,6 +186,7 @@ def cmd_inf(args):
 
 
 def cmd_scc(args):
+    _missing(args.file)
     recs = parse_scc(Path(args.file).read_bytes())
     print("%s: %d records of %d bytes" % (args.file, len(recs), SCC_RECORD))
     for off, first, second, payload in recs[: args.limit]:
@@ -185,6 +195,8 @@ def cmd_scc(args):
 
 
 def cmd_cct(args):
+    _missing(args.file)
+    _missing(args.image)
     key = key_from_image(Path(args.image).read_bytes())
     plain = cct_decrypt(Path(args.file).read_bytes(), key)
     if args.out:

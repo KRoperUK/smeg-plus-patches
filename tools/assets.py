@@ -338,7 +338,7 @@ def format_of(path, kind):
                 w.getsampwidth() * 8,
                 "mono" if w.getnchannels() == 1 else "stereo",
             )
-    except Exception:
+    except (wave.Error, EOFError, OSError):
         return ""
 
 

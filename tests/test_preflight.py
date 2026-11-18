@@ -305,9 +305,10 @@ def test_read_module_finds_the_alternate_offset_stream(tmp_path):
     appbin.mkdir(parents=True)
     (appbin / "f_BigQuick.bin").write_bytes(raw)
 
-    got, _ = preflight.read_module(str(pkg), "NAV")
+    got, _, err = preflight.read_module(str(pkg), "NAV")
 
     assert got == bytes(img)
+    assert err is None
 
 
 def test_load_known_patches_reads_a_single_file(tmp_path):
@@ -342,3 +343,38 @@ def test_load_known_patches_reads_a_single_file(tmp_path):
     table = preflight.load_known_patches([str(p)])
 
     assert table == {"NAV": [(0x01000100, "00", "01", "custom probe")]}
+
+
+# --- unreadable media is a finding, not an empty partition (#237) --------------
+
+
+def test_corrupt_system_bin_is_reported_not_silent(tmp_path):
+    """A garbage system.bin used to pass the final gate with no finding."""
+    pkg = make_pkg(tmp_path, last_source=4)
+    (pkg / "NAV" / "system.bin").write_bytes(b"this is not a gzip'd tar")
+    r = run(pkg, "--json")
+    data = json.loads(r.stdout)
+    unknowns = [row for row in data["rows"] if row["level"] == "unknown"]
+    assert any("system.bin" in row["message"] for row in unknowns), data["rows"]
+
+
+def test_corrupt_settings_db_is_reported_not_silent(tmp_path):
+    """A corrupt up_common.sqlite used to skip the Last_Source check silently."""
+    import io as _io
+    import tarfile as _tarfile
+
+    pkg = make_pkg(tmp_path, last_source=4)
+    buf = _io.BytesIO()
+    with _tarfile.open(fileobj=buf, mode="w", format=_tarfile.GNU_FORMAT) as tf:
+        blob = b"this is not sqlite"
+        ti = _tarfile.TarInfo("Data_base/sqlite/up_common.sqlite")
+        ti.size = len(blob)
+        ti.mtime = 0
+        tf.addfile(ti, _io.BytesIO(blob))
+    import gzip as _gzip
+
+    (pkg / "NAV" / "system.bin").write_bytes(_gzip.compress(buf.getvalue(), 6))
+    r = run(pkg, "--json")
+    data = json.loads(r.stdout)
+    unknowns = [row for row in data["rows"] if row["level"] == "unknown"]
+    assert any("up_common.sqlite" in row["message"] for row in unknowns), data["rows"]

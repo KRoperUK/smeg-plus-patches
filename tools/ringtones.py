@@ -81,7 +81,7 @@ def probe(path):
     try:
         with wave.open(path, "rb") as w:
             return (w.getnchannels(), w.getframerate(), w.getsampwidth())
-    except Exception:
+    except (wave.Error, EOFError, OSError):
         return None
 
 

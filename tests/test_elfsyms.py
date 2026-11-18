@@ -173,3 +173,27 @@ def test_demangles_the_shape_these_binaries_use(mangled, expected):
 @pytest.mark.parametrize("plain", ["tickGet", "memcpy", "", "_not_mangled"])
 def test_leaves_unmangled_names_alone(plain):
     assert elfsyms.demangle(plain) == plain
+
+
+# --- truncated inputs (#237) -------------------------------------------------
+
+
+def test_a_header_truncated_mid_parse_is_a_one_line_error(tmp_path):
+    """A `.out` cut off mid-headers used to escape as an unhandled struct.error."""
+    import subprocess
+
+    p = tmp_path / "cut.out"
+    p.write_bytes(build_elf()[:20])
+    r = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(os.path.dirname(__file__), "..", "tools", "elfsyms.py"),
+            str(p),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert r.returncode != 0
+    assert "Traceback" not in r.stderr
+    assert "cut.out" in r.stderr

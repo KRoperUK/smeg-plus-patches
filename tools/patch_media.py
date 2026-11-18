@@ -102,7 +102,7 @@ class Partition:
         try:
             self.tar_bytes = gzip.decompress(raw)
             self.tf = tarfile.open(fileobj=io.BytesIO(self.tar_bytes), mode="r:")  # noqa: SIM115  # reads a BytesIO, not a file descriptor
-        except Exception as e:
+        except (OSError, tarfile.TarError, EOFError) as e:
             die("could not read %s: %s" % (self.bin, e))
         self.members = self.tf.getmembers()
         self.data = {}

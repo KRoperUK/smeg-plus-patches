@@ -207,7 +207,8 @@ def main():
     try:
         with open(args.elf, "rb") as fh:
             elf = Elf32BE(fh.read())
-    except (ElfError, OSError) as exc:
+    except (ElfError, OSError, struct.error) as exc:
+        # struct.error is a truncated header, not a tool bug: same one-line error
         sys.exit("%s: %s" % (args.elf, exc))
 
     syms = elf.symbols()
