@@ -234,7 +234,7 @@ def test_a_stale_ctrl_trailer_is_a_warning_not_a_failure(pkg):
     j = json.loads(
         run(os.path.join(TOOLS, "verify_package.py"), "--package", str(p), "--json").stdout
     )
-    assert [w["where"] for w in j["warnings"]] == [os.path.join("NAV", "extra_ctrl.bin")]
+    assert [w["where"] for w in j["warnings"]] == ["NAV/extra_ctrl.bin"]
 
 
 def test_a_valid_trailer_and_a_file_without_one_are_both_quiet(pkg):
