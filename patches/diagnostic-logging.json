@@ -5,7 +5,7 @@
   "status": {
     "state": "diagnostic",
     "label": "Not for driving",
-    "note": "diagnostic build; needs the mask patch too"
+    "note": "superseded by diagnostic-logmask + diagnostic-logsink; kept as a regression fixture, never build it"
   },
   "variants": {
     "NAV": {
