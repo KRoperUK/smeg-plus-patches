@@ -136,10 +136,9 @@ cannot reintroduce that. **Do not remove it.**
 
 Pin **Python 3.13** on both; `uv` fetches it.
 
-**Known Windows gap:** the two `pre-push` entries in `.pre-commit-config.yaml` hard-code
-`sh -c 'PY=.venv/bin/python; …'`. That assumes a POSIX `sh` *and* a Unix venv layout, so on
-Windows they do not run — Git Bash supplies the first, not the second. Run those checks by
-hand.
+The `pre-push` hooks run in pre-commit's own isolated environments on both platforms
+(no `sh`, no `.venv` layout assumed), and CI runs the suite on `windows-latest` too.
+Emulator tests still skip without `unicorn`/`capstone`, and GUI tests skip without PySide6.
 
 ## How a package is put together
 

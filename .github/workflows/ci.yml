@@ -60,3 +60,20 @@ jobs:
         run: |
           pip install "bandit[toml]"
           bandit -q -c pyproject.toml -r tools
+
+  test-windows:
+    # The pre-push hooks are portable now, but nothing exercised Windows until this
+    # job: POSIX-only assumptions hide in prepare_usb.py's macOS branches and the
+    # Studio GUI path, so the suite runs here too. GUI tests skip without PySide6.
+    name: pytest on Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest tests -q
