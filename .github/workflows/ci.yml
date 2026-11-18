@@ -64,9 +64,14 @@ jobs:
   test-windows:
     # The pre-push hooks are portable now, but nothing exercised Windows until this
     # job: POSIX-only assumptions hide in prepare_usb.py's macOS branches and the
-    # Studio GUI path, so the suite runs here too. GUI tests skip without PySide6.
-    # PYTHONUTF8 forces the UTF-8 mode Windows Python otherwise lacks, so bare
-    # open()/read_text() on the repo's UTF-8 files behave as they do on macOS.
+    # Studio GUI path, so the suite runs here too. GUI tests skip without PySide6,
+    # and the emulator/disassembler tests skip without their native wheels — that
+    # is the designed behaviour everywhere, and on Windows it is load-bearing:
+    # unicorn's Windows build aborts the whole pytest process with an access
+    # violation inside mem_map, so the job deliberately does not install the
+    # native wheels. PYTHONUTF8 forces the UTF-8 mode Windows Python otherwise
+    # lacks, so bare open()/read_text() on the repo's UTF-8 files behave as they
+    # do on macOS.
     name: pytest on Windows
     runs-on: windows-latest
     timeout-minutes: 20
@@ -77,7 +82,5 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements-dev.txt
-      - run: pip install -r requirements-dev.txt
+      - run: pip install "pytest>=8"
       - run: python -m pytest tests -q
