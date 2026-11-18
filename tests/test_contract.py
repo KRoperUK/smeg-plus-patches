@@ -94,7 +94,6 @@ def test_find_keys_recovers_the_generated_pair(rsakey):
     assert keys, "no key found"
     found = keys[0]
     assert found["n"] == rsakey["n"]
-    assert (found["d"] * pc.DEFAULT_E) % ((found["p"] - 1) * (found["q"] - 1)) == 0 or True
     # the returned d really is the inverse of e
     import math
 

@@ -29,6 +29,10 @@ MOBILE_INTL = "+44 7700 900" + "123"
 EMAIL = "someone@" + "personal.co.uk"
 POSTCODE = "SW1A" + " 1AA"
 NI = "AB" + "123456C"
+# A real VIN shape, split so this file never holds one whole (the repo scans itself).
+VIN = "VF34ABCD" + "123456789"
+VIN_DIGITS = "123456789" + "01234567"
+VIN_LETTERS = "ABCDEFGH" + "JKLMNPRST"
 
 
 def scan_text(tmp_path, text, name="probe.txt"):
@@ -45,6 +49,7 @@ def scan_text(tmp_path, text, name="probe.txt"):
         ("send it to " + EMAIL, "email address"),
         ("the car was at " + POSTCODE, "UK postcode"),
         ("NI number " + NI + " on file", "NI number"),
+        ("SPY buffer 26300 VIN " + VIN, "VIN"),
     ],
 )
 def test_catches_personal_data(tmp_path, line, expected):
@@ -61,6 +66,8 @@ def test_catches_personal_data(tmp_path, line, expected):
         "released 2023-05-03 as CD 26482",
         "co-authored-by: CommandCodeBot <noreply@commandcode.ai>",
         "mail the maintainer at someone@example.com",
+        "serial " + VIN_DIGITS + " on the label",
+        "batch " + VIN_LETTERS + " released",
     ],
 )
 def test_leaves_ordinary_lines_alone(tmp_path, line):
