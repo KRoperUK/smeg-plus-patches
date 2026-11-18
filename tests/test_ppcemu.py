@@ -232,7 +232,6 @@ def test_stub_all_isolates_a_function_except_what_you_exempt():
 
 def test_nopping_a_branch_changes_what_is_reached():
     """The pattern every patch in this repo relies on, in miniature."""
-    guard = BASE + 0x10
     layout = {
         BASE: [
             stwu(1, -16, 1),
@@ -246,8 +245,6 @@ def test_nopping_a_branch_changes_what_is_reached():
         ],
         CALLEE: [li(3, 123), blr()],
     }
-    assert guard  # the beq sits at BASE+0x14
-
     stock = emu(dict(layout))
     stock.call(BASE)
     assert not stock.reached(CALLEE)

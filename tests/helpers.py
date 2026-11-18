@@ -4,12 +4,9 @@ Everything here is generated from scratch — no vendor firmware is involved, wh
 the point: the patch tools must be testable without any copyrighted files.
 """
 
-import gzip
-import io
 import os
 import struct
 import sys
-import tarfile
 import zlib
 from pathlib import Path
 
@@ -223,35 +220,3 @@ def inflate_container(raw):
 
 def read_crc_field(text, field="CRC32"):
     return read_inf_field(text, field)
-
-
-# --- media partition helper (for the ringtone tool tests) -------------------
-
-
-def build_media_tar(path, extra=None):
-    """A tar shaped like the real media partition, with ring_tones/ populated."""
-    import wave
-
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w") as tf:
-        for name in ("Data_base/media.inf", "Data_base/smeg.inf"):
-            data = (
-                b"00000000\nVER:0\n"
-                if "media" in name
-                else b"BSP_CRC32: 0 \r\nBIGQUICK_CRC32: 0 \r\nVER: X \r\nGUI_VER:00.00 \r\n"
-            )
-            ti = tarfile.TarInfo(name)
-            ti.size = len(data)
-            tf.addfile(ti, io.BytesIO(data))
-        for slot in ("ring1", "ring2"):
-            w = io.BytesIO()
-            with wave.open(w, "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(44100)
-                wf.writeframes(b"\x00\x00" * 4410)
-            data = w.getvalue()
-            ti = tarfile.TarInfo("ring_tones/%sRT.wav" % slot)
-            ti.size = len(data)
-            tf.addfile(ti, io.BytesIO(data))
-    Path(path).write_bytes(gzip.compress(buf.getvalue()))
