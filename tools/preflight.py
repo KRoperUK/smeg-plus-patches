@@ -181,6 +181,7 @@ def up_keys(blob):
     t = tempfile.NamedTemporaryFile(delete=False)  # noqa: SIM115  # closed on the next line; delete=False so sqlite can reopen it by name
     t.write(blob)
     t.close()
+    con = None
     try:
         con = sqlite3.connect(t.name)
         out = {}
@@ -189,8 +190,13 @@ def up_keys(blob):
         ):
             out[(sec, name, idx)] = ival if ival is not None else sval
         con.close()
+        con = None
         return out, None
     except Exception as e:
+        # Windows cannot delete a file that is still open, so the handle must go
+        # first — otherwise this error path crashes instead of reporting.
+        if con is not None:
+            con.close()
         return {}, "not a readable settings database (%s)" % e
     finally:
         os.unlink(t.name)
@@ -345,7 +351,8 @@ def check_user_data(rep, pkg, module):
         "USER_DATA",
         "whether the updater merges per file or replaces the folder is not known",
     )
-    if any("/sqlite/" in f for f in files):
+    # `files` carries the platform separator (`\` on Windows); the tar namespace is `/`.
+    if any("/sqlite/" in f.replace(os.sep, "/") for f in files):
         rep.add(
             WARN,
             "USER_DATA",

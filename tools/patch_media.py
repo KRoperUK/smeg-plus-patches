@@ -126,6 +126,16 @@ class Partition:
         return out.getvalue()
 
 
+def _rel(path, start):
+    """A `relpath` in the tar member namespace: forward slashes on every platform."""
+    return os.path.relpath(path, start).replace(os.sep, "/")
+
+
+def _only(names):
+    """An `--only` set in the tar member namespace."""
+    return {n.replace(os.sep, "/") for n in names}
+
+
 def diff_tree(part, tree, only=None):
     """Return {member: new_bytes} for files in the tar whose tree copy differs."""
     changes, missing, same, extra = {}, [], [], []
@@ -145,7 +155,7 @@ def diff_tree(part, tree, only=None):
             same.append(name)
     for root, _dirs, files in os.walk(tree):
         for f in files:
-            rel = os.path.relpath(os.path.join(root, f), tree)
+            rel = _rel(os.path.join(root, f), tree)
             if rel not in part.data:
                 extra.append(rel)
     return changes, missing, same, extra
@@ -262,11 +272,11 @@ def cmd_restore(args):
     src_root = os.path.join(args.backup, args.module) if args.module else args.backup
     if not os.path.isdir(src_root):
         die("no backup for that module at %s" % src_root)
-    only = set(args.only or [])
+    only = _only(args.only or [])
     n = 0
     for root, _d, files in os.walk(src_root):
         for f in files:
-            rel = os.path.relpath(os.path.join(root, f), src_root)
+            rel = _rel(os.path.join(root, f), src_root)
             if only and rel not in only:
                 continue
             dest = os.path.join(args.tree, rel)
@@ -281,7 +291,7 @@ def cmd_restore(args):
 
 def cmd_apply(args):
     part = Partition(args.package, args.module)
-    only = set(args.only or []) or None
+    only = _only(args.only or []) or None
     changes, missing, same, extra = diff_tree(part, args.tree, only)
 
     if extra:
