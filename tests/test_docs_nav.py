@@ -32,7 +32,16 @@ def nav_pages():
 
 @pytest.mark.skipif(tomllib is None, reason="tomllib needs Python 3.11+")
 def test_no_page_is_orphaned_and_no_nav_entry_is_missing():
-    pages = {p.name for p in (ROOT / "docs").glob("*.md")}
+    docs = ROOT / "docs"
+    # workshop_generated/ is local-only converter output: gitignored, built on
+    # demand, and deliberately absent from the committed nav. agents/ holds
+    # agent-facing notes that are published but not part of the reader nav.
+    skip = {"workshop_generated", "agents"}
+    pages = {
+        p.relative_to(docs).as_posix()
+        for p in docs.rglob("*.md")
+        if not (set(p.relative_to(docs).parts) & skip)
+    }
     listed = nav_pages()
     assert sorted(pages - listed) == [], "pages not in zensical.toml nav"
     assert sorted(listed - pages) == [], "nav entries with no page"
