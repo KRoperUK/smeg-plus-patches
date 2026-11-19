@@ -17,11 +17,12 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: "3.x"
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: |
             requirements-dev.txt
@@ -39,3 +40,47 @@ jobs:
         run: python -m pytest tests -q
       - name: docs build
         run: zensical build --clean
+
+  guards:
+    # The project's hard rules, enforced server-side: a `git commit --no-verify` or a
+    # Windows push bypasses the local hooks, so CI runs the same checks tree-wide.
+    name: hard rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - name: no vendor firmware in the tree
+        run: tools/check_no_firmware.sh --all
+      - name: no personal data in the tree
+        run: python3 tools/check_no_pii.py $(git ls-files)
+      - name: security scan
+        run: |
+          pip install "bandit[toml]"
+          bandit -q -c pyproject.toml -r tools
+
+  test-windows:
+    # The pre-push hooks are portable now, but nothing exercised Windows until this
+    # job: POSIX-only assumptions hide in prepare_usb.py's macOS branches and the
+    # Studio GUI path, so the suite runs here too. GUI tests skip without PySide6,
+    # and the emulator/disassembler tests skip without their native wheels — that
+    # is the designed behaviour everywhere, and on Windows it is load-bearing:
+    # unicorn's Windows build aborts the whole pytest process with an access
+    # violation inside mem_map, so the job deliberately does not install the
+    # native wheels. PYTHONUTF8 forces the UTF-8 mode Windows Python otherwise
+    # lacks, so bare open()/read_text() on the repo's UTF-8 files behave as they
+    # do on macOS.
+    name: pytest on Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - run: pip install "pytest>=8" "capstone>=5.0"
+      - run: python -m pytest tests -q

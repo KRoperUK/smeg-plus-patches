@@ -112,7 +112,11 @@ def main(argv=None):
         old = path.read_text()
         new = replace_block(old, kind, render(kind, entries))
         if new != old:
-            stale.append(os.path.relpath(path, ROOT))
+            try:
+                stale.append(os.path.relpath(path, ROOT))
+            except ValueError:
+                # Different drives on Windows (the tests point TARGETS at tmp_path).
+                stale.append(str(path))
             if not args.check:
                 path.write_text(new)
     if args.check and stale:

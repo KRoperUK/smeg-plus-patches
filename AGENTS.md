@@ -94,7 +94,11 @@ what CI runs.
 python3 tools/check_commit_msg.py --title "feat: ..."     # check a PR title
 ```
 
-CI runs `ruff check`, `ruff format --check`, `pytest tests -q` and `zensical build --clean`.
+CI runs `ruff check`, `ruff format --check`, `pytest tests -q`, `zensical build --clean`
+and a `hard rules` job with the same guards as the hooks: `check_no_firmware.sh --all`
+over the whole tree, `check_no_pii.py` over `git ls-files`, and `bandit -r tools`. The
+`Conventional Commits` check runs on the PR title. The branch ruleset requires the
+`test`, `hard rules` and `Conventional Commits` checks.
 `pre-commit install` wires three hook stages:
 
 * **every commit:** whitespace/EOF/YAML hygiene, `ruff check --fix`, `ruff format`,
@@ -132,10 +136,9 @@ cannot reintroduce that. **Do not remove it.**
 
 Pin **Python 3.13** on both; `uv` fetches it.
 
-**Known Windows gap:** the two `pre-push` entries in `.pre-commit-config.yaml` hard-code
-`sh -c 'PY=.venv/bin/python; …'`. That assumes a POSIX `sh` *and* a Unix venv layout, so on
-Windows they do not run — Git Bash supplies the first, not the second. Run those checks by
-hand.
+The `pre-push` hooks run in pre-commit's own isolated environments on both platforms
+(no `sh`, no `.venv` layout assumed), and CI runs the suite on `windows-latest` too.
+Emulator tests still skip without `unicorn`/`capstone`, and GUI tests skip without PySide6.
 
 ## How a package is put together
 

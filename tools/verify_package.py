@@ -103,6 +103,9 @@ def audit(root):
     problems = []
 
     def bad(kind, where, detail):
+        # Forward slashes even on Windows: `where` values are display/JSON paths and
+        # the tests (and the tar namespace) spell them with `/` on every platform.
+        where = where.replace(os.sep, "/") if isinstance(where, str) else where
         problems.append({"kind": kind, "where": where, "detail": detail})
 
     # 1. every *.inf sidecar describes the file beside it

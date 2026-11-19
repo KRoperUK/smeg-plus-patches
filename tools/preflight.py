@@ -142,8 +142,13 @@ class Report:
 
 
 def read_module(pkg, module):
-    """(app image bytes, {name: bytes} from system.bin) for a module, or (None, {})."""
-    img, media = None, {}
+    """(app image bytes, {name: bytes} from system.bin, a media error or None).
+
+    A `system.bin` that does not inflate is not an empty media partition — the settings
+    and Last_Source checks below would silently pass on nothing. The error names the file
+    so the caller can report it as a finding instead.
+    """
+    img, media, media_error = None, {}, None
     app = os.path.join(pkg, module, "AppBin", "f_BigQuick.bin")
     if os.path.exists(app):
         try:
@@ -162,15 +167,21 @@ def read_module(pkg, module):
             media = {
                 m.name: (tf.extractfile(m).read() if m.isfile() else b"") for m in tf.getmembers()
             }
-        except Exception:
-            media = {}
-    return img, media
+        except Exception as e:
+            media_error = "%s is not a readable gzip'd tar (%s)" % (sysbin, e)
+    return img, media, media_error
 
 
 def up_keys(blob):
+    """(settings keys, a database error or None).
+
+    A corrupt `up_common.sqlite` is not an empty settings table — returning `{}` would
+    skip the Last_Source check as if there were nothing to check.
+    """
     t = tempfile.NamedTemporaryFile(delete=False)  # noqa: SIM115  # closed on the next line; delete=False so sqlite can reopen it by name
     t.write(blob)
     t.close()
+    con = None
     try:
         con = sqlite3.connect(t.name)
         out = {}
@@ -179,9 +190,14 @@ def up_keys(blob):
         ):
             out[(sec, name, idx)] = ival if ival is not None else sval
         con.close()
-        return out
-    except Exception:
-        return {}
+        con = None
+        return out, None
+    except Exception as e:
+        # Windows cannot delete a file that is still open, so the handle must go
+        # first — otherwise this error path crashes instead of reporting.
+        if con is not None:
+            con.close()
+        return {}, "not a readable settings database (%s)" % e
     finally:
         os.unlink(t.name)
 
@@ -335,7 +351,8 @@ def check_user_data(rep, pkg, module):
         "USER_DATA",
         "whether the updater merges per file or replaces the folder is not known",
     )
-    if any("/sqlite/" in f for f in files):
+    # `files` carries the platform separator (`\` on Windows); the tar namespace is `/`.
+    if any("/sqlite/" in f.replace(os.sep, "/") for f in files):
         rep.add(
             WARN,
             "USER_DATA",
@@ -468,7 +485,9 @@ def main():
     modules = check_structure(rep, pkg)
     module = args.module or (modules[0] if modules else "NAV")
 
-    img, media = read_module(pkg, module)
+    img, media, media_error = read_module(pkg, module)
+    if media_error:
+        rep.add(UNKNOWN, "media", media_error)
     check_firmware(rep, img)
     check_cascade(rep, pkg, module)
     check_trailers(rep, pkg)
@@ -477,12 +496,18 @@ def main():
 
     keys = {}
     if "Data_base/sqlite/up_common.sqlite" in media:
-        keys = up_keys(media["Data_base/sqlite/up_common.sqlite"])
+        keys, keys_error = up_keys(media["Data_base/sqlite/up_common.sqlite"])
+        if keys_error:
+            rep.add(UNKNOWN, "settings", "up_common.sqlite %s" % keys_error)
     if keys:
         check_settings(rep, keys)
     ud = os.path.join(pkg, module, "USER_DATA", "user_data", "sqlite", "up_common.sqlite")
     if os.path.exists(ud):
-        check_settings(rep, up_keys(Path(ud).read_bytes()), area="settings (USER_DATA)")
+        ud_keys, ud_error = up_keys(Path(ud).read_bytes())
+        if ud_error:
+            rep.add(UNKNOWN, "settings (USER_DATA)", "up_common.sqlite %s" % ud_error)
+        elif ud_keys:
+            check_settings(rep, ud_keys, area="settings (USER_DATA)")
 
     check_user_data(rep, pkg, module)
     check_writes(rep, pkg, module, patches, media, keys)

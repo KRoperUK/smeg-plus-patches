@@ -48,6 +48,23 @@ TARGET_NAME = "sqlite"
 SECTOR = 512
 
 
+def _pread(fh, size, offset):
+    # os.pread does not exist on Windows: seek and read instead. The tool is
+    # single-threaded and the descriptor is this volume's own, so moving the
+    # position is safe.
+    if hasattr(os, "pread"):
+        return os.pread(fh, size, offset)
+    os.lseek(fh, offset, os.SEEK_SET)
+    return os.read(fh, size)
+
+
+def _pwrite(fh, data, offset):
+    if hasattr(os, "pwrite"):
+        return os.pwrite(fh, data, offset)
+    os.lseek(fh, offset, os.SEEK_SET)
+    return os.write(fh, data)
+
+
 class Volume:
     """Sector-granular FAT reader/writer.
 
@@ -62,7 +79,7 @@ class Volume:
 
     def sector(self, n):
         if n not in self._cache:
-            self._cache[n] = bytearray(os.pread(self.fh, SECTOR, n * SECTOR))
+            self._cache[n] = bytearray(_pread(self.fh, SECTOR, n * SECTOR))
         if len(self._cache[n]) != SECTOR:
             sys.exit(f"short read at sector {n} - is this the right device?")
         return self._cache[n]
@@ -88,7 +105,7 @@ class Volume:
 
     def flush(self):
         for n, buf in self._cache.items():
-            os.pwrite(self.fh, bytes(buf), n * SECTOR)
+            _pwrite(self.fh, bytes(buf), n * SECTOR)
         self._cache.clear()
 
 

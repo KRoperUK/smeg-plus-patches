@@ -73,7 +73,7 @@ GROUPS = {
 
 
 def docstring(path):
-    return ast.get_docstring(ast.parse(path.read_text())) or ""
+    return ast.get_docstring(ast.parse(path.read_text(encoding="utf-8"))) or ""
 
 
 def summary(path):
@@ -87,7 +87,9 @@ def discover():
     for path in sorted(TOOLS.glob("*.py")):
         if path.stem == "__init__":
             continue
-        (tools if '__name__ == "__main__"' in path.read_text() else libs).append(path.stem)
+        (tools if '__name__ == "__main__"' in path.read_text(encoding="utf-8") else libs).append(
+            path.stem
+        )
     return tools, libs
 
 
@@ -168,7 +170,7 @@ def check():
     problems = ["%s.py is not in any group in tool_reference.GROUPS" % t for t in ungrouped(tools)]
     if not PAGE.exists():
         return problems + ["docs/TOOLS.md does not exist"]
-    listed = dict(SUMMARY_ROW.findall(PAGE.read_text()))
+    listed = dict(SUMMARY_ROW.findall(PAGE.read_text(encoding="utf-8")))
     for t in tools:
         want = summary(TOOLS / (t + ".py"))
         if t not in listed:
@@ -195,7 +197,7 @@ def main(argv=None):
     missing = ungrouped(tools)
     if missing:
         raise SystemExit("add to GROUPS first: %s" % ", ".join(missing))
-    PAGE.write_text(render())
+    PAGE.write_text(render(), encoding="utf-8")
     print("wrote %s (%d tools)" % (os.path.relpath(PAGE, ROOT), len(tools)))
     return 0
 

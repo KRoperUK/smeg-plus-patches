@@ -29,6 +29,11 @@ repos:
       - id: ruff-format
 
   # --- pre-push: the slow ones -------------------------------------------------------
+  #
+  # These run in pre-commit's own isolated environments (`language: python`), not through
+  # `sh -c` with a hard-coded `.venv/bin/python`: the old form assumed a POSIX shell and a
+  # Unix venv layout, so on Windows the hooks never ran. The pins below mirror
+  # requirements-dev.txt / requirements-docs.txt — keep them in sync.
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.9.4
@@ -39,6 +44,26 @@ repos:
         args: ["-q", "-c", "pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
         exclude: ^tests/          # asserts are the point of a test file
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: tests
+        entry: pytest -q
+        language: python
+        additional_dependencies: ["pytest>=8", "unicorn>=2.0", "capstone>=5.0"]
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+
+      - id: docs-strict
+        name: docs build (strict)
+        entry: zensical build --strict
+        language: python
+        additional_dependencies: ["zensical==0.0.73"]
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
 
   - repo: local
     hooks:
@@ -60,19 +85,3 @@ repos:
         entry: tools/check_commit_msg.py
         language: script
         stages: [commit-msg]
-
-      - id: pytest
-        name: tests
-        stages: [pre-push]
-        entry: sh -c 'PY=.venv/bin/python; [ -x "$PY" ] || PY=python3; exec "$PY" -m pytest -q'
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      - id: docs-strict
-        name: docs build (strict)
-        stages: [pre-push]
-        entry: sh -c 'PY=.venv/bin/python; [ -x "$PY" ] || PY=python3; exec "$PY" -m zensical build --strict'
-        language: system
-        pass_filenames: false
-        always_run: true

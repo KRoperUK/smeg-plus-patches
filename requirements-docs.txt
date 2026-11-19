@@ -1,3 +1,4 @@
 # The docs site (zensical.toml). Kept apart from requirements-dev.txt so the Pages
 # workflow installs only this; both workflows key their pip cache on these files.
-zensical
+# Pinned so CI builds with the same version the docs were written against.
+zensical==0.0.73

@@ -39,7 +39,12 @@ import shutil
 import subprocess
 import sys
 import time
-import zlib
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from appimage import crc32_file as crc32  # noqa: E402  # the shared chunked reader
 
 # macOS writes these beside a file when it copies extended attributes. The updater does not
 # expect them, and on a FAT stick they are pure litter.
@@ -49,18 +54,6 @@ JUNK_NAMES = {".DS_Store", "Thumbs.db", "desktop.ini"}
 # what the updater resolves against the stick: /bd0/SMEG_PLUS_UPG/ctrl.bin and friends
 REQUIRED_FILES = ("ctrl.bin", "contract.dat")
 MODULE_IMAGE = os.path.join("AppBin", "f_BigQuick.bin")
-
-
-def crc32(path):
-    """CRC32 of a file, read in chunks so a large image does not land in memory."""
-    c = 0
-    with open(path, "rb") as fh:
-        while True:
-            b = fh.read(1 << 20)
-            if not b:
-                break
-            c = zlib.crc32(b, c)
-    return c & 0xFFFFFFFF
 
 
 def is_junk(name):

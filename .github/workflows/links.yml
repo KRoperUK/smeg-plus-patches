@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   links:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
       contents: read

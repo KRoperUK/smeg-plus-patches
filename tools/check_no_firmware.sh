@@ -5,6 +5,11 @@
 # firmware, upgrade package, symbol map or recovered key material is ever committed,
 # uploaded or stored. `.gitignore` covers the obvious paths, but an explicit `git add -f`
 # or a copy under a new name would slip past it — this checks what is actually staged.
+#
+# usage:
+#     check_no_firmware.sh          # the pre-commit hook: what is staged
+#     check_no_firmware.sh --all    # CI: the whole tracked tree (`git diff --cached`
+#                                   # is empty there, so the staged form exits 0)
 set -eu
 
 MAX_KB=1024
@@ -32,7 +37,11 @@ abs_symbols.txt
 symbols_bsp.txt
 "
 
-staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+if [ "${1:-}" = "--all" ]; then
+    staged=$(git ls-files)
+else
+    staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+fi
 [ -n "$staged" ] || exit 0
 
 fail=0

@@ -204,7 +204,9 @@ def stale_trailers(root):
             with open(path, "rb") as fh:
                 buf = fh.read()
             if has_ctrl_layout(buf) and not has_trailer(buf):
-                stale.append(os.path.relpath(path, root))
+                # Forward slashes even on Windows: these are display/JSON paths and
+                # the tar member namespace they name uses `/` on every platform.
+                stale.append(os.path.relpath(path, root).replace(os.sep, "/"))
     return sorted(stale)
 
 

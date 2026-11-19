@@ -155,3 +155,25 @@ def test_key_from_image_rejects_a_short_image(monkeypatch, capsys):
         assert "too short" in str(e)
     else:
         raise AssertionError("a short image should have been refused")
+
+
+# --------------------------------------------------------------- missing inputs (#237)
+
+
+def test_every_subcommand_names_a_missing_input_file(tmp_path):
+    """A missing file used to traceback; the siblings exit with one clean line."""
+    missing = str(tmp_path / "no-such-file.dat")
+    for argv in (
+        ["names", missing],
+        ["names-round-trip", missing],
+        ["inf", missing],
+        ["scc", missing],
+        ["cct", missing, "--image", missing],
+    ):
+        try:
+            cg.main(argv)
+        except SystemExit as e:
+            assert "no such file" in str(e), argv
+            assert missing in str(e), argv
+        else:
+            raise AssertionError("%r should have been refused" % (argv,))
